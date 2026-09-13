@@ -1,21 +1,61 @@
-# Shared build contracts
-Root project: this directory. Master: docs/MASTER_PROMPT.md.
-TypeScript strict, ESM, Node24, Vitest. Package setup and migrations owned by Codex lead.
+# Collaboration board
 
-## Assignment update — 2026-09-13 (user decision)
+Root project: this directory. Master: `docs/MASTER_PROMPT.md`. TypeScript strict, ESM, Node 24, Vitest. Platform fee is always 0%.
 
-The user instructed Claude to implement the product end to end ("tự làm từ a-z cho tới khi sản phẩm hoàn tất … cứ dựa theo plan mà làm") and granted the authority to do so. Until the user says otherwise:
+## Current model (user decision, 2026-09-13)
 
-| task_id | owner | scope | status |
-|---|---|---|---|
-| W1-0 | Claude | baseline commit; split `src/app/api/commands/route.ts` and `src/app/[[...path]]/page.tsx` into domain modules/segments | IN_PROGRESS |
-| W1-A | Claude | supply engine v2 (service versions/snapshots, weekly capacity buckets, shared pools) | TODO |
-| W1-B | Claude | order lifecycle engine (§7.2 state machine, versions, work clock, auto-accept, cancellation requests) | TODO |
-| W2+ | Claude | remaining master roadmap P1B → P6 in order (see `docs/evidence/claude-W1-proposal.md` §5 and master §16) | TODO |
+The user asked Claude to build the product end to end and to **coordinate Codex (Astra)** as the second engineer. Claude assigns and integrates tasks on this board; each engineer implements and tests their own tasks and reviews the other's.
 
-Astra/Codex: please do not edit files concurrently while this assignment is active. Review the commits and the `docs/evidence/claude-*.md` reports, and record change requests in `docs/evidence/astra-review-*.md`. Standing limits still apply: no live money, no public deployment, no external messages, no secrets. Mock, sandbox, testnet and live stay labelled separately.
+**Why this split.** The Codex runner cannot start PostgreSQL (SysV `shmget` blocked) or Turbopack. Claude's shell can. So:
+- **Claude** owns database, domain, API and DB-backed tests.
+- **Codex** owns UI, docs, operational scripts, CI and E2E authoring.
 
-## Claude assignment
-Build provider interfaces and a rigorous local-only mock payment adapter in src/modules/payments/providers.ts. Self-contained types in this file to avoid import races. Funding, cancellation, release, refund, lookup; bigint atomic amounts; 0 platform fee; stable operation id + request hash, duplicate replay, same-key-different-payload conflict, deterministic simulated accepted-but-timeout, webhook event signing/verification using Node crypto timing-safe comparison; no client markPaid endpoint. Use async methods. Adapter instance is not authoritative financial ledger; DB engine owned by lead persists operations.
-Also implement notification templates + local sink (never real email) in src/modules/notifications/index.ts. Write tests/providers.test.ts using Vitest for idempotency, conflict, timeout lookup, signature tampering, fees, refunds not exceeding amount and notification dedupe. Include README/report docs/CLAUDE_REPORT.md with exact exports and commands/results, no fake pass.
-Do not edit package.json/lockfile/shared schema/routes. No installations, live network actions, git commits or changes outside assigned files. If blocked, write clear status report; local drafting/testing may continue once lead installs deps.
+Both halves are full implementation work with their own tests.
+
+## File ownership (hard boundaries)
+
+| Owner | Paths |
+|---|---|
+| **Claude** | `drizzle/**`, `src/modules/**`, `src/lib/**`, `src/app/api/**`, `scripts/postgres.ts`, `scripts/migrate.ts`, `scripts/seed.ts`, `tests/integration/**`, `tests/providers.test.ts`, `tests/unit/**` for modules, `docs/UI_CONTRACT.md` (backend contract), `docs/evidence/claude-*.md`, `docs/CLAUDE_REPORT.md`, this board |
+| **Codex** | `src/app/**` **except** `src/app/api/**`; `src/components/**`; `src/app/globals.css`; `tests/e2e/**`; `playwright.config.ts`; `.github/workflows/**`; `scripts/env-check.ts`, `scripts/release-check.ts` (new scripts other than the three Claude scripts); `README.md`; `docs/PAYMENT_READINESS.md`, `docs/runbooks/**`, `docs/STAGING.md`, `docs/RELEASE_CHECKLIST.md`, `docs/ACCEPTANCE.md`, `docs/BUILD_STATUS.md`, `docs/HANDOFF.md`, `docs/REQUIREMENTS_TRACEABILITY.md`, `docs/PRODUCT_SPEC.md`, `docs/MIRAI_PROVIDER.md`, `docs/evidence/codex-*.md`, `docs/evidence/astra-review-*.md` |
+| Shared, change by request only | `package.json`, `pnpm-lock.yaml`, `tsconfig.json`, `vitest.config.ts`, `next.config.ts`. Write the requested change in your evidence file; Claude applies it. |
+
+Rules:
+- Never edit the other owner's paths. Put requests in your evidence/review file.
+- **Git:** commit only your own paths (`git add <paths>`, never `git add -A`). No reset, rebase, stash or checkout of others' files. Commit messages start with the task id.
+- UI reads only exported read models and posts only commands documented in `docs/UI_CONTRACT.md`. If the UI needs a new field or command, write the request in `docs/evidence/codex-<task>.md`; Claude adds it and updates the contract.
+- Codex cannot run DB suites. Claude runs `RUN_DB_INTEGRATION=1 vitest run` and E2E against local PostgreSQL, and records results in `docs/evidence/claude-*.md`.
+- No live money, public deployment, external messages or secrets. Label mock, sandbox, testnet and live separately. A green build is not acceptance.
+
+## Task board
+
+Status values: TODO · IN_PROGRESS · REVIEW · DONE · BLOCKED.
+
+### Claude
+
+| task_id | goal | acceptance_ids | depends | status |
+|---|---|---|---|---|
+| W1-0 | Split the command route into domain modules (`bf5e2e2`) | regression 83/83 | — | DONE |
+| W1-A | Supply engine v2: service versions + order terms snapshot, weekly capacity buckets (timezone/DST), shared pools, lock order, suspended-user new-sale block, seed guard. Migration 0003. | SUP-01..04, CAP-01/02/06/07/08/09, SEC-09/10, FND-07 | W1-0 | IN_PROGRESS |
+| W1-B | Order lifecycle engine (§7.2): expected/delivery versions, work clock at funding, APPROVED→COMPLETED on release, auto-accept + ReviewHold + reminders, mutual cancellation requests, reviews. Migration 0004. | ORD-01..11/13/15/16, REV-01/02, CAP-12 | W1-A | TODO |
+| W1-S | Dev-only fixture session endpoint for E2E (`POST /api/dev/session`, local only, fail closed in production) | FND-03, SEC-08 | W1-0 | TODO |
+| W2-B | Roles/audit/operator backend: `user_roles`, audit log, finance refund + dispute resolution, reconciliation retry, suspend user, feature flags + checkout kill switch | SEC-12/13, OPS-04/05, FND-05 | W1-B | TODO |
+| W2-S | Storage backend: upload intents, private delivery assets, signed downloads, MIME/size validation | SEC-05/06/14, ORD-07 | W1-B | TODO |
+| W3+ | P2 requests v2, P3 auctions v2, P4 crypto (local/testnet-blocked), P5 discovery backend, P6 PUBLISH/ACCESS/DIGITAL backend | REQ, AUC, CRY, DSC, XPL | W2 | TODO |
+
+### Codex (Astra)
+
+| task_id | goal | files | acceptance_ids | depends | status |
+|---|---|---|---|---|---|
+| C1 | **UI architecture split, no behaviour change.** Move each route out of `src/app/[[...path]]/page.tsx` into real App Router segments (`src/app/page.tsx`, `explore/`, `creators/[handle]/`, `services/[id]/`, `orders/[orderId]/`, `requests/…`, `auctions/…`, `dashboard/`, `creator/…`, `buyer/…`, `settings/…`, `sign-in`, `sign-up`, policy pages). Extract shared UI into `src/components/**`. Keep every form field/command exactly as in `docs/UI_CONTRACT.md`. Delete the catch-all only when every route is migrated. | `src/app/**` (not api), `src/components/**` | OPS-07 groundwork, G3 | W1-0 | TODO |
+| C2 | **P1C documentation set** from master §8.2, §19, §20, §21: `docs/PAYMENT_READINESS.md` (all rows BLOCKED/NOT_RUN with owners), `docs/runbooks/*.md` (the 10 runbooks in §20), `docs/STAGING.md` (env separation, restore rehearsal plan, migration/rollback), `docs/RELEASE_CHECKLIST.md` (G0–G7). Remove the stale Mirai notes (user dropped Mirai) from `README.md`, `docs/BUILD_STATUS.md`, `docs/HANDOFF.md`, `docs/evidence/p0-foundation.md`, and delete `docs/MIRAI_PROVIDER.md`. | docs listed | P1C-01..03/07, OPS-08 | — | TODO |
+| C3 | **Acceptance integration.** Update `docs/ACCEPTANCE.md`, `docs/REQUIREMENTS_TRACEABILITY.md`, `docs/BUILD_STATUS.md`, `docs/HANDOFF.md` from `docs/evidence/claude-db-integration.md` and later `claude-*.md` evidence. Map rows to master §18 IDs with status PASS(local-mock) / PARTIAL / NOT_RUN / BLOCKED. Never mark sandbox/live PASS. | docs listed | all rows | evidence files | TODO |
+| C4 | **Scripts + CI.** `scripts/env-check.ts` (validate env for local/staging/production; fail closed on missing production vars; no secret printing) and `scripts/release-check.ts` (fee-zero schema check, no `sandbox_pay`/markPaid routes, production flags, NOT_RUN gates listed). `.github/workflows/ci.yml`: frozen install, typecheck, unit tests, a PostgreSQL service container running migrate + `RUN_DB_INTEGRATION=1 vitest run`, webpack build. Request the `package.json` script entries (`env:check`, `release:check`, `jobs:dev`, `test:critical`, `test:e2e`, `test:security`, `reconcile:dry-run`) in your evidence file. | files listed | FND-01/02, G0 | W1-0 | TODO |
+| C5 | **E2E authoring.** `playwright.config.ts` using the system Chrome (`channel: 'chrome'`, no browser download) and specs in `tests/e2e/` for: anonymous explore; buyer book → pay (local test provider) → creator deliver → buyer approve; revision; dispute; request apply/select/accept; auction bid/close; 360/768/1440 screenshots. Authenticate through the W1-S dev session endpoint, **never by typing passwords**. Claude runs the suite against local PostgreSQL. | `tests/e2e/**`, `playwright.config.ts` | ORD-01 (E2E), OPS-07, G3 | C1, W1-S | TODO |
+| R1 | **Review.** Review Claude commits `2e00eca` (baseline incl. phase 2/3) and `bf5e2e2`, then W1-A/W1-B as they land. Write findings with file:line in `docs/evidence/astra-review-<commit>.md`. | review file | — | — | TODO |
+
+Claude reviews every Codex commit and writes `docs/evidence/claude-review-<task>.md`.
+
+## History
+
+Original Claude assignment (providers/notifications, `docs/CLAUDE_REPORT.md`) is DONE. Proposal for the first 50/50 wave: `docs/evidence/claude-W1-proposal.md` (superseded by this board).
