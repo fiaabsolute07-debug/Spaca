@@ -1,0 +1,52 @@
+import { getDashboardData } from '@/lib/read-model';
+import { CommandForm, Field, money, row, rows, str } from '@/components/ui';
+import { Notices } from '@/components/notices';
+import { PageHeading } from '@/components/page-heading';
+import { requireActorOrLoginPrompt } from '@/components/require-actor';
+import type { PageProps } from '@/components/page-props';
+
+export const dynamic = 'force-dynamic';
+
+export default async function NewAuctionPage({
+  searchParams
+}: PageProps) {
+  const query = await searchParams;
+  const route = "/creator/auctions/new";
+  const {
+    actor,
+    prompt
+  } = await requireActorOrLoginPrompt(route, query);
+  if (!actor) return prompt;
+  const notices = <Notices query={query} />;
+  const d = row(await getDashboardData(actor));
+  const services = rows(d.services).filter(s => str(s.status) === 'PUBLISHED');
+  return <main className="container">
+    {notices}
+    <PageHeading
+      eyebrow="Optional discovery"
+      title="Auction a specific slot."
+      description="An auction reserves one service capacity unit and creates an order only after a winner funds it."
+    />
+    <div className="panel">
+      <CommandForm command="create_auction" label="Schedule auction" returnTo="/auctions">
+        <Field name="service_id" label="Published service" required>
+          <select name="service_id" defaultValue="">
+            <option value="" disabled>Select a service</option>
+            {services.map(s => <option key={str(s.id)} value={str(s.id)}>
+              {str(s.title)}
+              {" · "}
+              {money(s.price_minor)}
+            </option>)}
+          </select>
+        </Field>
+        <div className="form-grid">
+          <Field name="starting_price" label="Starting price (USD)" type="number" required />
+          <Field name="minimum_increment" label="Minimum increment (USD)" type="number" value="25" required />
+          <Field name="buy_now_price" label="Buy now price (optional)" type="number" />
+          <Field name="starts_at" label="Starts at" type="datetime-local" required />
+          <Field name="ends_at" label="Ends at" type="datetime-local" required />
+        </div>
+      </CommandForm>
+    </div>
+  </main>;
+}

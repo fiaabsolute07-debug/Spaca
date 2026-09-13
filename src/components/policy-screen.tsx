@@ -1,0 +1,71 @@
+import Link from 'next/link';
+import { Notices } from '@/components/notices';
+import { PageHeading } from '@/components/page-heading';
+import type { Query } from '@/components/page-props';
+
+export type PolicyRoute = '/terms' | '/privacy' | '/refund-policy' | '/support' | '/reset-password';
+export function PolicyScreen({
+  route,
+  query
+}: {
+  route: PolicyRoute;
+  query: Query;
+}) {
+  const notices = <Notices query={query} />;
+  return <main className="container">
+    <PageHeading
+      eyebrow="Local sandbox information"
+      title={
+        route === '/support' ? 'How can we help?'
+          : route === '/privacy' ? 'Your project stays yours.'
+          : route === '/refund-policy' ? 'Refunds & revisions'
+          : route === '/reset-password' ? 'Account recovery'
+          : 'Working together on Capacity'
+      }
+    />
+    <div className="panel">
+      {notices}
+      {route === '/support' ? <>
+        <h2>Get help with an order</h2>
+        <p>
+          Open your order workspace to send a message or raise a dispute. This local
+          environment has no external support inbox and sends no email.
+        </p>
+        <Link className="button button-dark" href="/dashboard">Open your workspace ↗</Link>
+      </> : route === '/reset-password' ? <p>
+        Email recovery requires a configured authentication email provider. It is not
+        enabled in this local sandbox. Use a separate test account to continue local
+        acceptance testing.
+      </p> : <>
+        <p>
+          This environment is for local product testing. These are product operating
+          rules, not reviewed production legal terms.
+        </p>
+        <h3>Clear scope and zero platform fees</h3>
+        <p>
+          Review the service scope, delivery period, included revisions, and amount
+          before booking. The platform fee is always 0%. Third-party payment costs are
+          separate and must be disclosed before any live transaction.
+        </p>
+        <h3>Delivery, review, and refunds</h3>
+        <p>
+          Buyer and creator work inside the order workspace. Buyers may request an
+          included revision, approve submitted work, or raise a dispute. Refunds follow
+          authorized order transitions; a cancellation is not proof of a completed
+          refund.
+        </p>
+        <h3>Privacy</h3>
+        <p>
+          Private briefs, messages, and deliveries are visible only to authorized order
+          participants and scoped support roles. Public services and profile samples are
+          visible to visitors. Do not use real confidential or payment data in local
+          tests.
+        </p>
+        <div className="notice">
+          Production launch is blocked until final policies, support contact, privacy
+          controls, and payment capabilities are reviewed and configured.
+        </div>
+      </>}
+    </div>
+  </main>;
+}
