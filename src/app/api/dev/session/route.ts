@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { SESSION_COOKIE, createSession, localAuthEnabled } from '@/lib/auth';
+import { SESSION_COOKIE, createSession, isSameOrigin, localAuthEnabled, publicUrl, requestHostname } from '@/lib/auth';
 import { sql } from '@/lib/db';
 import { FIXTURE_PERSONAS, isFixturePersonaKey } from '@/lib/fixtures';
 
@@ -12,11 +12,10 @@ const LOOPBACK = new Set(['127.0.0.1', 'localhost', '::1', '[::1]']);
  */
 export async function POST(request: Request) {
   const url = new URL(request.url);
-  if (process.env.NODE_ENV === 'production' || !localAuthEnabled() || process.env.DEV_SESSIONS === 'off' || !LOOPBACK.has(url.hostname)) {
+  if (process.env.NODE_ENV === 'production' || !localAuthEnabled() || process.env.DEV_SESSIONS === 'off' || !LOOPBACK.has(requestHostname(request)) || !LOOPBACK.has(url.hostname)) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 });
   }
-  const origin = request.headers.get('origin');
-  if (origin && origin !== url.origin) return NextResponse.json({ error: 'Origin not allowed' }, { status: 403 });
+  if (request.headers.get('origin') && !isSameOrigin(request)) return NextResponse.json({ error: 'Origin not allowed' }, { status: 403 });
 
   const contentType = request.headers.get('content-type') ?? '';
   const input = contentType.includes('application/json')
@@ -34,7 +33,7 @@ export async function POST(request: Request) {
   const wantsJson = (request.headers.get('accept') ?? '').includes('application/json');
   const response = wantsJson
     ? NextResponse.json({ persona, userId: user.id })
-    : NextResponse.redirect(new URL(returnTo.startsWith('/') && !returnTo.startsWith('//') ? returnTo : '/dashboard', request.url), 303);
+    : NextResponse.redirect(publicUrl(request, returnTo.startsWith('/') && !returnTo.startsWith('//') ? returnTo : '/dashboard'), 303);
   response.cookies.set(SESSION_COOKIE, token, { httpOnly: true, sameSite: 'lax', secure: url.protocol === 'https:', path: '/', maxAge: 604800 });
   return response;
 }

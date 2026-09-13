@@ -1,7 +1,7 @@
 import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
 import { sql } from '../../../lib/db';
-import { createSession, hashPassword, hashSessionToken, isSameOrigin, localAuthEnabled, SESSION_COOKIE, supabaseAuth, verifyPassword } from '../../../lib/auth';
+import { createSession, hashPassword, hashSessionToken, isSameOrigin, localAuthEnabled, SESSION_COOKIE, supabaseAuth, verifyPassword, publicUrl } from '../../../lib/auth';
 
 export async function POST(request: Request) {
   if (!isSameOrigin(request)) return NextResponse.json({ error: 'Origin not allowed' }, { status: 403 });
@@ -10,7 +10,7 @@ export async function POST(request: Request) {
   const email = String(form.get('email') ?? '').trim().toLowerCase();
   const password = String(form.get('password') ?? '');
   const displayName = String(form.get('display_name') ?? '').trim();
-  const go = (path: string) => NextResponse.redirect(new URL(path, request.url), 303);
+  const go = (path: string) => NextResponse.redirect(publicUrl(request, path), 303);
   const failure = () => go(action === 'signup' ? '/sign-up?error=Unable%20to%20create%20account' : '/sign-in?error=Invalid%20credentials%20or%20authentication%20unavailable');
   try {
     if (!['login','signup','logout'].includes(action)) return NextResponse.json({ error: 'Invalid action' }, { status: 400 });
@@ -49,7 +49,7 @@ export async function POST(request: Request) {
     }
     const previous = jar.get(SESSION_COOKIE)?.value;
     if (previous) await sql`delete from app.sessions where token_hash=${hashSessionToken(previous)}`;
-    jar.set(SESSION_COOKIE, await createSession(userId), { httpOnly: true, sameSite: 'lax', secure: new URL(request.url).protocol === 'https:', path: '/', maxAge: 604800 });
+    jar.set(SESSION_COOKIE, await createSession(userId), { httpOnly: true, sameSite: 'lax', secure: publicUrl(request, '/').protocol === 'https:', path: '/', maxAge: 604800 });
     return go('/dashboard');
   } catch { return failure(); }
 }

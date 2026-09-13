@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getActor, isSameOrigin } from '@/lib/auth';
+import { getActor, isSameOrigin, publicUrl } from '@/lib/auth';
 import { isProviderError } from '@/modules/payments/providers';
 import { PaymentFlowError, completeMockCheckout, mockPaymentsEnabled } from '@/modules/payments/funding';
 
@@ -22,7 +22,7 @@ export async function POST(request: Request) {
   const respond = (status: number, body: Record<string, unknown>, message: string, kind: 'message' | 'error') =>
     wantsJson
       ? NextResponse.json(body, { status })
-      : NextResponse.redirect(new URL(`/orders/${UUID.test(orderId) ? orderId : ''}?${kind}=${encodeURIComponent(message)}`, request.url), 303);
+      : NextResponse.redirect(publicUrl(request, `/orders/${UUID.test(orderId) ? orderId : ''}?${kind}=${encodeURIComponent(message)}`), 303);
 
   if (!UUID.test(orderId)) return respond(400, { error: 'order_id is invalid' }, 'Order reference is invalid', 'error');
   try {

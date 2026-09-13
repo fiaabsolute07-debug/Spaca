@@ -21,9 +21,54 @@ export function verifyPassword(password: string, encoded: string): boolean {
   return timingSafeEqual(scryptSync(password, salt!, 64), Buffer.from(digest!, 'hex'));
 }
 export function hashSessionToken(token: string) { return createHash('sha256').update(token).digest('hex'); }
+/**
+ * Origins this request may legitimately come from: the URL Next resolved, the Host/X-Forwarded-Host the
+ * browser actually targeted, and the configured APP_BASE_URL. Cross-site browser requests cannot set
+ * X-Forwarded-Host without a CORS preflight, which these routes never grant.
+ */
+export function requestOrigins(request: Request): Set<string> {
+  const url = new URL(request.url);
+  const origins = new Set<string>([url.origin]);
+  const host = request.headers.get('x-forwarded-host') ?? request.headers.get('host');
+  if (host && /^[A-Za-z0-9.:\[\]-]+$/.test(host)) {
+    const proto = (request.headers.get('x-forwarded-proto') ?? url.protocol.replace(':', '')).split(',')[0]!.trim();
+    if (proto === 'http' || proto === 'https') origins.add(`${proto}://${host.toLowerCase()}`);
+  }
+  if (process.env.APP_BASE_URL) {
+    try { origins.add(new URL(process.env.APP_BASE_URL).origin); } catch { /* invalid config is ignored, never widened */ }
+  }
+  return origins;
+}
+/** CSRF guard for cookie-authenticated mutations: the browser Origin must match this request's own origin. */
 export function isSameOrigin(request: Request): boolean {
   const origin = request.headers.get('origin');
-  return !!origin && origin === new URL(request.url).origin;
+  if (!origin || origin === 'null') return false;
+  let parsed: URL;
+  try { parsed = new URL(origin); } catch { return false; }
+  return requestOrigins(request).has(parsed.origin);
+}
+/**
+ * Absolute URL on the origin the browser actually used. Redirects built from `request.url` can switch
+ * hosts (e.g. 127.0.0.1 → localhost under Next dev), which drops host-scoped session cookies.
+ */
+export function publicUrl(request: Request, path: string): URL {
+  const url = new URL(request.url);
+  const host = request.headers.get('x-forwarded-host') ?? request.headers.get('host');
+  let base = url.origin;
+  if (host && /^[A-Za-z0-9.:\[\]-]+$/.test(host)) {
+    const proto = (request.headers.get('x-forwarded-proto') ?? url.protocol.replace(':', '')).split(',')[0]!.trim();
+    if (proto === 'http' || proto === 'https') base = `${proto}://${host.toLowerCase()}`;
+  }
+  const safePath = path.startsWith('/') && !path.startsWith('//') ? path : '/';
+  return new URL(safePath, base);
+}
+/** Hostname the client targeted (Host header), falling back to the resolved URL. */
+export function requestHostname(request: Request): string {
+  const host = request.headers.get('x-forwarded-host') ?? request.headers.get('host');
+  if (host) {
+    try { return new URL(`http://${host}`).hostname; } catch { /* fall through */ }
+  }
+  return new URL(request.url).hostname;
 }
 export async function createSession(userId: string): Promise<string> {
   if (!localAuthEnabled()) throw new Error('Local sessions disabled');

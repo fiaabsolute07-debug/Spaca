@@ -5,7 +5,7 @@
  */
 import { createHash, randomUUID } from 'node:crypto';
 import { NextResponse } from 'next/server';
-import { getActor, isSameOrigin } from '@/lib/auth';
+import { getActor, isSameOrigin, publicUrl } from '@/lib/auth';
 import { CommandError, statusForCode, type CommandResult } from '@/lib/commands';
 import { sql } from '@/lib/db';
 import { commandHandlers } from '@/modules/commands';
@@ -63,10 +63,10 @@ export async function POST(request: Request) {
     if (mockPaymentsEnabled()) await deliverPendingMockWebhooks().catch((error) => console.error('mock webhook delivery failed', error));
     if (wantsJson) return NextResponse.json(result);
     const destination = result.path || returnTo;
-    return NextResponse.redirect(new URL(`${destination}${destination.includes('?') ? '&' : '?'}message=${encodeURIComponent(result.message)}`, request.url), 303);
+    return NextResponse.redirect(publicUrl(request, `${destination}${destination.includes('?') ? '&' : '?'}message=${encodeURIComponent(result.message)}`), 303);
   } catch (error) {
     const { status, message } = errorResponse(error);
     if (wantsJson) return NextResponse.json({ error: message }, { status });
-    return NextResponse.redirect(new URL(`${returnTo}?error=${encodeURIComponent(message)}`, request.url), 303);
+    return NextResponse.redirect(publicUrl(request, `${returnTo}?error=${encodeURIComponent(message)}`), 303);
   }
 }

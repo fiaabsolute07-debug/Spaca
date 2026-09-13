@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { isSameOrigin } from '@/lib/auth';
 import { runJobsOnce } from '@/modules/jobs';
 import { mockPaymentsEnabled } from '@/modules/payments/funding';
 
@@ -9,7 +10,6 @@ import { mockPaymentsEnabled } from '@/modules/payments/funding';
  */
 export async function POST(request: Request) {
   if (!mockPaymentsEnabled()) return NextResponse.json({ error: 'Not found' }, { status: 404 });
-  const origin = request.headers.get('origin');
-  if (origin && origin !== new URL(request.url).origin) return NextResponse.json({ error: 'Origin not allowed' }, { status: 403 });
+  if (request.headers.get('origin') && !isSameOrigin(request)) return NextResponse.json({ error: 'Origin not allowed' }, { status: 403 });
   return NextResponse.json({ reports: await runJobsOnce() });
 }
