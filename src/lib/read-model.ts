@@ -53,7 +53,7 @@ async function serviceRows(options: { ownerId?: string; publicCreatorId?: string
 export async function getPublicData(options: { q?: string; category?: string } = {}) {
   const [allServices, requests, auctions] = await Promise.all([
     serviceRows(),
-    sql`select r.id,r.buyer_id,r.title,r.brief,r.taxonomy,r.budget_minor,r.per_creator_cap_minor,r.target_hires,r.deadline,r.status,u.display_name as buyer_name,(select count(*) from app.applications a where a.request_id=r.id) as application_count from app.requests r join app.users u on u.id=r.buyer_id where r.status in ('OPEN','SELECTING') and r.deadline>now() order by r.deadline asc`,
+    sql`select r.id,r.buyer_id,r.title,r.brief,r.taxonomy,r.budget_minor,r.per_creator_cap_minor,r.target_hires,r.deadline,r.status,u.display_name as buyer_name,(select count(*) from app.applications a where a.request_id=r.id) as application_count from app.requests r join app.users u on u.id=r.buyer_id where r.status='OPEN' and r.application_deadline>now() order by r.application_deadline asc`,
     sql`select a.id,a.service_id,a.seller_id,s.title,u.display_name as creator_name,a.starting_price_minor,a.current_price_minor,a.minimum_increment_minor,a.buy_now_price_minor,a.ends_at,a.starts_at,a.status,a.bid_count,a.winner_id from app.auctions a join app.services s on s.id=a.service_id join app.users u on u.id=a.seller_id where a.status in ('SCHEDULED','LIVE','AWAITING_WINNER_PAYMENT') and a.ends_at>now() order by a.ends_at asc`,
   ]);
   const q = options.q?.trim().toLowerCase();
@@ -70,7 +70,11 @@ export async function getDashboardData(actor: Actor) {
   const [services, orders, applications, requests, auctions, profile, stats] = await Promise.all([
     serviceRows({ ownerId: actor.id }),
     sql`select o.id,o.buyer_id,o.creator_id,o.service_id,o.source,o.title,o.status,o.amount_minor,o.platform_fee_minor,o.provider_fee_minor,o.currency,o.brief,o.delivery_due_at,o.review_due_at,o.revision_count,o.version,o.buyer_name,o.creator_name,o.settlement_status,o.payment_status,o.created_at from (select o.*,bu.display_name as buyer_name,cu.display_name as creator_name from app.orders o join app.users bu on bu.id=o.buyer_id join app.users cu on cu.id=o.creator_id) o where o.buyer_id=${actor.id} or o.creator_id=${actor.id} order by o.created_at desc`,
-    sql`select a.id,a.request_id,a.creator_id,r.title as request_title,a.quote_minor,a.status,a.note,cu.display_name as creator_name from app.applications a join app.requests r on r.id=a.request_id join app.users cu on cu.id=a.creator_id where a.creator_id=${actor.id} order by a.created_at desc`,
+    sql`select a.id,a.request_id,a.creator_id,r.title as request_title,a.quote_minor,a.status,a.note,a.version,a.valid_until,cu.display_name as creator_name,
+      o.id as offer_id,o.status as offer_status,o.expires_at as offer_expires_at,o.amount_minor as offer_amount_minor,o.order_id as offer_order_id
+      from app.applications a join app.requests r on r.id=a.request_id join app.users cu on cu.id=a.creator_id
+      left join lateral (select * from app.hire_offers h where h.application_id=a.id order by h.created_at desc limit 1) o on true
+      where a.creator_id=${actor.id} order by a.created_at desc`,
     sql`select r.id,r.buyer_id,r.title,r.brief,r.taxonomy,r.budget_minor,r.per_creator_cap_minor,r.target_hires,r.deadline,r.status,u.display_name as buyer_name,(select count(*) from app.applications a where a.request_id=r.id) as application_count from app.requests r join app.users u on u.id=r.buyer_id where r.buyer_id=${actor.id} order by r.created_at desc`,
     sql`select a.id,a.service_id,a.seller_id,s.title,u.display_name as creator_name,a.starting_price_minor,a.current_price_minor,a.minimum_increment_minor,a.buy_now_price_minor,a.ends_at,a.starts_at,a.status,a.bid_count,a.winner_id from app.auctions a join app.services s on s.id=a.service_id join app.users u on u.id=a.seller_id where a.seller_id=${actor.id} order by a.created_at desc`,
     sql`select p.handle,p.bio,p.niche,p.avatar_color,p.social_url,u.display_name,u.email from app.users u left join app.profiles p on p.user_id=u.id where u.id=${actor.id}`,
@@ -142,12 +146,45 @@ export async function getCreatorData(handle: string) {
 }
 
 export async function getRequestData(actor: Actor | null, id: string) {
-  const [request] = asRows(await sql`select r.id,r.buyer_id,r.title,r.brief,r.taxonomy,r.budget_minor,r.per_creator_cap_minor,r.target_hires,r.deadline,r.status,u.display_name as buyer_name from app.requests r join app.users u on u.id=r.buyer_id where r.id=${id} and (r.status in ('OPEN','SELECTING','FILLED') or r.buyer_id=${actor?.id ?? null})`);
+  const [request] = asRows(await sql`select r.id,r.buyer_id,r.title,r.brief,r.taxonomy,r.budget_minor,r.per_creator_cap_minor,r.target_hires,r.deadline,r.application_deadline,
+      r.status,r.version,r.currency,r.reserved_minor,r.committed_minor,r.reserved_hires,r.committed_hires,u.display_name as buyer_name,
+      (select count(*) from app.applications a where a.request_id=r.id and a.status <> 'WITHDRAWN')::int as application_count
+    from app.requests r join app.users u on u.id=r.buyer_id where r.id=${id} and (r.status in ('OPEN','FILLED','CLOSED') or r.buyer_id=${actor?.id ?? null})`);
   if (!request) return null;
+  const owner = !!actor && actor.id === String(request.buyer_id);
+  // REQ-03: a creator reads only their own application and offer; the buyer reads all. Anonymous readers see none.
   const applications = actor
-    ? await sql`select a.id,a.creator_id,a.quote_minor,a.note,a.status,a.turnaround_hours,u.display_name as creator_name from app.applications a join app.users u on u.id=a.creator_id where a.request_id=${id} and (a.creator_id=${actor.id} or ${actor.id}=${String(request.buyer_id)}) order by a.created_at asc`
+    ? await sql`select a.id,a.creator_id,a.quote_minor,a.note,a.status,a.turnaround_hours,a.version,a.valid_until,a.samples_snapshot,a.created_at,a.updated_at,
+          u.display_name as creator_name,p.handle as creator_handle,
+          o.id as offer_id,o.status as offer_status,o.expires_at as offer_expires_at,o.amount_minor as offer_amount_minor,o.order_id as offer_order_id
+        from app.applications a join app.users u on u.id=a.creator_id left join app.profiles p on p.user_id=a.creator_id
+        left join lateral (select * from app.hire_offers h where h.application_id=a.id order by h.created_at desc limit 1) o on true
+        where a.request_id=${id} and (a.creator_id=${actor.id} or ${owner}) order by a.created_at asc`
     : [];
-  return { request, applications: asRows(applications) };
+  // §9.4 campaign view for the buyer: each hire keeps its own order, payment and status.
+  const hires = owner
+    ? await sql`select h.id as offer_id,h.status as offer_status,h.amount_minor,h.expires_at,h.order_id,u.display_name as creator_name,
+          ord.status as order_status,ord.payment_status,ord.settlement_status,ord.delivery_due_at,b.state as budget_state
+        from app.hire_offers h join app.users u on u.id=h.creator_id left join app.orders ord on ord.id=h.order_id
+        left join app.request_budget_reservations b on b.offer_id=h.id where h.request_id=${id} order by h.created_at asc`
+    : [];
+  const hireRows = asRows(hires);
+  const sum = (predicate: (row: ReadRow) => boolean) => hireRows.filter(predicate).reduce((total, row) => total + BigInt(String(row.amount_minor)), 0n).toString();
+  const campaign = owner ? {
+    budget_minor: request.budget_minor,
+    offered_minor: sum((h) => h.offer_status === 'OFFERED'),
+    awaiting_payment_minor: sum((h) => h.offer_status === 'ACCEPTED' && h.order_status === 'AWAITING_PAYMENT'),
+    funded_minor: sum((h) => h.budget_state === 'COMMITTED' && !['COMPLETED', 'REFUNDED'].includes(String(h.order_status))),
+    completed_minor: sum((h) => h.order_status === 'COMPLETED'),
+    refunded_minor: sum((h) => h.order_status === 'REFUNDED'),
+    reserved_minor: request.reserved_minor,
+    committed_minor: request.committed_minor,
+    reserved_hires: request.reserved_hires,
+    committed_hires: request.committed_hires,
+    target_hires: request.target_hires,
+    hires: hireRows,
+  } : null;
+  return { request, applications: asRows(applications), campaign };
 }
 
 export async function getAuctionData(actor: Actor | null, id: string) {
@@ -155,4 +192,9 @@ export async function getAuctionData(actor: Actor | null, id: string) {
   if (!auction) return null;
   const bids = await sql`select b.amount_minor,b.created_at,concat('Bidder ',left(replace(b.bidder_id::text,'-',''),6)) as display_name from app.bids b where b.auction_id=${id} order by b.amount_minor desc,b.created_at asc`;
   return { auction, bids: asRows(bids) };
+}
+
+/** The creator's own capacity pools, for choosing where accepted request work is scheduled (REQ-06). */
+export async function getCreatorPools(actor: Actor) {
+  return asRows(await sql`select id,name,weekly_units,timezone from app.capacity_pools where creator_id=${actor.id} order by created_at asc`);
 }

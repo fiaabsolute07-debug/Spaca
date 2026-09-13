@@ -65,6 +65,8 @@ Actor roles = marketplace roles (`buyer`, `creator`) + active `app.user_roles` g
 Read models (`src/modules/admin/queries.ts`, throw OperatorAccessError for non-operators → render 404/403 page):
 - getOperatorQueues(actor) → { roles, cases[id,kind,severity,status,order_id,next_action,assigned_to,age_seconds], disputes[id,order_id,status,assigned_to,status_before_dispute,age_seconds,(amount_minor,currency for finance)], review_holds, provider_operations[operation_id,kind,status,order_id,provider_reference(redacted),last_error], failed_outbox, reconciling_holds, pending_samples[id,creator_id,title,url,visibility], overdue_orders, feature_flags[key,enabled,description,changed_by,changed_reason,updated_at] }. Sections a role cannot see come back as [].
 - getAuditLog(actor, { entityType?, entityId?, limit? }) — finance/admin.
+- getOperatorOrder(actor, orderId) — finance/support/admin → { order (state/money/party names, no brief), events[kind,actor_id,created_at], provider_operations (redacted), cases, disputes[id,status,outcome,refund_amount_minor], files[id,purpose,filename,mime,size_bytes,lifecycle_state,scan_detail], review_holds } or null.
+- searchOperatorUsers(actor, q) — moderator/admin → [id,email,display_name,status,marketplace_roles,grants,is_test,created_at] (q ≥ 2 chars).
 Commands (all require `reason` ≥10 chars; missing role → 403; closed item → 409):
 - admin_resolve_dispute: dispute_id, outcome RESUME|APPROVE|REFUND_FULL|REFUND_PARTIAL, refund_amount (USD, REFUND_PARTIAL only). RESUME: finance/support/admin; others finance/admin. → /admin/disputes
 - admin_refund_order: order_id — finance/admin; CANCELLED + REFUND_PENDING/SUCCEEDED only. → /admin/orders/{id}
@@ -87,3 +89,30 @@ Who may upload: DELIVERY creator (IN_PROGRESS/REVISION_REQUESTED); BRIEF buyer (
 Types: PNG/JPEG/GIF/WebP ≤10 MB; PDF/DOCX ≤25 MB (BRIEF: images+documents only); MP4/MOV/WebM ≤250 MB. SVG/HTML never.
 Commands: `deliver` + `asset_ids` (comma-separated READY DELIVERY files of this order, ≤10; files alone are a valid delivery). `add_sample` + `asset_id` (READY SAMPLE file; `url` then optional). `admin_quarantine_asset`: asset_id, reason — moderator/admin.
 getOrderData → files[{ id, purpose, owner_id, filename, mime, size_bytes, lifecycle_state, created_at, attachments[{ delivery_id, position }] }]; unattached DELIVERY uploads are only listed for their uploader.
+
+## W3-R additions (2026-09-14): requests v2
+Request statuses: OPEN, FILLED, CLOSED, CANCELLED.
+
+getRequestData(actor|null, id) returns { request, applications, campaign }.
+- request: + application_deadline, version, currency, reserved_minor, committed_minor, reserved_hires, committed_hires, application_count.
+- applications:
+  - buyer sees all; a creator sees only their own; anonymous sees [].
+  - fields: + version, valid_until, samples_snapshot[{id,title,url,asset_id}], creator_handle, offer_id, offer_status, offer_expires_at, offer_amount_minor, offer_order_id.
+- campaign: buyer only, otherwise null.
+  - totals: { budget_minor, offered_minor, awaiting_payment_minor, funded_minor, completed_minor, refunded_minor, reserved_*, committed_*, target_hires }.
+  - hires[{offer_id, offer_status, amount_minor, expires_at, order_id, creator_name, order_status, payment_status, settlement_status, delivery_due_at, budget_state}].
+
+getCreatorPools(actor) returns [{id, name, weekly_units, timezone}].
+
+getDashboardData.applications adds: version, valid_until, offer_id, offer_status, offer_expires_at, offer_amount_minor, offer_order_id.
+
+Commands:
+- create_request: title, brief, taxonomy, budget (optional), per_creator_cap (optional; at least one of the two), target_hires, deadline, application_deadline (optional, ≤ deadline).
+- update_request: request_id, expected_version (required); optional budget, per_creator_cap, target_hires, deadline, application_deadline, title, brief. Returns 422 BUDGET_EXCEEDED below held + committed.
+- close_request: request_id. Withdraws pending offers; orders continue.
+- cancel_request: request_id. Returns 409 once a hire was accepted.
+- apply: request_id, quote, turnaround_hours, note (20+), valid_days (1-30, default 7). Re-applying creates a new version. 422 REQUEST_CLOSED / BUDGET_EXCEEDED / DOMAIN_RULE.
+- withdraw_application: application_id. SUBMITTED only.
+- select_application: application_id, application_version (the version shown). Errors: 409 QUOTE_CHANGED, 422 QUOTE_EXPIRED, 422 BUDGET_EXCEEDED, 409 if an offer is already active.
+- withdraw_offer: offer_id (buyer). decline_offer: offer_id, reason optional (creator).
+- accept_offer: offer_id, pool_id (the creator's own), bucket_id optional. Redirects to /orders/{id} in AWAITING_PAYMENT. Errors: 422 QUOTE_EXPIRED, 409 capacity or state.

@@ -46,7 +46,8 @@ Status values: TODO · IN_PROGRESS · REVIEW · DONE · BLOCKED.
 | W1-S | Dev-only fixture session endpoint for E2E (`POST /api/dev/session`, local only, fail closed in production), §17.3 personas, FND-07 seed guard (`bf9ccba`) | FND-03, FND-07, SEC-08 | W1-0 | DONE |
 | W2-B | Roles/audit/operator backend: `user_roles`, append-only audit log, finance refund + dispute resolution, reconciliation retry, case/moderation/suspension, feature flags + checkout/bid/payout kill switches, operator queue read models. Migration 0005. Evidence `docs/evidence/claude-W2-B.md` | SEC-12/13, OPS-04/05, FND-05 | W1-B | DONE |
 | W2-S | Storage: upload intents, finalize (size/signature/SHA-256, quarantine), private delivery/brief/dispute files, 5-minute signed downloads, sample files, orphan cleanup, delivery upload UI. Local filesystem adapter only (Supabase adapter + AV scanning not done). Migration 0006. Evidence `docs/evidence/claude-W2-S.md` | SEC-01/05/06/14, ORD-07 | W1-B | DONE |
-| W3+ | P2 requests v2, P3 auctions v2, P4 crypto (local/testnet-blocked), P5 discovery backend, P6 PUBLISH/ACCESS/DIGITAL backend | REQ, AUC, CRY, DSC, XPL | W2 | TODO |
+| W3-R | P2 requests v2: versioned private quotes, 24 h hire offers holding request budget/hire count (DB CHECK counters), creator capacity-plan confirmation, canonical order per hire, funding/refund/lapse budget sync trigger, close/cancel, offer expiry job, campaign read model + request UI. Migration 0007. Evidence `docs/evidence/claude-W3-R.md` | REQ-01..10 (REQ-11 PARTIAL) | W2 | DONE |
+| W4+ | P3 auctions v2, P4 crypto (local/testnet-blocked), P5 discovery backend, P6 PUBLISH/ACCESS/DIGITAL backend | AUC, CRY, DSC, XPL | W3-R | TODO |
 
 ### Codex (Astra)
 

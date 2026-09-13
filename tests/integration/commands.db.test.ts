@@ -182,12 +182,13 @@ describe.skipIf(!RUN_DB)('TEST_PLAN 3 — command idempotency', () => {
 });
 
 describe.skipIf(!RUN_DB)('TEST_PLAN 6 — requests and applications', () => {
+  // Full REQ suite: tests/integration/requests.db.test.ts. This keeps the cross-account scoping smoke test.
   it('selection and acceptance stay scoped; unselected applications remain historical', async () => {
     const buyer = await createUser('req-buyer');
     const otherBuyer = await createUser('req-buyer2');
     const creatorA = await createUser('req-creator-a');
     const creatorB = await createUser('req-creator-b');
-    await createPublishedService(command, creatorA, { capacity: 2 });
+    const { poolId: poolA } = await createPublishedService(command, creatorA, { capacity: 2 });
     await createPublishedService(command, creatorB, { capacity: 2 });
 
     const created = await command(buyer, {
@@ -206,34 +207,30 @@ describe.skipIf(!RUN_DB)('TEST_PLAN 6 — requests and applications', () => {
 
     const apply = (creator: TestUser, quote: string) =>
       command(creator, { command: 'apply', idempotency_key: key('apply'), request_id: requestId, quote, turnaround_hours: '48', note: 'I have shipped launch threads for three developer tools.' });
-    expect((await apply(creatorA, '301')).status).toBe(400); // over per-creator cap
     expect((await apply(creatorA, '250')).status).toBe(200);
     expect((await apply(creatorB, '280')).status).toBe(200);
-    expect((await command(buyer, { command: 'apply', idempotency_key: key('self-apply'), request_id: requestId, quote: '10', turnaround_hours: '1', note: 'Buyer applying to own request.' })).status).toBe(400);
 
-    const [appA] = await sql`select id from app.applications where request_id=${requestId} and creator_id=${creatorA.id}`;
-    const [appB] = await sql`select id from app.applications where request_id=${requestId} and creator_id=${creatorB.id}`;
+    const [appA] = await sql`select id,version from app.applications where request_id=${requestId} and creator_id=${creatorA.id}`;
+    const selectA = (actor: TestUser) => command(actor, { command: 'select_application', idempotency_key: key('sel'), application_id: String(appA!.id), application_version: String(appA!.version) });
+    expect((await selectA(otherBuyer)).status).toBe(404);
+    const offer = await selectA(buyer);
+    expect(offer.status).toBe(200);
+    const offerId = String(offer.body.id);
 
-    expect((await command(otherBuyer, { command: 'select_application', idempotency_key: key('sel'), application_id: String(appA!.id) })).status).toBe(403);
-    expect((await command(buyer, { command: 'select_application', idempotency_key: key('sel'), application_id: String(appA!.id) })).status).toBe(200);
-
-    expect((await command(creatorB, { command: 'accept_offer', idempotency_key: key('acc'), application_id: String(appA!.id) })).status).toBe(403);
-    expect((await command(creatorB, { command: 'accept_offer', idempotency_key: key('acc'), application_id: String(appB!.id) })).status).toBe(400);
-
-    const accepted = await command(creatorA, { command: 'accept_offer', idempotency_key: key('acc'), application_id: String(appA!.id) });
+    expect((await command(creatorB, { command: 'accept_offer', idempotency_key: key('acc'), offer_id: offerId, pool_id: poolA })).status).toBe(404);
+    const accepted = await command(creatorA, { command: 'accept_offer', idempotency_key: key('acc'), offer_id: offerId, pool_id: poolA });
     expect(accepted.status).toBe(200);
     const [order] = await sql`select source,amount_minor,platform_fee_minor,buyer_id,creator_id,status from app.orders where id=${String(accepted.body.id)}`;
     expect(order).toMatchObject({ source: 'REQUEST', amount_minor: '25000', platform_fee_minor: '0', buyer_id: buyer.id, creator_id: creatorA.id, status: 'AWAITING_PAYMENT' });
 
-    // Anonymous visitors can open the public request page without seeing applications.
     const anonymousView = await getRequestData(null, requestId);
     expect(anonymousView?.request.id).toBe(requestId);
     expect(anonymousView?.applications).toEqual([]);
 
     const statuses = await sql`select creator_id,status from app.applications where request_id=${requestId}`;
     expect(Object.fromEntries(statuses.map((s) => [s.creator_id, s.status]))).toEqual({ [creatorA.id]: 'ACCEPTED', [creatorB.id]: 'SUBMITTED' });
-    const [request] = await sql`select status from app.requests where id=${requestId}`;
-    expect(request!.status).toBe('FILLED');
+    // The hire is held until funding; the request fills only when the order is funded.
+    expect((await sql`select status,reserved_hires from app.requests where id=${requestId}`)[0]).toMatchObject({ status: 'OPEN', reserved_hires: 1 });
   });
 });
 

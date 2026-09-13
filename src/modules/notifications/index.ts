@@ -350,7 +350,7 @@ export const NOTIFICATION_TEMPLATES: { readonly [K in NotificationTemplateId]: N
     defaultChannels: ['in_app'],
     params: { requestRef: 'ref' },
     body: () => 'A creator applied to your request. Compare applicants when you are ready.',
-    linkPath: (p) => `/buyer/requests/${p.requestRef}/applicants`,
+    linkPath: (p) => `/requests/${p.requestRef}`,
   }),
   'request.hire_offer': template({
     id: 'request.hire_offer',
@@ -360,7 +360,7 @@ export const NOTIFICATION_TEMPLATES: { readonly [K in NotificationTemplateId]: N
     defaultChannels: BOTH,
     params: { requestRef: 'ref' },
     body: () => 'A buyer selected your quote. Confirm capacity before the offer expires.',
-    linkPath: () => '/creator/applications',
+    linkPath: (p) => `/requests/${p.requestRef}`,
   }),
   'auction.outbid': template({
     id: 'auction.outbid',

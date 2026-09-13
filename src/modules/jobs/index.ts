@@ -384,11 +384,44 @@ export async function cleanupStorage(options: JobScope & { orphanGraceSeconds?: 
   return result;
 }
 
+/**
+ * §9.3: an unanswered hire offer expires and returns its budget and hire count (REQ-07: accepted offers are
+ * untouched; their order's checkout TTL takes over). Requests past their deadline close; funded hires continue.
+ */
+export async function expireHireOffers(options: { limit?: number; requestId?: string } = {}): Promise<JobReport> {
+  const { result, tally } = report('expire_hire_offers');
+  const offers = await sql<Row[]>`select id,request_id from app.hire_offers where status='OFFERED' and expires_at < now()
+    and ${options.requestId ? sql`request_id=${options.requestId}` : sql`true`} order by expires_at limit ${options.limit ?? 100}`;
+  for (const candidate of offers) {
+    try {
+      tally(await sql.begin(async (tx) => {
+        await tx`select id from app.requests where id=${String(candidate.request_id)} for update`;
+        const [offer] = await tx<Row[]>`update app.hire_offers set status='EXPIRED',response_reason='Creator did not respond in time',responded_at=now()
+          where id=${String(candidate.id)} and status='OFFERED' and expires_at < now() returning application_id`;
+        if (!offer) return 'SKIPPED_STATE_CHANGED';
+        await tx`update app.request_budget_reservations set state='RELEASED',updated_at=now() where offer_id=${String(candidate.id)} and state='HELD'`;
+        await tx`update app.applications set status='SUBMITTED',updated_at=now() where id=${String(offer.application_id)} and status='OFFERED'`;
+        return 'OFFER_EXPIRED';
+      }));
+    } catch (error) {
+      console.error('expire_hire_offers failed', candidate.id, error);
+      tally('ERROR');
+    }
+  }
+  const closed = await sql<Row[]>`update app.requests set status='CLOSED',closed_at=now(),version=version+1,updated_at=now()
+    where status='OPEN' and deadline < now() and ${options.requestId ? sql`id=${options.requestId}` : sql`true`}
+      and not exists (select 1 from app.hire_offers o where o.request_id=app.requests.id and o.status='OFFERED')
+    returning id`;
+  for (let i = 0; i < closed.length; i++) tally('REQUEST_CLOSED_AT_DEADLINE');
+  return result;
+}
+
 export async function runJobsOnce(): Promise<JobReport[]> {
   return [
     await reprocessWebhookInbox(),
     await reconcileProviderOperations(),
     await expireCheckoutHolds(),
+    await expireHireOffers(),
     await autoAcceptDeliveries(),
     await releaseReadySettlements(),
     await sendOrderReminders(),

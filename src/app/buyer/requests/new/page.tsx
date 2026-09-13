@@ -42,10 +42,11 @@ export default async function NewRequestPage({
           placeholder="Audience, goals, deliverables, references, and constraints."
         />
         <div className="form-grid">
-          <Field name="budget" label="Budget (USD)" type="number" required placeholder="1200" />
-          <Field name="per_creator_cap" label="Per creator cap (USD)" type="number" placeholder="1200" />
+          <Field name="budget" label="Total budget (USD, optional if you set a cap)" type="number" placeholder="1200" />
+          <Field name="per_creator_cap" label="Per creator cap (USD, optional)" type="number" placeholder="400" />
           <Field name="target_hires" label="Creators needed" type="number" value="1" required />
-          <Field name="deadline" label="Deadline" type="datetime-local" required />
+          <Field name="application_deadline" label="Applications close (optional)" type="datetime-local" />
+          <Field name="deadline" label="Delivery deadline" type="datetime-local" required />
         </div>
       </CommandForm>
     </div>
