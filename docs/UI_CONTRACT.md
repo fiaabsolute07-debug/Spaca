@@ -63,7 +63,7 @@ Commands (all take order_id; optional expected_version → 409 VERSION_CONFLICT)
 ## W2-B additions (2026-09-13) — operator console
 Actor roles = marketplace roles (`buyer`, `creator`) + active `app.user_roles` grants (`moderator`, `finance`, `support`, `admin`). Hide nothing for security; every check is server-side.
 Read models (`src/modules/admin/queries.ts`, throw OperatorAccessError for non-operators → render 404/403 page):
-- getOperatorQueues(actor) → { roles, cases[id,kind,severity,status,order_id,next_action,assigned_to,age_seconds], disputes[id,order_id,status,assigned_to,status_before_dispute,age_seconds,(amount_minor,currency for finance)], review_holds, provider_operations[operation_id,kind,status,order_id,provider_reference(redacted),last_error], failed_outbox, reconciling_holds, pending_samples[id,creator_id,title,url,visibility], overdue_orders, feature_flags[key,enabled,description,changed_by,changed_reason,updated_at] }. Sections a role cannot see come back as [].
+- getOperatorQueues(actor) → { roles, cases[id,kind,severity,status,order_id,next_action,assigned_to,age_seconds], disputes[id,order_id,status,assigned_to,status_before_dispute,age_seconds,(amount_minor,currency for finance)], review_holds, provider_operations[operation_id,kind,status,order_id,provider_reference(redacted),last_error], failed_outbox, reconciling_holds, pending_samples[id,creator_id,title,url,storage_asset_id,visibility], overdue_orders, feature_flags[key,enabled,description,changed_by,changed_reason,updated_at] }. Sections a role cannot see come back as [].
 - getAuditLog(actor, { entityType?, entityId?, limit? }) — finance/admin.
 - getOperatorOrder(actor, orderId) — finance/support/admin → { order (state/money/party names, no brief), events[kind,actor_id,created_at], provider_operations (redacted), cases, disputes[id,status,outcome,refund_amount_minor], files[id,purpose,filename,mime,size_bytes,lifecycle_state,scan_detail], review_holds } or null.
 - searchOperatorUsers(actor, q) — moderator/admin → [id,email,display_name,status,marketplace_roles,grants,is_test,created_at] (q ≥ 2 chars).
@@ -116,3 +116,5 @@ Commands:
 - select_application: application_id, application_version (the version shown). Errors: 409 QUOTE_CHANGED, 422 QUOTE_EXPIRED, 422 BUDGET_EXCEEDED, 409 if an offer is already active.
 - withdraw_offer: offer_id (buyer). decline_offer: offer_id, reason optional (creator).
 - accept_offer: offer_id, pool_id (the creator's own), bucket_id optional. Redirects to /orders/{id} in AWAITING_PAYMENT. Errors: 422 QUOTE_EXPIRED, 409 capacity or state.
+
+Operator command redirects: `admin_*` form posts return to their `return_to` (not the entity path); `message`/`error` are appended with `?` or `&` so query-bearing return paths work.

@@ -223,6 +223,45 @@ describe.skipIf(!RUN_DB)('FND-05 / OPS-04 — feature flags and kill switches', 
   });
 });
 
+describe.skipIf(!RUN_DB)('operator read models and console redirects', () => {
+  it('order view and user search are role-scoped, omit private text, and reject malformed ids', async () => {
+    const finance = await operator('finance');
+    const moderator = await operator('moderator');
+    const { orderId, buyer } = await disputedOrder('opview');
+    const asActor = (user: TestUser, roles: string[]) => ({ id: user.id, email: user.email, display_name: 'x', roles, is_test: true, status: 'ACTIVE' as const, timezone: 'UTC' });
+    const view = await queries.getOperatorOrder(asActor(finance, ['finance']), orderId);
+    expect(view!.order).toMatchObject({ id: orderId, status: 'DISPUTED' });
+    expect(view!.order).not.toHaveProperty('brief');
+    expect(view!.disputes.length).toBe(1);
+    expect(await queries.getOperatorOrder(asActor(finance, ['finance']), 'not-a-uuid-0000-0000-0000-000000000000')).toBeNull();
+    await expect(queries.getOperatorOrder(asActor(moderator, ['moderator']), orderId)).rejects.toThrow(/Operator access required/);
+    expect(await queries.getAuditLog(asActor(finance, ['finance']), { entityId: "x' or 1=1 --" })).toEqual([]);
+
+    const found = await queries.searchOperatorUsers(asActor(moderator, ['moderator']), buyer.email.slice(0, 20));
+    expect(found.map((u) => u.id)).toContain(buyer.id);
+    expect(await queries.searchOperatorUsers(asActor(moderator, ['moderator']), 'x')).toEqual([]);
+    await expect(queries.searchOperatorUsers(asActor(finance, ['finance']), buyer.email)).rejects.toThrow(/Operator access required/);
+  });
+
+  it('console forms return to their page with the message; errors keep existing query strings valid', async () => {
+    const admin = await operator('admin');
+    const post = async (fields: Record<string, string>) => {
+      const form = new FormData();
+      for (const [name, value] of Object.entries(fields)) form.set(name, value);
+      sessionState.token = admin.token;
+      return commands.POST(new Request('http://localhost:3000/api/commands', { method: 'POST', headers: { origin: 'http://localhost:3000' }, body: form }));
+    };
+    const ok = await post({ command: 'admin_set_flag', idempotency_key: key('flag'), key: 'DISCOVERY_ADVANCED_ENABLED', enabled: 'false', reason, return_to: '/admin/flags' });
+    expect(ok.status).toBe(303);
+    expect(new URL(ok.headers.get('location')!).pathname).toBe('/admin/flags');
+    expect(new URL(ok.headers.get('location')!).searchParams.get('message')).toMatch(/DISCOVERY_ADVANCED_ENABLED/);
+    const failed = await post({ command: 'admin_set_flag', idempotency_key: key('flag'), key: 'LIVE_PAYMENTS_ENABLED', enabled: 'true', reason, return_to: '/admin/users?q=abc' });
+    const location = new URL(failed.headers.get('location')!);
+    expect(location.searchParams.get('q')).toBe('abc');
+    expect(location.searchParams.get('error')).toBeTruthy();
+  });
+});
+
 describe.skipIf(!RUN_DB)('OPS-05 / moderation / queues', () => {
   it('OPS-05: an operator retries the same provider operation and closes the case without forcing state', async () => {
     const finance = await operator('finance');

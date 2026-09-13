@@ -1,0 +1,97 @@
+import { notFound } from 'next/navigation';
+import { getOperatorOrder } from '@/modules/admin/queries';
+import { requireActorOrLoginPrompt } from '@/components/require-actor';
+import type { PageProps } from '@/components/page-props';
+import { Badge, date, money, str } from '@/components/ui';
+import { AdminCommand, AdminPage, AdminTable, operatorRead } from '@/components/admin/ui';
+import { ProviderOperations, ReviewHolds } from '@/components/admin/queue-tables';
+
+export const dynamic = 'force-dynamic';
+
+export default async function OperatorOrderPage({ params, searchParams }: PageProps<{ orderId: string }>) {
+  const query = await searchParams;
+  const { orderId } = await params;
+  const route = `/admin/orders/${encodeURIComponent(orderId)}`;
+  const { actor, prompt } = await requireActorOrLoginPrompt(route, query);
+  if (!actor) return prompt;
+  const validId = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(orderId);
+  // Keep authorization in the read model even for malformed IDs, without reaching its UUID SQL cast.
+  const data = await operatorRead(() => getOperatorOrder(actor, validId ? orderId : 'invalid'));
+  if (!validId || !data) notFound();
+  const { order } = data;
+
+  return <AdminPage actor={actor} route={route} query={query} title={str(order.title, 'Order detail')}
+    description={`Order ${str(order.id)} · ${str(order.source)} · Version ${str(order.version)}`}>
+    <div className="admin-card-grid">
+      <section className="panel">
+        <h2>State and parties</h2>
+        <Badge>{str(order.status)}</Badge>
+        <dl className="admin-facts">
+          <dt>Before dispute</dt><dd>{str(order.status_before_dispute, 'Not applicable')}</dd>
+          <dt>Payment</dt><dd>{str(order.payment_status)}</dd>
+          <dt>Settlement</dt><dd>{str(order.settlement_status)}</dd>
+          <dt>Buyer</dt><dd>{str(order.buyer_name)}<small>{str(order.buyer_id)}</small></dd>
+          <dt>Creator</dt><dd>{str(order.creator_name)}<small>{str(order.creator_id)}</small></dd>
+          <dt>Amount</dt><dd>{money(order.amount_minor)} {str(order.currency)}</dd>
+          <dt>Platform fee (0%)</dt><dd>{money(order.platform_fee_minor)}</dd>
+          <dt>Provider fee</dt><dd>{money(order.provider_fee_minor)}</dd>
+          <dt>Cancellation refund</dt><dd>{order.cancellation_refund_minor == null
+            ? 'Not specified' : money(order.cancellation_refund_minor)}</dd>
+        </dl>
+      </section>
+      <section className="panel">
+        <h2>Order clock</h2>
+        <dl className="admin-facts">
+          {[
+            ['Created', 'created_at'], ['Funded', 'funded_at'], ['Delivery due', 'delivery_due_at'],
+            ['Review due', 'review_due_at'], ['Approved', 'approved_at'],
+            ['Completed', 'completed_at'], ['Cancelled', 'cancelled_at'],
+          ].map(([label, key]) => <div className="admin-fact-row" key={key}>
+            <dt>{label}</dt><dd>{order[key] ? date(order[key]) : 'Not recorded'}</dd>
+          </div>)}
+        </dl>
+      </section>
+    </div>
+    <section className="panel">
+      <h2>Request or retry refund</h2>
+      <p>Finance or admin only. The order must be CANCELLED with payment status REFUND_PENDING or SUCCEEDED.
+        Refunds require provider confirmation.</p>
+      <AdminCommand command="admin_refund_order" route={route}
+        values={{ order_id: str(order.id) }} label="Request refund with provider" />
+    </section>
+    <AdminTable title="Order events" items={data.events} columns={[
+      { label: 'Event', render: item => str(item.kind) },
+      { label: 'Actor', render: item => str(item.actor_id, 'System') },
+      { label: 'Time', render: item => date(item.created_at) },
+    ]} />
+    <ProviderOperations items={data.provider_operations.map(item => ({ ...item, order_id: order.id }))} route={route} />
+    <AdminTable title="Reconciliation cases" items={data.cases} columns={[
+      { label: 'Case', render: item => <>{str(item.kind)}<small>{str(item.id)}</small></> },
+      { label: 'Severity', render: item => <Badge>{str(item.severity)}</Badge> },
+      { label: 'Status', render: item => <Badge>{str(item.status)}</Badge> },
+      { label: 'Owner', render: item => str(item.assigned_to, 'Unassigned') },
+      { label: 'Next action', render: item => str(item.next_action, 'Not recorded') },
+      { label: 'Created', render: item => date(item.created_at) },
+    ]} />
+    <AdminTable title="Disputes" items={data.disputes} columns={[
+      { label: 'Dispute', render: item => str(item.id) },
+      { label: 'Status', render: item => <Badge>{str(item.status)}</Badge> },
+      { label: 'Outcome', render: item => str(item.outcome, 'Unresolved') },
+      { label: 'Refund', render: item => item.refund_amount_minor == null ? 'None' : money(item.refund_amount_minor) },
+      { label: 'Owner', render: item => str(item.assigned_to, 'Unassigned') },
+      { label: 'Created', render: item => date(item.created_at) },
+      { label: 'Resolved', render: item => item.resolved_at ? date(item.resolved_at) : 'Open' },
+    ]} />
+    <AdminTable title="Files (metadata only)" items={data.files} columns={[
+      { label: 'Asset ID', render: item => str(item.id) },
+      { label: 'Filename', render: item => str(item.filename) },
+      { label: 'Purpose', render: item => str(item.purpose) },
+      { label: 'MIME type', render: item => str(item.mime) },
+      { label: 'Size (bytes)', render: item => str(item.size_bytes) },
+      { label: 'State', render: item => <Badge>{str(item.lifecycle_state)}</Badge> },
+      { label: 'Scan detail', render: item => str(item.scan_detail, 'Not recorded') },
+      { label: 'Created', render: item => date(item.created_at) },
+    ]} />
+    <ReviewHolds items={data.review_holds.map(item => ({ ...item, order_id: order.id }))} />
+  </AdminPage>;
+}
