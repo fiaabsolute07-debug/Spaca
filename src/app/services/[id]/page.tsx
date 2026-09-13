@@ -120,7 +120,8 @@ export default async function ServicePage({
             command="book"
             label="Reserve this service"
             values={{
-              service_id: str(s.id)
+              service_id: str(s.id),
+              service_version_id: str(s.service_version_id)
             }}
           >
             <Field
@@ -130,6 +131,12 @@ export default async function ServicePage({
               required
               placeholder="Your product, audience, goals, links, and requirements (at least 20 characters)."
             />
+            <label className="field">
+              <span>
+                <input type="checkbox" name="accept_terms" /> I agree that version {str(s.service_version)} of these terms applies, and that a
+                valid delivery is approved automatically if I take no action within {num(s.review_window_hours) || 72} hours of opening it.
+              </span>
+            </label>
           </CommandForm> : (
             <Empty title="Fully booked">Check another creator or post an open brief.</Empty>
           ) : (

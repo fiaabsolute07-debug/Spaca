@@ -130,7 +130,7 @@ describe.skipIf(!RUN_DB)('SUP — listing supply', () => {
     expect((await readModel.getServiceData(serviceId))).toBeNull();
     expect((await command(creator, { command: 'start', idempotency_key: key('start'), order_id: orderId })).status).toBe(200);
     expect((await command(creator, { command: 'archive_service', idempotency_key: key('archive'), service_id: serviceId })).status).toBe(200);
-    expect((await command(creator, { command: 'deliver', idempotency_key: key('deliver'), order_id: orderId, body: 'Delivered after archive.' })).status).toBe(200);
+    expect((await command(creator, { command: 'deliver', idempotency_key: key('deliver'), order_id: orderId, body: 'Delivered after the service was archived.' })).status).toBe(200);
     expect((await command(creator, { command: 'publish_service', idempotency_key: key('pub'), service_id: serviceId })).status).toBe(422);
     const [order] = await sql`select status from app.orders where id=${orderId}`;
     expect(order!.status).toBe('DELIVERED');
@@ -174,7 +174,7 @@ describe.skipIf(!RUN_DB)('CAP — capacity engine', () => {
     const booked = await command(buyer, { command: 'book', idempotency_key: key('book'), service_id: serviceId, brief });
     const orderId = String(booked.body.id);
     expect((await pay(buyer, orderId)).status).toBe(200);
-    for (const [actor, fields] of [[creator, { command: 'start' }], [creator, { command: 'deliver', body: 'Done.' }], [buyer, { command: 'approve' }]] as const) {
+    for (const [actor, fields] of [[creator, { command: 'start' }], [creator, { command: 'deliver', body: 'Done — all agreed files are attached.' }], [buyer, { command: 'approve', delivery_version: '1' }]] as const) {
       expect((await command(actor, { idempotency_key: key('step'), order_id: orderId, ...fields })).status).toBe(200);
     }
     const [reservation] = await sql`select id,state,bucket_id from app.reservations where order_id=${orderId}`;

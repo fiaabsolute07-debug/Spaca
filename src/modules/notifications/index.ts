@@ -48,6 +48,11 @@ export interface NotificationTemplateParams {
   'order.delivered': OrderRef & { reviewDeadlineAt: string };
   'order.revision_requested': OrderRef;
   'order.approved': OrderRef;
+  'order.review_reminder': OrderRef & { reviewDeadlineAt: string };
+  'order.overdue': OrderRef;
+  'order.completed': OrderRef;
+  'order.cancellation_requested': OrderRef;
+  'order.cancellation_resolved': OrderRef & { outcome: 'ACCEPTED' | 'REJECTED' | 'EXPIRED' };
   'payout.succeeded': OrderRef & Money;
   'payout.failed': OrderRef;
   'refund.updated': OrderRef & Money & { refundStatus: 'PENDING' | 'SUCCEEDED' | 'FAILED' };
@@ -63,7 +68,7 @@ export interface NotificationTemplateParams {
 
 export type NotificationTemplateId = keyof NotificationTemplateParams;
 
-type ParamKind = 'ref' | 'text' | 'instant' | 'amount' | 'currency' | 'refundStatus';
+type ParamKind = 'ref' | 'text' | 'instant' | 'amount' | 'currency' | 'refundStatus' | 'cancellationOutcome';
 
 export interface NotificationTemplate<K extends NotificationTemplateId = NotificationTemplateId> {
   id: K;
@@ -233,6 +238,56 @@ export const NOTIFICATION_TEMPLATES: { readonly [K in NotificationTemplateId]: N
     body: () => 'The order was approved. Settlement starts once funds are available.',
     linkPath: orderLink,
   }),
+  'order.review_reminder': template({
+    id: 'order.review_reminder',
+    category: 'transactional',
+    subject: 'Delivery waiting for your review',
+    allowedChannels: BOTH,
+    defaultChannels: BOTH,
+    params: { orderRef: 'ref', reviewDeadlineAt: 'instant' },
+    body: (p) => `Please approve, request a revision or open a dispute before ${formatInstant(p.reviewDeadlineAt)}.`,
+    linkPath: orderLink,
+  }),
+  'order.overdue': template({
+    id: 'order.overdue',
+    category: 'transactional',
+    subject: 'Order is past its due date',
+    allowedChannels: BOTH,
+    defaultChannels: BOTH,
+    params: { orderRef: 'ref' },
+    body: () => 'The agreed delivery time has passed. You can message the creator or request a cancellation from the order page.',
+    linkPath: orderLink,
+  }),
+  'order.completed': template({
+    id: 'order.completed',
+    category: 'transactional',
+    subject: 'Order completed',
+    allowedChannels: BOTH,
+    defaultChannels: ['in_app'],
+    params: { orderRef: 'ref' },
+    body: () => 'The creator payout was confirmed by the provider. You can now leave a review.',
+    linkPath: orderLink,
+  }),
+  'order.cancellation_requested': template({
+    id: 'order.cancellation_requested',
+    category: 'transactional',
+    subject: 'Cancellation requested',
+    allowedChannels: BOTH,
+    defaultChannels: BOTH,
+    params: { orderRef: 'ref' },
+    body: () => 'The other party asked to cancel this order with a proposed refund. Review and respond on the order page.',
+    linkPath: orderLink,
+  }),
+  'order.cancellation_resolved': template({
+    id: 'order.cancellation_resolved',
+    category: 'transactional',
+    subject: 'Cancellation request updated',
+    allowedChannels: BOTH,
+    defaultChannels: ['in_app'],
+    params: { orderRef: 'ref', outcome: 'cancellationOutcome' },
+    body: (p) => ({ ACCEPTED: 'The cancellation was accepted with the agreed refund.', REJECTED: 'The cancellation request was declined; the order continues.', EXPIRED: 'The cancellation request expired because the order changed.' })[p.outcome],
+    linkPath: orderLink,
+  }),
   'payout.succeeded': template({
     id: 'payout.succeeded',
     category: 'transactional',
@@ -388,6 +443,9 @@ function validateParam(name: string, kind: ParamKind, value: unknown): void {
       return;
     case 'refundStatus':
       if (value !== 'PENDING' && value !== 'SUCCEEDED' && value !== 'FAILED') throw fail('must be a refund status');
+      return;
+    case 'cancellationOutcome':
+      if (value !== 'ACCEPTED' && value !== 'REJECTED' && value !== 'EXPIRED') throw fail('must be a cancellation outcome');
       return;
   }
 }

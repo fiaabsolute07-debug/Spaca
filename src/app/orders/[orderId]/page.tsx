@@ -6,6 +6,7 @@ import { OrderBriefPanel } from '@/components/order-workspace/brief-panel';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { getOrderData } from '@/lib/read-model';
+import { recordOrderPageView } from '@/modules/orders/views';
 import { Badge, money, row, rows, str } from '@/components/ui';
 import { Notices } from '@/components/notices';
 import { PageHeading } from '@/components/page-heading';
@@ -31,6 +32,8 @@ export default async function OrderPage({
   } = await requireActorOrLoginPrompt(route, query);
   if (!actor) return prompt;
   const notices = <Notices query={query} />;
+  // Buyer opening the order records delivery view evidence before rendering (§7.5, ORD-11/16).
+  await recordOrderPageView(actor, orderId);
   const result = await getOrderData(actor, orderId);
   if (!result) notFound();
   const d = row(result),
@@ -65,7 +68,17 @@ export default async function OrderPage({
         <OrderTimelinePanel events={events} />
       </div>
       <aside>
-        <OrderNextStepPanel order={o} buyer={buyer} creator={creator} reviews={reviews} route={route} />
+        <OrderNextStepPanel
+          order={o}
+          buyer={buyer}
+          creator={creator}
+          actorId={actor.id}
+          reviews={reviews}
+          latestDeliveryVersion={d.latest_delivery_version === null ? null : Number(d.latest_delivery_version)}
+          activeCancellation={d.active_cancellation_request ? row(d.active_cancellation_request) : null}
+          activeHold={d.active_review_hold ? row(d.active_review_hold) : null}
+          route={route}
+        />
         <OrderMessagesPanel order={o} messages={messages} route={route} />
       </aside>
     </div>

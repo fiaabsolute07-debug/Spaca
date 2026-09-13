@@ -47,8 +47,8 @@ async function completedOrder(label: string, creator?: TestUser) {
   expect((await pay(booked.buyer, booked.orderId)).status).toBe(200);
   const step = (actor: TestUser, fields: Record<string, string>) => command(actor, { idempotency_key: key('step'), order_id: booked.orderId, ...fields });
   expect((await step(booked.creator, { command: 'start' })).status).toBe(200);
-  expect((await step(booked.creator, { command: 'deliver', body: 'Final delivery.' })).status).toBe(200);
-  expect((await step(booked.buyer, { command: 'approve' })).status).toBe(200);
+  expect((await step(booked.creator, { command: 'deliver', body: 'Final delivery with all agreed files.' })).status).toBe(200);
+  expect((await step(booked.buyer, { command: 'approve', delivery_version: '1' })).status).toBe(200);
   return booked;
 }
 
@@ -150,6 +150,7 @@ describe.skipIf(!RUN_DB)('release_ready_settlements (PAY-02/03/12)', () => {
       expect((await jobs.releaseReadySettlements({ orderId })).examined).toBe(0);
 
       expect(await orderRow(orderId)).toMatchObject({ status: 'COMPLETED', settlement_status: 'RELEASED', platform_fee_minor: '0', provider_fee_minor: '1950' });
+      expect((await orderRow(orderId)).completed_at).not.toBeNull();
       const [operation] = await sql`select provider_reference,outcome from app.provider_operations where order_id=${orderId} and kind='release.create'`;
       const release = await provider.getReleaseStatus(String(operation!.provider_reference));
       expect(release).toMatchObject({ amount: 63050n, payeeAccountId: payeeOf(creator), platformFee: 0n, status: 'SUCCEEDED' });
@@ -314,7 +315,7 @@ describe.skipIf(!RUN_DB)('local jobs route', () => {
     expect(ok.status).toBe(200);
     const body = (await ok.json()) as { reports: { job: string }[] };
     expect(body.reports.map((r) => r.job)).toEqual([
-      'reprocess_webhook_inbox', 'reconcile_provider_operations', 'expire_checkout_holds', 'release_ready_settlements', 'dispatch_notification_outbox',
+      'reprocess_webhook_inbox', 'reconcile_provider_operations', 'expire_checkout_holds', 'auto_accept_deliveries', 'release_ready_settlements', 'order_reminders', 'dispatch_notification_outbox',
     ]);
     const blocked = await jobsRoute.POST(new Request(`${ORIGIN}/api/dev/jobs`, { method: 'POST', headers: { origin: 'https://attacker.test' } }));
     expect(blocked.status).toBe(403);

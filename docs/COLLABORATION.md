@@ -42,7 +42,7 @@ Status values: TODO · IN_PROGRESS · REVIEW · DONE · BLOCKED.
 |---|---|---|---|---|
 | W1-0 | Split the command route into domain modules (`bf5e2e2`) | regression 83/83 | — | DONE |
 | W1-A | Supply engine v2: service versions + order terms snapshot, weekly capacity buckets (timezone/DST), shared pools, lock order, suspended-user new-sale block, seed guard. Migration 0003. Evidence `docs/evidence/claude-W1-A.md` | SUP-01..04, CAP-01/02/06/07/08/09, SEC-09/10, FND-07 | W1-0 | DONE |
-| W1-B | Order lifecycle engine (§7.2): expected/delivery versions, work clock at funding, APPROVED→COMPLETED on release, auto-accept + ReviewHold + reminders, mutual cancellation requests, reviews. Migration 0004. | ORD-01..11/13/15/16, REV-01/02, CAP-12 | W1-A | TODO |
+| W1-B | Order lifecycle engine (§7.2): expected/delivery versions, work clock at funding, APPROVED→COMPLETED on release, auto-accept + ReviewHold + reminders, mutual cancellation requests, reviews. Migration 0004. Includes the order/booking UI (Codex at usage limit). Evidence `docs/evidence/claude-W1-B.md` | ORD-01..11/13/15/16, REV-01/02/03, CAP-12 | W1-A | DONE |
 | W1-S | Dev-only fixture session endpoint for E2E (`POST /api/dev/session`, local only, fail closed in production), §17.3 personas, FND-07 seed guard (`bf9ccba`) | FND-03, FND-07, SEC-08 | W1-0 | DONE |
 | W2-B | Roles/audit/operator backend: `user_roles`, audit log, finance refund + dispute resolution, reconciliation retry, suspend user, feature flags + checkout kill switch | SEC-12/13, OPS-04/05, FND-05 | W1-B | TODO |
 | W2-S | Storage backend: upload intents, private delivery assets, signed downloads, MIME/size validation | SEC-05/06/14, ORD-07 | W1-B | TODO |

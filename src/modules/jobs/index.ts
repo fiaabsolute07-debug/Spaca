@@ -24,6 +24,9 @@ import {
   requestProviderRefund,
 } from '@/modules/payments/funding';
 import { isProviderError } from '@/modules/payments/providers';
+import { enqueueNotification } from '@/modules/notifications/enqueue';
+import { approveOrder } from '@/modules/orders/commands';
+import { latestDelivery, termsOf } from '@/modules/orders/lifecycle';
 
 type Row = Record<string, unknown>;
 
@@ -192,7 +195,11 @@ export async function reconcileProviderOperations(options: JobScope & { minAgeSe
 export async function releaseReadySettlements(options: JobScope = {}): Promise<JobReport> {
   const { result, tally } = report('release_ready_settlements');
   if (!mockPaymentsEnabled()) return result;
-  const readyCondition = sql`o.status='COMPLETED' and o.settlement_status='READY' and o.payment_status='SUCCEEDED'
+  // Approved orders, or mutually cancelled orders whose agreed refund left a creator remainder (ORD-15).
+  const readyCondition = sql`o.settlement_status='READY'
+    and ((o.status='APPROVED' and o.payment_status='SUCCEEDED')
+      or (o.status='CANCELLED' and o.cancellation_refund_minor is not null and o.cancellation_refund_minor < o.amount_minor
+          and o.payment_status in ('SUCCEEDED','REFUND_PENDING','PARTIALLY_REFUNDED')))
     and not exists (select 1 from app.disputes d where d.order_id=o.id and d.status in ('OPEN','UNDER_REVIEW'))`;
   const ready = await sql<Row[]>`select o.id from app.orders o where ${readyCondition} and ${scoped(sql`o.id`, options)} order by o.updated_at asc limit ${options.limit ?? 50}`;
   for (const candidate of ready) {
@@ -254,12 +261,85 @@ export async function dispatchNotificationOutbox(options: JobScope & { dispatche
   return result;
 }
 
+/**
+ * ORD-09/11/16: approve delivered orders whose review window ended, only for the current valid delivery,
+ * with consent, no dispute or pending cancellation, and evidence the buyer saw the delivery. Otherwise a
+ * single ReviewHold is created for operators; the order stays DELIVERED (no extra enum).
+ */
+export async function autoAcceptDeliveries(options: JobScope = {}): Promise<JobReport> {
+  const { result, tally } = report('auto_accept_deliveries');
+  const candidates = await sql<Row[]>`select o.id from app.orders o where o.status='DELIVERED' and o.review_due_at < now() and ${scoped(sql`o.id`, options)}
+    and not exists (select 1 from app.review_holds h where h.order_id=o.id and h.resolved_at is null)
+    order by o.review_due_at asc limit ${options.limit ?? 50}`;
+  for (const candidate of candidates) {
+    const orderId = String(candidate.id);
+    try {
+      tally(await sql.begin(async (tx) => {
+        const [order] = await tx<Row[]>`select * from app.orders where id=${orderId} and status='DELIVERED' and review_due_at < now() for update`;
+        if (!order) return 'SKIPPED_STATE_CHANGED';
+        const [activeHold] = await tx<Row[]>`select id from app.review_holds where order_id=${orderId} and resolved_at is null`;
+        if (activeHold) return 'SKIPPED_ON_HOLD';
+        const [blocker] = await tx<Row[]>`select 'dispute' as kind from app.disputes where order_id=${orderId} and status in ('OPEN','UNDER_REVIEW')
+          union all select 'cancellation' from app.cancellation_requests where order_id=${orderId} and status='REQUESTED' limit 1`;
+        if (blocker) return `SKIPPED_${String(blocker.kind).toUpperCase()}`;
+        const delivery = await latestDelivery(tx, orderId);
+        const hold = async (reason: string) => {
+          await tx`insert into app.review_holds (order_id,delivery_version,reason) values (${orderId},${Number(delivery?.version ?? 1)},${reason})`;
+          await tx`insert into app.order_events (order_id,actor_id,kind,payload) values (${orderId},${null},'REVIEW_HOLD_CREATED',${JSON.stringify({ reason, delivery_version: Number(delivery?.version ?? 0) })}::jsonb)`;
+          await openCase(tx, orderId, null, 'REVIEW_HOLD', 'MEDIUM', `Auto-accept paused: ${reason}`);
+          return `HOLD_${reason}`;
+        };
+        if (!delivery || delivery.validation_status !== 'VALID') return hold('DELIVERY_NOT_VALID');
+        if (!termsOf(order).autoAcceptConsent) return hold('NO_AUTO_ACCEPT_CONSENT');
+        if (!delivery.buyer_viewed_at) return hold('NO_BUYER_NOTIFICATION_EVIDENCE');
+        await approveOrder(tx, order, null, Number(delivery.version), 'ORDER_AUTO_APPROVED');
+        return 'AUTO_APPROVED';
+      }));
+    } catch (error) {
+      console.error('auto_accept_deliveries failed', orderId, error);
+      tally('ERROR');
+    }
+  }
+  return result;
+}
+
+/** Review reminder 24h before auto-accept, due-soon to the creator, overdue notice to the buyer (§14.1). Deduped by semantic key. */
+export async function sendOrderReminders(options: JobScope = {}): Promise<JobReport> {
+  const { result, tally } = report('order_reminders');
+  const reviewDue = await sql<Row[]>`select o.id,o.buyer_id,o.review_due_at,(select max(version) from app.deliveries d where d.order_id=o.id) as version from app.orders o
+    where o.status='DELIVERED' and o.review_due_at > now() and o.review_due_at - interval '24 hours' <= now() and ${scoped(sql`o.id`, options)} limit ${options.limit ?? 100}`;
+  const dueSoon = await sql<Row[]>`select id,creator_id,delivery_due_at from app.orders o where status in ('FUNDED','IN_PROGRESS','REVISION_REQUESTED')
+    and delivery_due_at > now() and delivery_due_at - interval '24 hours' <= now() and ${scoped(sql`o.id`, options)} limit ${options.limit ?? 100}`;
+  const overdue = await sql<Row[]>`select id,buyer_id from app.orders o where status in ('FUNDED','IN_PROGRESS') and delivery_due_at < now() and ${scoped(sql`o.id`, options)} limit ${options.limit ?? 100}`;
+  await sql.begin(async (tx) => {
+    for (const o of reviewDue) {
+      await enqueueNotification(tx, String(o.id), `notify:order.review_reminder:${String(o.id)}:v${String(o.version)}`, {
+        templateId: 'order.review_reminder', recipientId: String(o.buyer_id), params: { orderRef: String(o.id), reviewDeadlineAt: new Date(String(o.review_due_at)).toISOString() },
+      });
+      tally('REVIEW_REMINDER');
+    }
+    for (const o of dueSoon) {
+      await enqueueNotification(tx, String(o.id), `notify:order.due_soon:${String(o.id)}`, {
+        templateId: 'order.due_soon', recipientId: String(o.creator_id), params: { orderRef: String(o.id), dueAt: new Date(String(o.delivery_due_at)).toISOString() },
+      });
+      tally('DUE_SOON');
+    }
+    for (const o of overdue) {
+      await enqueueNotification(tx, String(o.id), `notify:order.overdue:${String(o.id)}`, { templateId: 'order.overdue', recipientId: String(o.buyer_id), params: { orderRef: String(o.id) } });
+      tally('OVERDUE');
+    }
+  });
+  return result;
+}
+
 export async function runJobsOnce(): Promise<JobReport[]> {
   return [
     await reprocessWebhookInbox(),
     await reconcileProviderOperations(),
     await expireCheckoutHolds(),
+    await autoAcceptDeliveries(),
     await releaseReadySettlements(),
+    await sendOrderReminders(),
     await dispatchNotificationOutbox(),
   ];
 }

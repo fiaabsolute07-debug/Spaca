@@ -80,9 +80,9 @@ const respondToOffer: CommandHandler = async ({ tx, actor, form, command }) => {
     cancellation_policy_version: 'v1',
     capacity: { pool_id: String(bucket.pool_id), bucket_id: String(bucket.id), week_starts_at: new Date(bucket.starts_at).toISOString(), week_ends_at: new Date(bucket.ends_at).toISOString() },
   };
-  const [order] = await tx<Row[]>`insert into app.orders (buyer_id,creator_id,service_id,pool_id,source,source_ref,title,status,amount_minor,platform_fee_minor,currency,brief,terms,delivery_due_at)
+  const [order] = await tx<Row[]>`insert into app.orders (buyer_id,creator_id,service_id,pool_id,source,source_ref,title,status,amount_minor,platform_fee_minor,currency,brief,brief_ready_at,terms,delivery_due_at)
     values (${application.buyer_id},${actor.id},${String(service.id)},${String(bucket.pool_id)},'REQUEST',${application.request_id},${application.title},'AWAITING_PAYMENT',${application.quote_minor},0,'USD',
-      ${application.brief},${JSON.stringify(terms)}::jsonb,null) returning id`;
+      ${application.brief},now(),${JSON.stringify(terms)}::jsonb,null) returning id`;
   await insertReservation(tx, bucket, { orderId: String(order!.id) }, new Date(Date.now() + CHECKOUT_HOLD_MINUTES * 60_000));
   await tx`update app.applications set status='ACCEPTED',updated_at=now() where id=${appId}`;
   await tx`update app.requests set status='FILLED',updated_at=now() where id=${application.request_id}`;

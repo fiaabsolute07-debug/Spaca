@@ -43,3 +43,19 @@ set_pool_timezone: pool_id, timezone (IANA). Booked weeks keep their dates.
 update_profile: + timezone (IANA). Handles are unique.
 add_sample: title, url, description, visibility, optional service_id link; starts PENDING moderation.
 Suspended accounts: 403 ACCOUNT_SUSPENDED for new activity; existing order commands still work.
+
+## W1-B additions (2026-09-13)
+getOrderData(actor, id) → { order (adds service_version_id, terms, brief_ready_at, funded_at, work_start_at, delivery_due_at, review_due_at, revision_due_at, approved_at, completed_at, cancelled_at, cancellation_refund_minor, status_before_dispute, revision_limit, review_window_hours, auto_accept_consent), latest_delivery_version, deliveries (validation_status, buyer_viewed_at), events, messages, reviews (reviewer_id), cancellation_requests, active_cancellation_request, active_review_hold }.
+Order page must call recordOrderPageView(actor, orderId) (src/modules/orders/views.ts) before reading, to record buyer view evidence.
+Commands (all take order_id; optional expected_version → 409 VERSION_CONFLICT):
+- submit_brief: brief (20+) — buyer, AWAITING_PAYMENT/FUNDED, only while brief_ready_at is null.
+- start — creator, FUNDED + brief ready (409 payment pending, 422 BRIEF_INCOMPLETE).
+- deliver: body (20+ chars) and/or url (http/https) — creator, IN_PROGRESS/REVISION_REQUESTED.
+- revision: delivery_version (required), body — buyer, DELIVERED, within review window, 422 REVISION_LIMIT_REACHED.
+- approve: delivery_version (required) — buyer, DELIVERED → APPROVED; COMPLETED follows provider release.
+- dispute: body (10+) — participant, IN_PROGRESS/DELIVERED/REVISION_REQUESTED.
+- cancel — participant, AWAITING_PAYMENT/FUNDED only (409 after work starts).
+- request_cancellation: refund_amount (USD, 0..amount), reason (10+) — participant, active work; one pending request.
+- respond_cancellation: request_id, decision accept|reject|withdraw (no order_id needed) — counterparty accepts/rejects, requester withdraws; 409 if the order changed since the request.
+- review: rating 1-5, body — buyer, COMPLETED only; repeat submits keep one review.
+- mark_delivery_viewed — buyer.

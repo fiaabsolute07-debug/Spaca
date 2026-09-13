@@ -1,7 +1,36 @@
-import { CommandError, integer, orderEvent, text, type CommandHandler, type CommandContext, type Row, type Tx } from '@/lib/commands';
+/**
+ * Order commands implementing the master §7.2 transition matrix. Every command locks the order row,
+ * re-checks actor, state and versions, and writes the event + outbox in the same transaction.
+ */
+import {
+  CommandError,
+  expectedVersion,
+  integer,
+  money,
+  orderEvent,
+  text,
+  uuid,
+  type CommandContext,
+  type CommandHandler,
+  type CommandResult,
+  type Row,
+  type Tx,
+} from '@/lib/commands';
 import type { Actor } from '@/lib/auth';
 import { consumeOrderReservation, releaseOrderReservation } from '@/modules/capacity';
+import { enqueueNotification } from '@/modules/notifications/enqueue';
 import { PaymentFlowError, cancelOpenFunding, openCase, refundReasonFor, requestProviderRefund } from '@/modules/payments/funding';
+import {
+  MIN_DELIVERY_NOTE_CHARS,
+  REVISION_TURNAROUND_HOURS,
+  assertCurrentDelivery,
+  expirePendingCancellation,
+  latestDelivery,
+  recomputeWorkClock,
+  recordBuyerView,
+  resolveReviewHold,
+  termsOf,
+} from './lifecycle';
 
 export async function orderFor(tx: Tx, actor: Actor, id: string): Promise<Row> {
   const [order] = await tx<Row[]>`select * from app.orders where id=${id} and (buyer_id=${actor.id} or creator_id=${actor.id}) for update`;
@@ -9,74 +38,153 @@ export async function orderFor(tx: Tx, actor: Actor, id: string): Promise<Row> {
   return order;
 }
 
-type OrderHandler = (ctx: CommandContext & { order: Row; orderId: string; status: string }) => Promise<{ path: string; message: string; id?: string }>;
+type OrderContext = CommandContext & { order: Row; orderId: string; status: string; isBuyer: boolean; isCreator: boolean };
+type OrderHandler = (ctx: OrderContext) => Promise<CommandResult>;
 
 const withOrder = (handler: OrderHandler): CommandHandler => async (ctx) => {
-  const orderId = text(ctx.form, 'order_id');
+  const orderId = uuid(ctx.form, 'order_id');
   const order = await orderFor(ctx.tx, ctx.actor, orderId);
-  return handler({ ...ctx, order, orderId, status: String(order.status) });
+  const expected = expectedVersion(ctx.form);
+  if (expected !== null && Number(order.version) !== expected) {
+    throw new CommandError('This order changed since you opened it. Reload to see the latest state.', 'VERSION_CONFLICT');
+  }
+  return handler({ ...ctx, order, orderId, status: String(order.status), isBuyer: ctx.actor.id === String(order.buyer_id), isCreator: ctx.actor.id === String(order.creator_id) });
 };
+
+const deliveryVersionOf = (form: FormData) => {
+  const value = String(form.get('delivery_version') ?? '').trim();
+  return value ? integer(value, 'delivery_version', 1, 1000) : null;
+};
+
+const counterpartyOf = (order: Row, actor: Actor) => (actor.id === String(order.buyer_id) ? String(order.creator_id) : String(order.buyer_id));
+const done = (orderId: string, message: string): CommandResult => ({ path: `/orders/${orderId}`, message });
 
 const sandboxPay: CommandHandler = async () => {
   // Funding is a provider fact delivered by a verified webhook (src/modules/payments/funding.ts); clients cannot mark orders paid.
   throw new CommandError('Direct funding is not available. Pay through the provider checkout.', 'FORBIDDEN');
 };
 
-const start = withOrder(async ({ tx, actor, order, orderId, status }) => {
-  if (actor.id !== String(order.creator_id) || status !== 'FUNDED') throw new CommandError('Only the creator can start a funded order');
-  await tx`update app.orders set status='IN_PROGRESS',version=version+1,updated_at=now() where id=${orderId}`;
-  await orderEvent(tx, orderId, actor.id, 'WORK_STARTED');
-  return { path: `/orders/${orderId}`, message: 'Work started' };
+/** Brief completion for orders that start without one (auction purchases). The brief is fixed once work starts. */
+const submitBrief = withOrder(async ({ tx, actor, form, order, orderId, status, isBuyer }) => {
+  if (!isBuyer) throw new CommandError('Only the buyer can submit the brief', 'FORBIDDEN');
+  if (!['AWAITING_PAYMENT', 'FUNDED'].includes(status)) throw new CommandError('The brief can only change before work starts', 'ORDER_STATE_CONFLICT');
+  if (order.brief_ready_at) throw new CommandError('The brief is already complete; send changes as a message for the creator to accept', 'DOMAIN_RULE');
+  const brief = text(form, 'brief', true, 12000);
+  if (brief.length < MIN_DELIVERY_NOTE_CHARS) throw new CommandError('Share a brief of at least 20 characters', 'BRIEF_INCOMPLETE');
+  await tx`update app.orders set brief=${brief},brief_ready_at=now(),updated_at=now() where id=${orderId}`;
+  await recomputeWorkClock(tx, orderId);
+  await orderEvent(tx, orderId, actor.id, 'BRIEF_SUBMITTED');
+  return done(orderId, 'Brief saved. The work clock starts once funding is confirmed.');
 });
 
-const deliver = withOrder(async ({ tx, actor, form, order, orderId, status }) => {
-  if (actor.id !== String(order.creator_id) || !['FUNDED', 'IN_PROGRESS', 'REVISION_REQUESTED'].includes(status)) {
-    throw new CommandError('Only the creator can deliver active work');
+const start = withOrder(async ({ tx, actor, order, orderId, status, isCreator }) => {
+  if (!isCreator) throw new CommandError('Only the creator can start work', 'FORBIDDEN');
+  if (status !== 'FUNDED') throw new CommandError(status === 'AWAITING_PAYMENT' ? 'Payment is not confirmed yet' : 'Only a funded order can start', 'ORDER_STATE_CONFLICT');
+  if (!order.brief_ready_at) throw new CommandError('The buyer has not completed the brief yet', 'BRIEF_INCOMPLETE');
+  // The due date was fixed at max(funded_at, brief_ready_at); starting late never moves it (ORD-04).
+  const [updated] = await tx<Row[]>`update app.orders set status='IN_PROGRESS',version=version+1,updated_at=now() where id=${orderId} returning work_start_at,delivery_due_at`;
+  await orderEvent(tx, orderId, actor.id, 'WORK_STARTED', { work_start_at: updated!.work_start_at, delivery_due_at: updated!.delivery_due_at });
+  return done(orderId, 'Work started');
+});
+
+const deliver = withOrder(async ({ tx, actor, form, order, orderId, status, isCreator }) => {
+  if (!isCreator) throw new CommandError('Only the creator can deliver', 'FORBIDDEN');
+  if (status === 'FUNDED') throw new CommandError('Start work before delivering', 'ORDER_STATE_CONFLICT');
+  if (!['IN_PROGRESS', 'REVISION_REQUESTED'].includes(status)) throw new CommandError('This order is not accepting deliveries', 'ORDER_STATE_CONFLICT');
+  const body = text(form, 'body', false, 12000);
+  const urlValue = text(form, 'url', false, 1000);
+  let url: string | null = null;
+  if (urlValue) {
+    try {
+      const parsed = new URL(urlValue);
+      if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') throw new Error('scheme');
+      url = parsed.toString();
+    } catch {
+      throw new CommandError('Delivery link must be an http(s) URL');
+    }
   }
-  const body = text(form, 'body');
-  const url = text(form, 'url', false) || null;
-  const [last] = await tx<Row[]>`select coalesce(max(version),0)::int as version from app.deliveries where order_id=${orderId}`;
-  const version = Number(last!.version) + 1;
-  await tx`insert into app.deliveries (order_id,body,url,version) values (${orderId},${body},${url},${version})`;
-  await tx`update app.orders set status='DELIVERED',review_due_at=now()+interval '72 hours',version=version+1,updated_at=now() where id=${orderId}`;
-  await orderEvent(tx, orderId, actor.id, 'DELIVERED', { version });
-  return { path: `/orders/${orderId}`, message: 'Delivery submitted for buyer review' };
+  // ORD-07: an empty or token delivery never starts the review clock.
+  if (!url && body.length < MIN_DELIVERY_NOTE_CHARS) throw new CommandError(`A delivery needs a link or at least ${MIN_DELIVERY_NOTE_CHARS} characters of delivered content`);
+  const version = Number((await latestDelivery(tx, orderId))?.version ?? 0) + 1;
+  await tx`insert into app.deliveries (order_id,body,url,version,validation_status,submitted_by) values (${orderId},${body || '(see link)'},${url},${version},'VALID',${actor.id})`;
+  await resolveReviewHold(tx, orderId, 'SUPERSEDED');
+  await expirePendingCancellation(tx, orderId);
+  const window = termsOf(order).reviewWindowHours;
+  const [updated] = await tx<Row[]>`update app.orders set status='DELIVERED',review_due_at=now() + (${window} * interval '1 hour'),revision_due_at=null,
+    version=version+1,updated_at=now() where id=${orderId} returning review_due_at,delivery_due_at`;
+  const late = updated!.delivery_due_at ? new Date() > new Date(updated!.delivery_due_at) : false;
+  await orderEvent(tx, orderId, actor.id, 'DELIVERED', { version, late, review_due_at: updated!.review_due_at });
+  await enqueueNotification(tx, orderId, `notify:order.delivered:${orderId}:v${version}`, {
+    templateId: 'order.delivered', recipientId: String(order.buyer_id), params: { orderRef: orderId, reviewDeadlineAt: new Date(updated!.review_due_at).toISOString() },
+  });
+  return done(orderId, 'Delivery submitted for buyer review');
 });
 
-const revision = withOrder(async ({ tx, actor, form, order, orderId, status }) => {
-  if (actor.id !== String(order.buyer_id) || status !== 'DELIVERED') throw new CommandError('Only the buyer can request a revision after delivery');
-  if (Number(order.revision_count) >= 1) throw new CommandError('The included revision has already been used');
-  const body = text(form, 'body');
-  await tx`update app.orders set status='REVISION_REQUESTED',revision_count=revision_count+1,version=version+1,updated_at=now() where id=${orderId}`;
-  await orderEvent(tx, orderId, actor.id, 'REVISION_REQUESTED', { body });
-  return { path: `/orders/${orderId}`, message: 'Revision requested' };
+const revision = withOrder(async ({ tx, actor, form, order, orderId, status, isBuyer }) => {
+  if (!isBuyer) throw new CommandError('Only the buyer can request a revision', 'FORBIDDEN');
+  if (status !== 'DELIVERED') throw new CommandError('A revision can only be requested on a delivered version', 'ORDER_STATE_CONFLICT');
+  const delivery = await assertCurrentDelivery(tx, orderId, deliveryVersionOf(form));
+  if (order.review_due_at && new Date() > new Date(order.review_due_at)) throw new CommandError('The review window has closed; open a dispute or contact support', 'DOMAIN_RULE');
+  const { revisionLimit } = termsOf(order);
+  if (Number(order.revision_count) >= revisionLimit) {
+    throw new CommandError('The included revision has already been used. You can approve, message the creator or open a dispute.', 'REVISION_LIMIT_REACHED');
+  }
+  const body = text(form, 'body', true, 5000);
+  await tx`update app.orders set status='REVISION_REQUESTED',revision_count=revision_count+1,revision_due_at=now() + (${REVISION_TURNAROUND_HOURS} * interval '1 hour'),
+    version=version+1,updated_at=now() where id=${orderId}`;
+  await resolveReviewHold(tx, orderId, 'BUYER_ACTED');
+  await expirePendingCancellation(tx, orderId);
+  await orderEvent(tx, orderId, actor.id, 'REVISION_REQUESTED', { body, delivery_version: Number(delivery.version), revisions_used: Number(order.revision_count) + 1, revision_limit: revisionLimit });
+  await enqueueNotification(tx, orderId, `notify:order.revision_requested:${orderId}:v${delivery.version}`, {
+    templateId: 'order.revision_requested', recipientId: String(order.creator_id), params: { orderRef: orderId },
+  });
+  return done(orderId, 'Revision requested');
 });
 
-const approve = withOrder(async ({ tx, actor, order, orderId, status }) => {
-  if (actor.id !== String(order.buyer_id) || status !== 'DELIVERED') throw new CommandError('Only the buyer can approve a delivered version');
-  // Approval only marks settlement READY; the release job transfers funds and RELEASED follows the provider's webhook.
-  await tx`update app.orders set status='COMPLETED',settlement_status='READY',version=version+1,updated_at=now() where id=${orderId}`;
+/** Shared by buyer approval and the auto-accept job; caller holds the order lock and has validated state. */
+export async function approveOrder(tx: Tx, order: Row, actorId: string | null, deliveryVersion: number, kind: 'ORDER_APPROVED' | 'ORDER_AUTO_APPROVED') {
+  const orderId = String(order.id);
+  await tx`update app.orders set status='APPROVED',approved_at=now(),settlement_status='READY',version=version+1,updated_at=now() where id=${orderId}`;
   await consumeOrderReservation(tx, orderId);
-  await orderEvent(tx, orderId, actor.id, 'ORDER_APPROVED', { platform_fee_minor: '0', settlement_status: 'READY' });
-  return { path: `/orders/${orderId}`, message: 'Delivery approved. The creator payout is queued and shows as released once the provider confirms; platform fee is $0.00.' };
+  await resolveReviewHold(tx, orderId, 'BUYER_ACTED');
+  await expirePendingCancellation(tx, orderId);
+  await orderEvent(tx, orderId, actorId, kind, { delivery_version: deliveryVersion, platform_fee_minor: '0', settlement_status: 'READY' });
+  await enqueueNotification(tx, orderId, `notify:order.approved:${orderId}`, { templateId: 'order.approved', recipientId: String(order.creator_id), params: { orderRef: orderId } });
+}
+
+const approve = withOrder(async ({ tx, actor, form, order, orderId, status, isBuyer }) => {
+  if (!isBuyer) throw new CommandError('Only the buyer can approve', 'FORBIDDEN');
+  if (status !== 'DELIVERED') throw new CommandError('Only a delivered version can be approved', 'ORDER_STATE_CONFLICT');
+  const delivery = await assertCurrentDelivery(tx, orderId, deliveryVersionOf(form));
+  await approveOrder(tx, order, actor.id, Number(delivery.version), 'ORDER_APPROVED');
+  return done(orderId, 'Delivery approved. The creator payout is queued; the order completes once the provider confirms. Platform fee is $0.00.');
 });
 
-const dispute = withOrder(async ({ tx, actor, form, orderId, status }) => {
-  if (!['DELIVERED', 'REVISION_REQUESTED', 'IN_PROGRESS'].includes(status)) throw new CommandError('This order cannot be disputed in its current state');
-  const reason = text(form, 'body');
+const dispute = withOrder(async ({ tx, actor, form, order, orderId, status, isBuyer, isCreator }) => {
+  if (!isBuyer && !isCreator) throw new CommandError('Only order participants can open a dispute', 'FORBIDDEN');
+  if (!['IN_PROGRESS', 'DELIVERED', 'REVISION_REQUESTED'].includes(status)) throw new CommandError('This order cannot be disputed in its current state', 'ORDER_STATE_CONFLICT');
+  const reason = text(form, 'body', true, 5000);
+  if (reason.length < 10) throw new CommandError('Describe the issue in at least 10 characters');
   await tx`insert into app.disputes (order_id,opened_by,reason) values (${orderId},${actor.id},${reason})`;
-  await tx`update app.orders set status='DISPUTED',version=version+1,updated_at=now() where id=${orderId}`;
-  await orderEvent(tx, orderId, actor.id, 'DISPUTE_OPENED');
-  return { path: `/orders/${orderId}`, message: 'Dispute opened for review' };
+  await tx`update app.orders set status='DISPUTED',status_before_dispute=${status},version=version+1,updated_at=now() where id=${orderId}`;
+  await resolveReviewHold(tx, orderId, 'BUYER_ACTED');
+  await expirePendingCancellation(tx, orderId);
+  await orderEvent(tx, orderId, actor.id, 'DISPUTE_OPENED', { status_before_dispute: status });
+  await enqueueNotification(tx, orderId, `notify:dispute.opened:${orderId}`, { templateId: 'dispute.opened', recipientId: counterpartyOf(order, actor), params: { orderRef: orderId } });
+  return done(orderId, 'Dispute opened. Releases are frozen while it is reviewed.');
 });
 
-const cancel = withOrder(async ({ tx, actor, order, orderId, status }) => {
-  if (!['AWAITING_PAYMENT', 'FUNDED'].includes(status)) throw new CommandError('Cancellation requires an order before work starts');
+/** Unilateral cancellation before work starts (§7.2 unfunded / funded-before-work rows). */
+const cancel = withOrder(async ({ tx, actor, order, orderId, status, isBuyer, isCreator }) => {
+  if (!isBuyer && !isCreator) throw new CommandError('Only order participants can cancel', 'FORBIDDEN');
+  if (!['AWAITING_PAYMENT', 'FUNDED'].includes(status)) {
+    throw new CommandError('Work has started; request a cancellation with an agreed refund instead', 'ORDER_STATE_CONFLICT');
+  }
   if (status === 'AWAITING_PAYMENT') await cancelOpenFunding(tx, orderId);
   await releaseOrderReservation(tx, orderId);
-  await tx`update app.orders set status='CANCELLED',payment_status=case when payment_status='SUCCEEDED' then 'REFUND_PENDING' else payment_status end,
+  await tx`update app.orders set status='CANCELLED',cancelled_at=now(),payment_status=case when payment_status='SUCCEEDED' then 'REFUND_PENDING' else payment_status end,
     version=version+1,updated_at=now() where id=${orderId}`;
-  await orderEvent(tx, orderId, actor.id, 'ORDER_CANCELLED');
+  await orderEvent(tx, orderId, actor.id, 'ORDER_CANCELLED', { before_work: true });
   if (status === 'FUNDED') {
     // Full principal refund before work starts (master §8.6); REFUNDED only after the provider confirms.
     try {
@@ -88,50 +196,145 @@ const cancel = withOrder(async ({ tx, actor, order, orderId, status }) => {
       await openCase(tx, orderId, null, 'REFUND_NOT_REQUESTED', 'HIGH', error.message);
     }
   }
-  return {
-    path: `/orders/${orderId}`,
-    message: status === 'FUNDED' ? 'Order cancelled. A full refund was requested from the provider and shows as refunded once confirmed.' : 'Order cancelled and capacity released',
-  };
+  return done(orderId, status === 'FUNDED' ? 'Order cancelled. A full refund was requested from the provider and shows as refunded once confirmed.' : 'Order cancelled and capacity released');
 });
+
+/** ORD-13/15: after work starts, cancellation needs the counterparty to accept a fixed refund amount. */
+const requestCancellation = withOrder(async ({ tx, actor, form, order, orderId, status, isBuyer, isCreator }) => {
+  if (!isBuyer && !isCreator) throw new CommandError('Only order participants can request a cancellation', 'FORBIDDEN');
+  if (!['IN_PROGRESS', 'DELIVERED', 'REVISION_REQUESTED'].includes(status)) {
+    throw new CommandError(status === 'FUNDED' || status === 'AWAITING_PAYMENT' ? 'Work has not started; cancel directly instead' : 'This order cannot be cancelled now', 'ORDER_STATE_CONFLICT');
+  }
+  const refundValue = text(form, 'refund_amount');
+  const refund = refundValue === '0' ? 0n : money(refundValue, 'refund_amount');
+  if (refund > BigInt(order.amount_minor)) throw new CommandError('The refund cannot exceed the amount paid');
+  const reason = text(form, 'reason', true, 5000);
+  if (reason.length < 10) throw new CommandError('Explain the cancellation in at least 10 characters');
+  const [existing] = await tx<Row[]>`select id from app.cancellation_requests where order_id=${orderId} and status='REQUESTED'`;
+  if (existing) throw new CommandError('A cancellation request is already waiting for a response', 'ORDER_STATE_CONFLICT');
+  const counterparty = counterpartyOf(order, actor);
+  const [request] = await tx<Row[]>`insert into app.cancellation_requests (order_id,requested_by,counterparty_id,reason,refund_amount_minor,order_version)
+    values (${orderId},${actor.id},${counterparty},${reason},${refund.toString()},${Number(order.version)}) returning id`;
+  await orderEvent(tx, orderId, actor.id, 'CANCELLATION_REQUESTED', { request_id: String(request!.id), refund_amount_minor: refund.toString() });
+  await enqueueNotification(tx, orderId, `notify:order.cancellation_requested:${String(request!.id)}`, {
+    templateId: 'order.cancellation_requested', recipientId: counterparty, params: { orderRef: orderId },
+  });
+  return { ...done(orderId, 'Cancellation request sent. The order continues unless the other party accepts.'), id: String(request!.id) };
+});
+
+const respondCancellation: CommandHandler = async ({ tx, actor, form }) => {
+  const requestId = uuid(form, 'request_id');
+  const decision = text(form, 'decision');
+  if (!['accept', 'reject', 'withdraw'].includes(decision)) throw new CommandError('decision must be accept, reject or withdraw');
+  // Lock order before request (same order as deliver/approve/dispute, which expire requests under the order lock).
+  const [ref] = await tx<Row[]>`select order_id,counterparty_id,requested_by from app.cancellation_requests where id=${requestId}`;
+  if (!ref || (actor.id !== String(ref.counterparty_id) && actor.id !== String(ref.requested_by))) {
+    throw new CommandError('Cancellation request not found', 'FORBIDDEN');
+  }
+  const order = await orderFor(tx, actor, String(ref.order_id));
+  const orderId = String(order.id);
+  const [request] = await tx<Row[]>`select * from app.cancellation_requests where id=${requestId} for update`;
+  if (!request) throw new CommandError('Cancellation request not found', 'FORBIDDEN');
+  if (request.status !== 'REQUESTED') throw new CommandError(`This request is already ${String(request.status).toLowerCase()}`, 'ORDER_STATE_CONFLICT');
+
+  if (decision === 'withdraw') {
+    if (actor.id !== String(request.requested_by)) throw new CommandError('Only the requester can withdraw', 'FORBIDDEN');
+    await tx`update app.cancellation_requests set status='WITHDRAWN',responded_at=now() where id=${requestId}`;
+    await orderEvent(tx, orderId, actor.id, 'CANCELLATION_WITHDRAWN', { request_id: requestId });
+    return done(orderId, 'Cancellation request withdrawn');
+  }
+  if (actor.id !== String(request.counterparty_id)) throw new CommandError('Only the other party can respond', 'FORBIDDEN');
+  // Consent covers the order as it was; any later delivery/revision/dispute invalidates the request (ORD-15).
+  if (Number(order.version) !== Number(request.order_version) || !['IN_PROGRESS', 'DELIVERED', 'REVISION_REQUESTED'].includes(String(order.status))) {
+    throw new CommandError('The order changed after this request was made. Ask for a new cancellation request.', 'VERSION_CONFLICT');
+  }
+  if (decision === 'reject') {
+    await tx`update app.cancellation_requests set status='REJECTED',responded_at=now() where id=${requestId}`;
+    await orderEvent(tx, orderId, actor.id, 'CANCELLATION_REJECTED', { request_id: requestId });
+    await enqueueNotification(tx, orderId, `notify:order.cancellation_resolved:${requestId}`, {
+      templateId: 'order.cancellation_resolved', recipientId: String(request.requested_by), params: { orderRef: orderId, outcome: 'REJECTED' },
+    });
+    return done(orderId, 'Cancellation declined; the order continues');
+  }
+
+  const refund = BigInt(request.refund_amount_minor);
+  const amount = BigInt(order.amount_minor);
+  await tx`update app.cancellation_requests set status='ACCEPTED',responded_at=now() where id=${requestId}`;
+  // Work already consumed capacity; a refund never returns that quota (CAP-12).
+  await consumeOrderReservation(tx, orderId);
+  await resolveReviewHold(tx, orderId, 'BUYER_ACTED');
+  await tx`update app.orders set status='CANCELLED',cancelled_at=now(),cancellation_refund_minor=${refund.toString()},
+    payment_status=${refund > 0n ? 'REFUND_PENDING' : String(order.payment_status)},
+    settlement_status=${refund < amount ? 'READY' : 'NOT_READY'},version=version+1,updated_at=now() where id=${orderId}`;
+  await orderEvent(tx, orderId, actor.id, 'CANCELLATION_ACCEPTED', { request_id: requestId, refund_amount_minor: refund.toString(), creator_remainder_minor: (amount - refund).toString() });
+  if (refund > 0n) {
+    const [fresh] = await tx<Row[]>`select * from app.orders where id=${orderId}`;
+    try {
+      const result = await requestProviderRefund(tx, fresh!, 'MUTUAL_CANCELLATION');
+      await orderEvent(tx, orderId, actor.id, 'REFUND_REQUESTED', { operation_id: result.operationId, provider_state: result.state, amount_minor: refund.toString() });
+      if (result.state === 'REJECTED') await openCase(tx, orderId, null, 'REFUND_REJECTED', 'HIGH', `Provider rejected refund (${result.code})`);
+    } catch (error) {
+      if (!(error instanceof PaymentFlowError)) throw error;
+      await openCase(tx, orderId, null, 'REFUND_NOT_REQUESTED', 'HIGH', error.message);
+    }
+  }
+  for (const recipient of [String(request.requested_by), actor.id]) {
+    await enqueueNotification(tx, orderId, `notify:order.cancellation_resolved:${requestId}:${recipient}`, {
+      templateId: 'order.cancellation_resolved', recipientId: recipient, params: { orderRef: orderId, outcome: 'ACCEPTED' },
+    });
+  }
+  return done(orderId, 'Cancellation accepted. The agreed refund is requested from the provider; any remainder is released to the creator.');
+};
 
 const refund = withOrder(async ({ tx, actor, order, orderId, status }) => {
   if (!actor.roles.includes('finance') && !(actor.id === String(order.buyer_id) && status === 'CANCELLED')) {
     throw new CommandError('Refunds require a finance role or a cancelled buyer order', 'FORBIDDEN');
   }
-  if (!['CANCELLED', 'DISPUTED'].includes(status) || order.payment_status !== 'REFUND_PENDING') throw new CommandError('This order is not eligible for a refund');
-  // The order becomes REFUNDED only when the provider's refund webhook is verified and processed.
-  const result = await requestProviderRefund(tx, order, refundReasonFor(status));
+  if (!['CANCELLED', 'DISPUTED'].includes(status) || order.payment_status !== 'REFUND_PENDING') throw new CommandError('This order is not eligible for a refund', 'ORDER_STATE_CONFLICT');
+  // Retries the same refund operation; the order changes only when the provider's refund webhook is processed.
+  const result = await requestProviderRefund(tx, order, order.cancellation_refund_minor !== null ? 'MUTUAL_CANCELLATION' : refundReasonFor(status));
   if (result.state === 'REJECTED') throw new CommandError(`The provider rejected the refund (${result.code})`);
   await orderEvent(tx, orderId, actor.id, 'REFUND_REQUESTED', { operation_id: result.operationId, provider_state: result.state });
-  return {
-    path: `/orders/${orderId}`,
-    message: result.state === 'READY' ? 'Refund requested from the provider. The order shows refunded once the provider confirms.' : 'The provider has not confirmed the refund request yet; retry to check the same refund operation.',
-  };
+  return done(orderId, result.state === 'READY' ? 'Refund requested from the provider. The order shows refunded once the provider confirms.' : 'The provider has not confirmed the refund request yet; retry to check the same refund operation.');
 });
 
-const review = withOrder(async ({ tx, actor, form, order, orderId, status }) => {
-  if (actor.id !== String(order.buyer_id) || !['COMPLETED', 'APPROVED'].includes(status)) throw new CommandError('Only the buyer can review a completed order');
+const review = withOrder(async ({ tx, actor, form, order, orderId, status, isBuyer }) => {
+  if (!isBuyer) throw new CommandError('Only the buyer can review this order', 'FORBIDDEN');
+  if (status !== 'COMPLETED') throw new CommandError('Reviews open once the order is completed', 'ORDER_STATE_CONFLICT');
   const rating = integer(text(form, 'rating'), 'rating', 1, 5);
-  const body = text(form, 'body');
-  await tx`insert into app.reviews (order_id,buyer_id,creator_id,rating,body) values (${orderId},${actor.id},${order.creator_id},${rating},${body}) on conflict (order_id) do nothing`;
-  return { path: `/orders/${orderId}`, message: 'Review saved' };
+  const body = text(form, 'body', true, 3000);
+  const inserted = await tx`insert into app.reviews (order_id,buyer_id,creator_id,reviewer_id,rating,body) values (${orderId},${actor.id},${String(order.creator_id)},${actor.id},${rating},${body})
+    on conflict (order_id,reviewer_id) do nothing returning id`;
+  if (inserted.length === 0) return done(orderId, 'You already reviewed this order');
+  await orderEvent(tx, orderId, actor.id, 'REVIEW_SUBMITTED', { rating });
+  return done(orderId, 'Review saved');
 });
 
 const message = withOrder(async ({ tx, actor, form, orderId }) => {
-  const body = text(form, 'body');
+  const body = text(form, 'body', true, 5000);
   await tx`insert into app.messages (order_id,sender_id,body) values (${orderId},${actor.id},${body})`;
-  return { path: `/orders/${orderId}`, message: 'Message sent' };
+  return done(orderId, 'Message sent');
+});
+
+const markDeliveryViewed = withOrder(async ({ tx, order, orderId, isBuyer }) => {
+  if (!isBuyer) return done(orderId, 'Only the buyer view is recorded');
+  const { resumed } = await recordBuyerView(tx, order);
+  return done(orderId, resumed ? 'Review window restarted from now' : 'Delivery viewed');
 });
 
 export const orderCommands: Record<string, CommandHandler> = {
   sandbox_pay: sandboxPay,
+  submit_brief: submitBrief,
   start,
   deliver,
   revision,
   approve,
   dispute,
   cancel,
+  request_cancellation: requestCancellation,
+  respond_cancellation: respondCancellation,
   refund,
   review,
   message,
+  mark_delivery_viewed: markDeliveryViewed,
 };

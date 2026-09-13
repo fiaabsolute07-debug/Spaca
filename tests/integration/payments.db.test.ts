@@ -93,8 +93,8 @@ describe.skipIf(!RUN_DB)('TEST_PLAN 4 + PAY-02 — provider funding then full or
     vi.stubEnv('MOCK_PROVIDER_FEE_BPS', '300');
     try {
       const { creator, buyer, poolId, orderId } = await bookedOrder('life');
-      expect((await command(creator, { command: 'start', idempotency_key: key('s'), order_id: orderId })).status).toBe(400);
-      expect((await command(buyer, { command: 'approve', idempotency_key: key('a'), order_id: orderId })).status).toBe(400);
+      expect((await command(creator, { command: 'start', idempotency_key: key('s'), order_id: orderId })).status).toBe(409); // ORD-02: payment pending
+      expect((await command(buyer, { command: 'approve', idempotency_key: key('a'), order_id: orderId, delivery_version: '1' })).status).toBe(409);
 
       const paid = await pay(buyer, orderId);
       expect(paid.status).toBe(200);
@@ -123,17 +123,23 @@ describe.skipIf(!RUN_DB)('TEST_PLAN 4 + PAY-02 — provider funding then full or
 
       const step = (actor: TestUser, fields: Record<string, string>) => command(actor, { idempotency_key: key('step'), order_id: orderId, ...fields });
       expect((await step(creator, { command: 'start' })).status).toBe(200);
-      expect((await step(creator, { command: 'deliver', body: 'Version one is ready.' })).status).toBe(200);
-      expect((await step(buyer, { command: 'revision', body: 'Tighten the headline.' })).status).toBe(200);
-      expect((await step(creator, { command: 'deliver', body: 'Version two is ready.' })).status).toBe(200);
-      expect((await step(buyer, { command: 'revision', body: 'One more round please.' })).status).toBe(400);
-      expect((await step(buyer, { command: 'approve' })).status).toBe(200);
-      expect((await step(buyer, { command: 'review', rating: '5', body: 'Clear and fast.' })).status).toBe(200);
+      expect((await step(creator, { command: 'deliver', body: 'Version one is ready for your review.' })).status).toBe(200);
+      expect((await step(buyer, { command: 'revision', delivery_version: '1', body: 'Tighten the headline.' })).status).toBe(200);
+      expect((await step(creator, { command: 'deliver', body: 'Version two is ready for your review.' })).status).toBe(200);
+      expect((await step(buyer, { command: 'approve', delivery_version: '1' })).status).toBe(409); // ORD-08 stale version
+      expect((await step(buyer, { command: 'revision', delivery_version: '2', body: 'One more round please.' })).status).toBe(422); // ORD-06
+      expect((await step(buyer, { command: 'approve', delivery_version: '2' })).status).toBe(200);
+      expect((await step(buyer, { command: 'review', rating: '5', body: 'Clear and fast.' })).status).toBe(409); // REV-01: not completed yet
+      const approved = await orderRow(orderId);
+      expect(approved).toMatchObject({ status: 'APPROVED', settlement_status: 'READY', revision_count: 1, platform_fee_minor: '0' });
 
+      const { releaseReadySettlements } = await import('@/modules/jobs');
+      await releaseReadySettlements({ orderId });
+      expect((await step(buyer, { command: 'review', rating: '5', body: 'Clear and fast.' })).status).toBe(200);
       const done = await orderRow(orderId);
-      expect(done).toMatchObject({ status: 'COMPLETED', settlement_status: 'READY', revision_count: 1, platform_fee_minor: '0' });
+      expect(done).toMatchObject({ status: 'COMPLETED', settlement_status: 'RELEASED', revision_count: 1, platform_fee_minor: '0' });
       const kinds = (await sql`select kind from app.order_events where order_id=${orderId} order by created_at asc`).map((e) => e.kind);
-      expect(kinds).toEqual(['ORDER_CREATED', 'PAYMENT_CONFIRMED', 'WORK_STARTED', 'DELIVERED', 'REVISION_REQUESTED', 'DELIVERED', 'ORDER_APPROVED']);
+      expect(kinds).toEqual(['ORDER_CREATED', 'PAYMENT_CONFIRMED', 'WORK_STARTED', 'DELIVERED', 'REVISION_REQUESTED', 'DELIVERED', 'ORDER_APPROVED', 'SETTLEMENT_RELEASED', 'REVIEW_SUBMITTED']);
     } finally {
       vi.unstubAllEnvs();
     }

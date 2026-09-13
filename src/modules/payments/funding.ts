@@ -14,6 +14,7 @@
 import type postgres from 'postgres';
 import { sql } from '@/lib/db';
 import { commitOrderReservation } from '@/modules/capacity';
+import { recomputeWorkClock } from '@/modules/orders/lifecycle';
 import {
   MockPaymentProvider,
   computeRequestHash,
@@ -196,11 +197,15 @@ export async function requestProviderRefund(tx: Tx, order: Row, reason: RefundRe
   const [funding] = await tx<Row[]>`select provider_reference from app.provider_operations
     where order_id=${orderId} and kind='funding.create' and outcome->>'fundingStatus'='SUCCEEDED' order by created_at desc limit 1`;
   if (!funding) throw new PaymentFlowError('No provider-confirmed funding exists for this order', 'INVALID_STATE');
-  const operationId = `refund:${orderId}:full`;
+  // A mutually agreed partial refund (ORD-15) uses its own stable operation; otherwise the full principal.
+  const agreed = order.cancellation_refund_minor === null || order.cancellation_refund_minor === undefined ? null : BigInt(String(order.cancellation_refund_minor));
+  const amount = agreed ?? BigInt(String(order.amount_minor));
+  if (amount <= 0n) throw new PaymentFlowError('There is no amount to refund for this order', 'INVALID_STATE');
+  const operationId = agreed !== null && agreed < BigInt(String(order.amount_minor)) ? `refund:${orderId}:agreed` : `refund:${orderId}:full`;
   const input: RefundInput = {
     fundingReference: String(funding.provider_reference),
     orderId,
-    amount: BigInt(String(order.amount_minor)),
+    amount,
     currency: String(order.currency),
     reason,
   };
@@ -234,13 +239,15 @@ export async function requestCreatorRelease(tx: Tx, order: Row): Promise<Provide
   const [funding] = await tx<Row[]>`select provider_reference from app.provider_operations
     where order_id=${orderId} and kind='funding.create' and outcome->>'fundingStatus'='SUCCEEDED' order by created_at desc limit 1`;
   if (!funding) throw new PaymentFlowError('No provider-confirmed funding exists for this order', 'INVALID_STATE');
-  const amount = BigInt(String(order.amount_minor));
+  // Approved orders release the full entitlement; mutually cancelled orders release the unrefunded remainder.
+  const refunded = order.status === 'CANCELLED' && order.cancellation_refund_minor !== null ? BigInt(String(order.cancellation_refund_minor)) : 0n;
+  const amount = BigInt(String(order.amount_minor)) - refunded;
   const providerFee = order.provider_fee_minor == null ? 0n : BigInt(String(order.provider_fee_minor));
   const policy = feePayerPolicy();
   const net = policy === 'CREATOR_AT_COST' ? amount - providerFee : amount;
   if (net <= 0n) throw new PaymentFlowError('Creator net would not be positive; resolve the provider cost policy first', 'INVALID_STATE');
 
-  const operationId = `release:${orderId}:full`;
+  const operationId = refunded > 0n ? `release:${orderId}:remainder` : `release:${orderId}:full`;
   const input: ReleaseInput = {
     fundingReference: String(funding.provider_reference),
     orderId,
@@ -250,7 +257,7 @@ export async function requestCreatorRelease(tx: Tx, order: Row): Promise<Provide
     platformFee: BigInt(String(order.platform_fee_minor)),
   };
   const row = await journal(tx, operationId, orderId, 'release.create', computeRequestHash('release.create', input));
-  await tx`update app.provider_operations set outcome=coalesce(outcome,'{}'::jsonb)||jsonb_build_object('netAmount',${net.toString()}::text,'providerFee',${providerFee.toString()}::text,'feePolicy',${policy}::text)
+  await tx`update app.provider_operations set outcome=coalesce(outcome,'{}'::jsonb)||jsonb_build_object('netAmount',${net.toString()}::text,'providerFee',${providerFee.toString()}::text,'feePolicy',${policy}::text,'grossAmount',${amount.toString()}::text)
     where id=${String(row.id)}`;
   try {
     const release = await getMockPaymentProvider().releaseToCreator(input, operationId);
@@ -454,10 +461,10 @@ async function applyFundingEvent(tx: Tx, event: VerifiedEvent): Promise<string> 
       return kind;
     }
     const providerFee = event.providerFee ?? 0n;
-    // Work clock starts at verified funding from the sold turnaround snapshot (never at booking time).
-    await tx`update app.orders set status='FUNDED',payment_status='SUCCEEDED',provider_fee_minor=${providerFee.toString()},
-      delivery_due_at=coalesce(delivery_due_at, now() + (coalesce((terms->>'turnaround_hours')::int, 72) * interval '1 hour')),
+    await tx`update app.orders set status='FUNDED',payment_status='SUCCEEDED',provider_fee_minor=${providerFee.toString()},funded_at=now(),
       version=version+1,updated_at=now() where id=${orderId}`;
+    // Work clock = max(funded_at, brief_ready_at) + sold turnaround, fixed once set (ORD-03/04).
+    await recomputeWorkClock(tx, orderId);
     // Counters follow reservation state via DB trigger (drizzle/0003).
     await commitOrderReservation(tx, orderId);
     await orderEvent(tx, orderId, 'PAYMENT_CONFIRMED', {
@@ -516,24 +523,31 @@ async function applyRefundEvent(tx: Tx, event: VerifiedEvent): Promise<string> {
   const amount = BigInt(String(order.amount_minor));
 
   if (event.type === 'refund.succeeded') {
-    if (order.payment_status === 'REFUNDED') return 'DUPLICATE_FACT';
-    if (event.amount !== amount || event.currency !== String(order.currency) || order.payment_status !== 'REFUND_PENDING') {
-      await openCase(tx, orderId, String(operation.id), 'UNEXPECTED_REFUND', 'HIGH', 'Provider refund does not match a pending full refund');
+    if (order.payment_status === 'REFUNDED' || order.payment_status === 'PARTIALLY_REFUNDED') return 'DUPLICATE_FACT';
+    const agreed = order.cancellation_refund_minor === null ? null : BigInt(String(order.cancellation_refund_minor));
+    const expected = agreed ?? amount;
+    if (event.amount !== expected || event.currency !== String(order.currency) || order.payment_status !== 'REFUND_PENDING') {
+      await openCase(tx, orderId, String(operation.id), 'UNEXPECTED_REFUND', 'HIGH', 'Provider refund does not match the pending refund');
       return 'UNEXPECTED_REFUND';
     }
-    await tx`update app.orders set status='REFUNDED',payment_status='REFUNDED',settlement_status='NOT_READY',version=version+1,updated_at=now() where id=${orderId}`;
-    await orderEvent(tx, orderId, 'REFUND_CONFIRMED', { provider: MOCK_PROVIDER, reference: event.reference, event_id: event.eventId });
+    if (expected === amount) {
+      await tx`update app.orders set status='REFUNDED',payment_status='REFUNDED',settlement_status='NOT_READY',version=version+1,updated_at=now() where id=${orderId}`;
+    } else {
+      // Partial refunds keep the order CANCELLED; the remainder settles to the creator separately (§7.2).
+      await tx`update app.orders set payment_status='PARTIALLY_REFUNDED',updated_at=now() where id=${orderId}`;
+    }
+    await orderEvent(tx, orderId, 'REFUND_CONFIRMED', { provider: MOCK_PROVIDER, reference: event.reference, event_id: event.eventId, amount_minor: event.amount.toString(), full: expected === amount });
     const currency = String(order.currency);
     await ledger(tx, orderId, 'REFUND_SETTLED', `refund:mock:${event.reference}`, [
-      [`order_principal:${orderId}`, amount],
-      ['provider_clearing:mock', -amount],
+      [`order_principal:${orderId}`, expected],
+      ['provider_clearing:mock', -expected],
     ], currency);
     await outbox(tx, orderId, `notify:refund.updated:SUCCEEDED:${orderId}`, {
       templateId: 'refund.updated',
       recipientId: String(order.buyer_id),
-      params: { orderRef: orderId, amount: amount.toString(), currency, refundStatus: 'SUCCEEDED' },
+      params: { orderRef: orderId, amount: expected.toString(), currency, refundStatus: 'SUCCEEDED' },
     });
-    return 'REFUNDED';
+    return expected === amount ? 'REFUNDED' : 'PARTIALLY_REFUNDED';
   }
   if (event.type === 'refund.failed') {
     await openCase(tx, orderId, String(operation.id), 'REFUND_FAILED', 'HIGH', 'Provider refund failed; retry the same refund operation or resolve manually');
@@ -566,8 +580,14 @@ async function applyReleaseEvent(tx: Tx, event: VerifiedEvent): Promise<string> 
       await openCase(tx, orderId, String(operation.id), 'UNEXPECTED_RELEASE', 'HIGH', 'Provider transfer does not match the planned creator release');
       return 'UNEXPECTED_RELEASE';
     }
-    const amount = BigInt(String(order.amount_minor));
-    await tx`update app.orders set settlement_status='RELEASED',version=version+1,updated_at=now() where id=${orderId}`;
+    const amount = plan.grossAmount === undefined ? BigInt(String(order.amount_minor)) : BigInt(String(plan.grossAmount));
+    if (order.status === 'APPROVED') {
+      // §7.3: COMPLETED only after the required settlement was released by the provider.
+      await tx`update app.orders set settlement_status='RELEASED',status='COMPLETED',completed_at=now(),version=version+1,updated_at=now() where id=${orderId}`;
+      await outbox(tx, orderId, `notify:order.completed:${orderId}`, { templateId: 'order.completed', recipientId: String(order.buyer_id), params: { orderRef: orderId } });
+    } else {
+      await tx`update app.orders set settlement_status='RELEASED',updated_at=now() where id=${orderId}`;
+    }
     await orderEvent(tx, orderId, 'SETTLEMENT_RELEASED', {
       provider: MOCK_PROVIDER, reference: event.reference, event_id: event.eventId,
       creator_net_minor: net.toString(), provider_fee_minor: providerFee.toString(), fee_policy: policy, platform_fee_minor: '0',

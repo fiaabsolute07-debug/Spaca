@@ -84,15 +84,34 @@ export async function getDashboardData(actor: Actor) {
 }
 
 export async function getOrderData(actor: Actor, id: string) {
-  const [order] = asRows(await sql`select o.id,o.buyer_id,o.creator_id,o.service_id,o.source,o.title,o.status,o.amount_minor,o.platform_fee_minor,o.provider_fee_minor,o.currency,o.brief,o.delivery_due_at,o.review_due_at,o.revision_count,o.version,o.buyer_name,o.creator_name,o.settlement_status,o.payment_status,o.created_at from (select o.*,bu.display_name as buyer_name,cu.display_name as creator_name from app.orders o join app.users bu on bu.id=o.buyer_id join app.users cu on cu.id=o.creator_id) o where o.id=${id} and (o.buyer_id=${actor.id} or o.creator_id=${actor.id})`);
+  const [order] = asRows(await sql`select o.id,o.buyer_id,o.creator_id,o.service_id,o.service_version_id,o.source,o.title,o.status,o.amount_minor,o.platform_fee_minor,o.provider_fee_minor,
+      o.currency,o.brief,o.terms,o.brief_ready_at,o.funded_at,o.work_start_at,o.delivery_due_at,o.review_due_at,o.revision_due_at,o.revision_count,o.approved_at,o.completed_at,
+      o.cancelled_at,o.cancellation_refund_minor,o.status_before_dispute,o.version,o.settlement_status,o.payment_status,o.created_at,
+      bu.display_name as buyer_name,cu.display_name as creator_name
+    from app.orders o join app.users bu on bu.id=o.buyer_id join app.users cu on cu.id=o.creator_id
+    where o.id=${id} and (o.buyer_id=${actor.id} or o.creator_id=${actor.id})`);
   if (!order) return null;
-  const [deliveries, events, messages, reviews] = await Promise.all([
-    sql`select id,order_id,body,url,version,created_at from app.deliveries where order_id=${id} order by version desc`,
+  const [deliveries, events, messages, reviews, cancellations, holds] = await Promise.all([
+    sql`select id,order_id,body,url,version,validation_status,buyer_viewed_at,created_at from app.deliveries where order_id=${id} order by version desc`,
     sql`select id,kind,payload,created_at from app.order_events where order_id=${id} order by created_at asc`,
     sql`select m.id,m.body,m.created_at,u.display_name from app.messages m join app.users u on u.id=m.sender_id where m.order_id=${id} order by m.created_at asc`,
-    sql`select rating,body,created_at from app.reviews where order_id=${id} order by created_at desc`,
+    sql`select rating,body,reviewer_id,created_at from app.reviews where order_id=${id} order by created_at desc`,
+    sql`select id,requested_by,counterparty_id,reason,refund_amount_minor,status,created_at,responded_at from app.cancellation_requests where order_id=${id} order by created_at desc`,
+    sql`select reason,created_at,resolved_at,resolution from app.review_holds where order_id=${id} order by created_at desc`,
   ]);
-  return { order, deliveries: asRows(deliveries), events: asRows(events), messages: asRows(messages), reviews: asRows(reviews) };
+  const terms = (order.terms ?? {}) as Record<string, unknown>;
+  const latest = asRows(deliveries)[0];
+  return {
+    order: { ...order, revision_limit: Number(terms.revision_limit ?? 1), review_window_hours: Number(terms.review_window_hours ?? 72), auto_accept_consent: terms.auto_accept_consent === true } as ReadRow,
+    latest_delivery_version: latest ? Number(latest.version) : null,
+    deliveries: asRows(deliveries),
+    events: asRows(events),
+    messages: asRows(messages),
+    reviews: asRows(reviews),
+    cancellation_requests: asRows(cancellations),
+    active_cancellation_request: asRows(cancellations).find((c) => c.status === 'REQUESTED') ?? null,
+    active_review_hold: asRows(holds).find((h) => h.resolved_at === null) ?? null,
+  };
 }
 
 export async function getServiceData(id: string) {

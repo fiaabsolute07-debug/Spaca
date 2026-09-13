@@ -229,9 +229,9 @@ const book: CommandHandler = async ({ tx, actor, form }) => {
     capacity: { pool_id: String(bucket.pool_id), bucket_id: String(bucket.id), week_starts_at: new Date(bucket.starts_at).toISOString(), week_ends_at: new Date(bucket.ends_at).toISOString() },
   };
   const [order] = await tx<Row[]>`insert into app.orders
-    (buyer_id,creator_id,service_id,service_version_id,pool_id,source,title,status,amount_minor,platform_fee_minor,currency,brief,terms,delivery_due_at)
+    (buyer_id,creator_id,service_id,service_version_id,pool_id,source,title,status,amount_minor,platform_fee_minor,currency,brief,brief_ready_at,terms,delivery_due_at)
     values (${actor.id},${String(service.creator_id)},${String(service.id)},${String(version!.id)},${String(bucket.pool_id)},'BOOK',${version!.title},'AWAITING_PAYMENT',
-      ${String(version!.price_minor)},0,${version!.currency},${brief},${JSON.stringify(terms)}::jsonb,null) returning id`;
+      ${String(version!.price_minor)},0,${version!.currency},${brief},now(),${JSON.stringify(terms)}::jsonb,null) returning id`;
   const orderId = String(order!.id);
   await insertReservation(tx, bucket, { orderId }, new Date(Date.now() + CHECKOUT_HOLD_MINUTES * 60_000));
   await orderEvent(tx, orderId, actor.id, 'ORDER_CREATED', { source: 'BOOK', service_version: Number(version!.version), platform_fee_minor: '0' });
