@@ -4,7 +4,8 @@ import { redirect } from 'next/navigation';
 import { createServerClient } from '@supabase/ssr';
 import { sql } from './db';
 
-export type Actor = { id: string; email: string; display_name: string; roles: string[]; is_test: boolean };
+export type ActorStatus = 'ACTIVE' | 'SUSPENDED';
+export type Actor = { id: string; email: string; display_name: string; roles: string[]; is_test: boolean; status: ActorStatus; timezone: string };
 export const SESSION_COOKIE = 'creator_session';
 export function localAuthEnabled() {
   return process.env.NODE_ENV !== 'production' && process.env.AUTH_MODE !== 'supabase';
@@ -45,12 +46,13 @@ export async function getActor(): Promise<Actor | null> {
     const client = await supabaseAuth();
     const { data: { user }, error } = await client.auth.getUser();
     if (error || !user) return null;
-    const [actor] = await sql<Actor[]>`select id,email,display_name,roles,is_test from app.users where auth_user_id=${user.id} and status='ACTIVE'`;
+    // SUSPENDED users keep access to existing obligations; the command envelope blocks new activity (SEC-10).
+    const [actor] = await sql<Actor[]>`select id,email,display_name,roles,is_test,status,timezone from app.users where auth_user_id=${user.id} and status in ('ACTIVE','SUSPENDED')`;
     return actor ?? null;
   }
   const token = (await cookies()).get(SESSION_COOKIE)?.value;
   if (!token || !/^[a-f0-9]{64}$/.test(token)) return null;
-  const [actor] = await sql<Actor[]>`select u.id,u.email,u.display_name,u.roles,u.is_test from app.sessions s join app.users u on u.id=s.user_id where s.token_hash=${hashSessionToken(token)} and s.expires_at>now() and u.status='ACTIVE'`;
+  const [actor] = await sql<Actor[]>`select u.id,u.email,u.display_name,u.roles,u.is_test,u.status,u.timezone from app.sessions s join app.users u on u.id=s.user_id where s.token_hash=${hashSessionToken(token)} and s.expires_at>now() and u.status in ('ACTIVE','SUSPENDED')`;
   return actor ?? null;
 }
 export async function requireActor(): Promise<Actor> {

@@ -1,6 +1,6 @@
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MOCK_SIGNATURE_HEADER, MockPaymentProvider, signMockWebhook, type MockPaymentProviderOptions } from '@/modules/payments/providers';
-import { RUN_DB, ORIGIN, callRoute, createPublishedService, createUser, key, sessionState, type TestUser } from './harness';
+import { poolCounters, RUN_DB, ORIGIN, callRoute, createPublishedService, createUser, key, sessionState, type TestUser } from './harness';
 
 vi.mock('next/headers', () => ({
   cookies: async () => {
@@ -100,7 +100,7 @@ describe.skipIf(!RUN_DB)('TEST_PLAN 4 + PAY-02 — provider funding then full or
       expect(paid.status).toBe(200);
       const order = await orderRow(orderId);
       expect(order).toMatchObject({ status: 'FUNDED', payment_status: 'SUCCEEDED', amount_minor: '65000', platform_fee_minor: '0', provider_fee_minor: '1950' });
-      const [pool] = await sql`select reserved_units,committed_units from app.capacity_pools where id=${poolId}`;
+      const pool = await poolCounters(poolId);
       expect(pool).toMatchObject({ reserved_units: 0, committed_units: 1 });
       const [reservation] = await sql`select state from app.reservations where order_id=${orderId}`;
       expect(reservation!.state).toBe('COMMITTED');
@@ -263,7 +263,7 @@ describe.skipIf(!RUN_DB)('cancellation, late funding and refunds', () => {
     expect((await command(buyer, { command: 'cancel', idempotency_key: key('c'), order_id: orderId })).status).toBe(200);
     expect((await provider.getFundingStatus(intent.reference)).status).toBe('CANCELED');
     expect(await orderRow(orderId)).toMatchObject({ status: 'CANCELLED' });
-    const [pool] = await sql`select reserved_units from app.capacity_pools where id=${poolId}`;
+    const pool = await poolCounters(poolId);
     expect(pool!.reserved_units).toBe(0);
 
     const late = forgeSignedEvent('funding.succeeded', {
@@ -281,7 +281,7 @@ describe.skipIf(!RUN_DB)('cancellation, late funding and refunds', () => {
     expect((await pay(buyer, orderId)).status).toBe(200);
     expect((await command(buyer, { command: 'cancel', idempotency_key: key('c'), order_id: orderId })).status).toBe(200);
     expect(await orderRow(orderId)).toMatchObject({ status: 'CANCELLED', payment_status: 'REFUND_PENDING' });
-    const [pool] = await sql`select committed_units from app.capacity_pools where id=${poolId}`;
+    const pool = await poolCounters(poolId);
     expect(pool!.committed_units).toBe(0);
 
     const requested = await command(buyer, { command: 'refund', idempotency_key: key('r'), order_id: orderId });

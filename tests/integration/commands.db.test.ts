@@ -1,5 +1,6 @@
 import { afterAll, describe, expect, it, vi } from 'vitest';
 import {
+  poolCounters,
   RUN_DB,
   callRoute,
   commandInstant,
@@ -54,8 +55,8 @@ describe.skipIf(!RUN_DB)('TEST_PLAN 1 — authorization and isolation', () => {
 
     const foreignMessage = await command(otherBuyer, { command: 'message', idempotency_key: key('m'), order_id: orderId, body: 'hello' });
     expect(foreignMessage.status).toBe(403);
-    expect(await getOrderData({ id: otherBuyer.id, email: otherBuyer.email, display_name: 'x', roles: ['buyer'], is_test: true }, orderId)).toBeNull();
-    expect(await getOrderData({ id: buyer.id, email: buyer.email, display_name: 'x', roles: ['buyer'], is_test: true }, orderId)).not.toBeNull();
+    expect(await getOrderData({ id: otherBuyer.id, email: otherBuyer.email, display_name: 'x', roles: ['buyer'], is_test: true, status: 'ACTIVE', timezone: 'UTC' }, orderId)).toBeNull();
+    expect(await getOrderData({ id: buyer.id, email: buyer.email, display_name: 'x', roles: ['buyer'], is_test: true, status: 'ACTIVE', timezone: 'UTC' }, orderId)).not.toBeNull();
 
     expect((await command(otherCreator, { command: 'pause_service', idempotency_key: key('p'), service_id: serviceId })).status).toBe(403);
     expect((await command(otherCreator, { command: 'set_capacity', idempotency_key: key('c'), pool_id: poolId, total_units: '99' })).status).toBe(403);
@@ -97,22 +98,38 @@ describe.skipIf(!RUN_DB)('TEST_PLAN 1 — authorization and isolation', () => {
 });
 
 describe.skipIf(!RUN_DB)('TEST_PLAN 2 — capacity race', () => {
-  it('eight concurrent buyers contend for one unit: exactly one reservation commits', async () => {
+  it('CAP-01: twenty concurrent buyers contend for the same week with one unit: exactly one claim', async () => {
     const creator = await createUser('race-creator');
     const { serviceId, poolId } = await createPublishedService(command, creator, { capacity: 1 });
-    const buyers = await Promise.all(Array.from({ length: 8 }, (_, i) => createUser(`race-buyer-${i}`)));
+    const [week] = await sql`select id from app.capacity_buckets where pool_id=${poolId} and ends_at - interval '72 hours' >= now() order by starts_at limit 1`;
+    const buyers = await Promise.all(Array.from({ length: 20 }, (_, i) => createUser(`race-buyer-${i}`)));
 
-    const results = await Promise.all(buyers.map((buyer) => book(buyer, serviceId)));
+    const results = await Promise.all(buyers.map((buyer) =>
+      command(buyer, { command: 'book', idempotency_key: key('book'), service_id: serviceId, brief, bucket_id: String(week!.id) })));
     const winners = results.filter((r) => r.status === 200);
     const losers = results.filter((r) => r.status !== 200);
     expect(winners).toHaveLength(1);
-    expect(losers).toHaveLength(7);
-    for (const loser of losers) expect(String(loser.body.error)).toMatch(/no available capacity/);
-
-    const [pool] = await sql`select total_units,reserved_units,committed_units from app.capacity_pools where id=${poolId}`;
-    expect(pool).toMatchObject({ total_units: 1, reserved_units: 1, committed_units: 0 });
+    expect(losers).toHaveLength(19);
+    for (const loser of losers) {
+      expect(loser.status).toBe(409);
+      expect(String(loser.body.error)).toMatch(/no available capacity/);
+    }
+    const [bucket] = await sql`select total_units,reserved_units,committed_units from app.capacity_buckets where id=${String(week!.id)}`;
+    expect(bucket).toMatchObject({ total_units: 1, reserved_units: 1, committed_units: 0 });
     const [{ count }] = await sql`select count(*)::int as count from app.reservations where pool_id=${poolId}`;
     expect(count).toBe(1);
+  });
+
+  it('without a chosen week, concurrent buyers fill at most one unit per bookable week and never oversell', async () => {
+    const creator = await createUser('race-weeks-creator');
+    const { serviceId, poolId } = await createPublishedService(command, creator, { capacity: 1 });
+    const [{ bookable }] = await sql`select count(*)::int as bookable from app.capacity_buckets where pool_id=${poolId} and ends_at - interval '72 hours' >= now()`;
+    const buyers = await Promise.all(Array.from({ length: 12 }, (_, i) => createUser(`race-weeks-buyer-${i}`)));
+    const results = await Promise.all(buyers.map((buyer) => book(buyer, serviceId)));
+    expect(results.filter((r) => r.status === 200)).toHaveLength(Math.min(12, Number(bookable)));
+    const buckets = await sql`select total_units,reserved_units+committed_units as used from app.capacity_buckets where pool_id=${poolId}`;
+    for (const b of buckets) expect(Number(b.used)).toBeLessThanOrEqual(Number(b.total_units));
+    expect((await poolCounters(poolId)).reserved_units).toBe(Math.min(12, Number(bookable)));
   });
 
   it('capacity cannot be lowered below held units', async () => {
@@ -121,7 +138,7 @@ describe.skipIf(!RUN_DB)('TEST_PLAN 2 — capacity race', () => {
     const { serviceId, poolId } = await createPublishedService(command, creator, { capacity: 2 });
     expect((await book(buyer, serviceId)).status).toBe(200);
     const lowered = await command(creator, { command: 'set_capacity', idempotency_key: key('lower'), pool_id: poolId, total_units: '0' });
-    expect(lowered.status).toBe(400);
+    expect(lowered.status).toBe(409); // CAPACITY_REDUCTION_CONFLICT (CAP-07)
     expect((await command(creator, { command: 'set_capacity', idempotency_key: key('ok'), pool_id: poolId, total_units: '1' })).status).toBe(200);
   });
 });
@@ -144,7 +161,7 @@ describe.skipIf(!RUN_DB)('TEST_PLAN 3 — command idempotency', () => {
 
     const [{ count }] = await sql`select count(*)::int as count from app.orders where buyer_id=${buyer.id}`;
     expect(count).toBe(1);
-    const [pool] = await sql`select reserved_units from app.capacity_pools where id=${poolId}`;
+    const pool = await poolCounters(poolId);
     expect(pool!.reserved_units).toBe(1);
   });
 
@@ -157,7 +174,7 @@ describe.skipIf(!RUN_DB)('TEST_PLAN 3 — command idempotency', () => {
     const results = await Promise.all(Array.from({ length: 6 }, () => book(buyer, serviceId, idempotencyKey)));
     const [{ count }] = await sql`select count(*)::int as count from app.orders where buyer_id=${buyer.id}`;
     expect(count).toBe(1);
-    const [pool] = await sql`select reserved_units from app.capacity_pools where id=${poolId}`;
+    const pool = await poolCounters(poolId);
     expect(pool!.reserved_units).toBe(1);
     expect(results.map((r) => r.status)).toEqual([200, 200, 200, 200, 200, 200]);
     expect(new Set(results.map((r) => String(r.body.id))).size).toBe(1);
@@ -241,7 +258,7 @@ describe.skipIf(!RUN_DB)('TEST_PLAN 7 — auctions', () => {
     });
     expect(created.status).toBe(200);
     const auctionId = String(created.body.id);
-    const [pool] = await sql`select reserved_units from app.capacity_pools where id=${poolId}`;
+    const pool = await poolCounters(poolId);
     expect(pool!.reserved_units).toBe(1);
 
     expect((await getAuctionData(null, auctionId))?.auction.id).toBe(auctionId);

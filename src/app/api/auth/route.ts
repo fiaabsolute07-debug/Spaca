@@ -43,7 +43,7 @@ export async function POST(request: Request) {
       const [user] = await sql`insert into app.users (id,email,display_name,password_hash,roles,is_test,status) values (gen_random_uuid(),${email},${displayName},${hashPassword(password)},ARRAY['buyer','creator'],true,'ACTIVE') returning id`;
       userId = user!.id;
     } else {
-      const [user] = await sql`select id,password_hash from app.users where email=${email} and status='ACTIVE'`;
+      const [user] = await sql`select id,password_hash from app.users where email=${email} and status in ('ACTIVE','SUSPENDED')`;
       if (!user?.password_hash || !verifyPassword(password,user.password_hash)) return failure();
       userId = user.id;
     }

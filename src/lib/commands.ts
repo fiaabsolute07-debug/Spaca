@@ -18,6 +18,7 @@ export type CommandHandler = (ctx: CommandContext) => Promise<CommandResult>;
 /** Error taxonomy from master §13.3 (subset used by implemented commands). */
 export type CommandErrorCode =
   | 'INVALID_INPUT'
+  | 'DOMAIN_RULE'
   | 'FORBIDDEN'
   | 'NOT_FOUND'
   | 'ACCOUNT_SUSPENDED'

@@ -68,8 +68,7 @@ export async function expireCheckoutHolds(options: JobScope = {}): Promise<JobRe
           }
           return 'RECONCILING';
         }
-        await tx`update app.reservations set state='RELEASED' where id=${String(reservation.id)}`;
-        await tx`update app.capacity_pools set reserved_units=greatest(reserved_units-1,0) where id=${String(reservation.pool_id)}`;
+        await tx`update app.reservations set state='RELEASED' where id=${String(reservation.id)}`; // counters via DB trigger
         await tx`update app.orders set status='CANCELLED',version=version+1,updated_at=now() where id=${orderId}`;
         await tx`insert into app.order_events (order_id,actor_id,kind,payload) values (${orderId},${null},'HOLD_EXPIRED',${JSON.stringify({ released_units: 1 })}::jsonb)`;
         if (order.source === 'AUCTION' && order.source_ref) {

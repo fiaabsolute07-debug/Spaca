@@ -31,3 +31,15 @@ bid: auction_id,amount (USD)
 buy_now/close_auction: auction_id (close only at deadline; service owner or system)
 create_pool: request_id,asset_symbol,amount (integer atomic string) LOCAL SIMULATION ONLY no testnet claim
 Only display sandbox actions under environment banner; no fake payment UI presented as live.
+
+## W1-A additions (2026-09-13)
+Public service rows (getPublicData/getServiceData/getCreatorData) now come from the published immutable version and add: service_version_id, service_version, version, weekly_units (total_units kept = weekly units), available_units (next bookable week), next_available_starts_at, next_available_ends_at, pool_timezone. Owner rows (getDashboardData.services) show current fields + status + version + service_version_id (published) and never leak to public pages.
+book: service_id, brief (20+ chars), service_version_id (send the displayed version; 409 QUOTE_CHANGED if the creator updated terms), accept_terms ('on' records auto-accept consent in the order snapshot), bucket_id (optional week choice). Hold lasts CHECKOUT_HOLD_MINUTES (default 15).
+create_service: optional pool_id to share an existing weekly pool (then capacity is ignored); sample_url_n/sample_title_n optional pairs.
+update_service: service_id, expected_version (required), title, description, price, turnaround_hours. Live services get a new version; existing orders keep theirs.
+publish_service / pause_service / archive_service: service_id, expected_version optional. Archived services cannot be republished (422).
+set_capacity: pool_id, weekly_units (total_units accepted as alias). 409 CAPACITY_REDUCTION_CONFLICT if any current/future week already holds more.
+set_pool_timezone: pool_id, timezone (IANA). Booked weeks keep their dates.
+update_profile: + timezone (IANA). Handles are unique.
+add_sample: title, url, description, visibility, optional service_id link; starts PENDING moderation.
+Suspended accounts: 403 ACCOUNT_SUSPENDED for new activity; existing order commands still work.

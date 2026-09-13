@@ -1,6 +1,6 @@
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MockPaymentProvider, type MockPaymentProviderOptions } from '@/modules/payments/providers';
-import { RUN_DB, ORIGIN, callRoute, createPublishedService, createUser, key, sessionState, type TestUser } from './harness';
+import { poolCounters, RUN_DB, ORIGIN, callRoute, createPublishedService, createUser, key, sessionState, type TestUser } from './harness';
 
 vi.mock('next/headers', () => ({
   cookies: async () => {
@@ -83,8 +83,7 @@ describe.skipIf(!RUN_DB)('expire_checkout_holds', () => {
     expect(await orderRow(expired.orderId)).toMatchObject({ status: 'CANCELLED', payment_status: 'PENDING' });
     const [reservation] = await sql`select state from app.reservations where order_id=${expired.orderId}`;
     expect(reservation!.state).toBe('RELEASED');
-    const [pool] = await sql`select reserved_units from app.capacity_pools where id=${expired.poolId}`;
-    expect(pool!.reserved_units).toBe(0);
+    expect((await poolCounters(expired.poolId)).reserved_units).toBe(0);
     expect(await count(sql`select count(*)::int as count from app.order_events where order_id=${expired.orderId} and kind='HOLD_EXPIRED'`)).toBe(1);
     expect((await orderRow(fresh.orderId)).status).toBe('AWAITING_PAYMENT');
   });
@@ -116,7 +115,7 @@ describe.skipIf(!RUN_DB)('expire_checkout_holds', () => {
     const receipt = await funding.receivePaymentWebhook(withheld[0]!.rawBody, withheld[0]!.headers);
     expect(receipt.outcome).toBe('FUNDED');
     expect(await orderRow(orderId)).toMatchObject({ status: 'FUNDED', payment_status: 'SUCCEEDED' });
-    const [pool] = await sql`select reserved_units,committed_units from app.capacity_pools where id=${poolId}`;
+    const pool = await poolCounters(poolId);
     expect(pool).toMatchObject({ reserved_units: 0, committed_units: 1 });
     expect((await jobs.expireCheckoutHolds({ orderId })).examined).toBe(0);
   });

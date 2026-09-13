@@ -13,6 +13,7 @@
  */
 import type postgres from 'postgres';
 import { sql } from '@/lib/db';
+import { commitOrderReservation } from '@/modules/capacity';
 import {
   MockPaymentProvider,
   computeRequestHash,
@@ -453,9 +454,12 @@ async function applyFundingEvent(tx: Tx, event: VerifiedEvent): Promise<string> 
       return kind;
     }
     const providerFee = event.providerFee ?? 0n;
-    await tx`update app.orders set status='FUNDED',payment_status='SUCCEEDED',provider_fee_minor=${providerFee.toString()},version=version+1,updated_at=now() where id=${orderId}`;
-    await tx`update app.reservations set state='COMMITTED',expires_at=null where id=${String(reservation!.id)}`;
-    await tx`update app.capacity_pools set reserved_units=reserved_units-1,committed_units=committed_units+1 where id=${String(reservation!.pool_id)}`;
+    // Work clock starts at verified funding from the sold turnaround snapshot (never at booking time).
+    await tx`update app.orders set status='FUNDED',payment_status='SUCCEEDED',provider_fee_minor=${providerFee.toString()},
+      delivery_due_at=coalesce(delivery_due_at, now() + (coalesce((terms->>'turnaround_hours')::int, 72) * interval '1 hour')),
+      version=version+1,updated_at=now() where id=${orderId}`;
+    // Counters follow reservation state via DB trigger (drizzle/0003).
+    await commitOrderReservation(tx, orderId);
     await orderEvent(tx, orderId, 'PAYMENT_CONFIRMED', {
       provider: MOCK_PROVIDER,
       reference: event.reference,

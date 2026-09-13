@@ -48,6 +48,13 @@ export async function callRoute(
   return { status: response.status, body: text ? (JSON.parse(text) as Record<string, unknown>) : {} };
 }
 
+/** Capacity counters now live on weekly buckets (drizzle/0003); sum them per pool. */
+export async function poolCounters(poolId: string): Promise<{ reserved_units: number; committed_units: number }> {
+  const [row] = await sql<{ reserved_units: number; committed_units: number }[]>`select coalesce(sum(reserved_units),0)::int as reserved_units,
+    coalesce(sum(committed_units),0)::int as committed_units from app.capacity_buckets where pool_id=${poolId}`;
+  return row!;
+}
+
 export const key = (label: string) => `it-${runId}-${label}-${randomUUID().slice(0, 8)}`;
 
 /** Local wall-clock ISO without zone; the command parser appends `Z`. */

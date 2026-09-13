@@ -36,11 +36,16 @@ try {
     }
     await tx`update app.profiles set bio='Brand stories, launch writing, and editorial systems for thoughtful teams.',niche='Launch writing',avatar_color='#e7bda6',social_url='https://example.com/ari'
       where user_id=${creator.id}`;
-    await tx`insert into app.capacity_pools (id,creator_id,total_units,reserved_units,committed_units,starts_at,ends_at)
-      values (${poolId},${creator.id},5,0,0,now(),now()+interval '90 days') on conflict (id) do nothing`;
-    await tx`insert into app.services (id,creator_id,pool_id,title,description,taxonomy,price_minor,currency,turnaround_hours,revision_limit,status)
-      values (${serviceId},${creator.id},${poolId},'Launch story and landing page copy','A focused launch narrative, landing page structure, and conversion-minded copy for a product people should understand quickly.','CREATE',65000,'USD',72,1,'PUBLISHED')
-      on conflict (id) do nothing`;
+    await tx`insert into app.capacity_pools (id,creator_id,name,timezone,weekly_units)
+      values (${poolId},${creator.id},'Launch writing weekly capacity','Asia/Ho_Chi_Minh',5) on conflict (id) do nothing`;
+    const [existingService] = await tx<{ id: string }[]>`select id from app.services where id=${serviceId}`;
+    if (!existingService) {
+      await tx`insert into app.services (id,creator_id,pool_id,title,description,taxonomy,price_minor,currency,turnaround_hours,revision_limit,status)
+        values (${serviceId},${creator.id},${poolId},'Launch story and landing page copy','A focused launch narrative, landing page structure, and conversion-minded copy for a product people should understand quickly.','CREATE',65000,'USD',72,1,'DRAFT')`;
+      const [version] = await tx<{ id: string }[]>`insert into app.service_versions (service_id,version,title,description,taxonomy,price_minor,currency,turnaround_hours,revision_limit,pool_id,created_by)
+        select id,1,title,description,taxonomy,price_minor,currency,turnaround_hours,revision_limit,pool_id,creator_id from app.services where id=${serviceId} returning id`;
+      await tx`update app.services set status='PUBLISHED',published_version_id=${version!.id} where id=${serviceId}`;
+    }
     const [{ count }] = await tx<{ count: number }[]>`select count(*)::int as count from app.samples where creator_id=${creator.id}`;
     if (count === 0) {
       await tx`insert into app.samples (creator_id,title,url,description) values
@@ -48,6 +53,8 @@ try {
         (${creator.id},'Conversion landing page','https://example.com/work/landing-page','Landing page copy with a clear hierarchy from problem to proof.'),
         (${creator.id},'Editorial campaign','https://example.com/work/editorial','A launch series designed to be useful before it becomes promotional.')`;
     }
+    await tx`insert into app.service_samples (service_id,sample_id,creator_id)
+      select ${serviceId}, id, creator_id from app.samples where creator_id=${creator.id} on conflict do nothing`;
   });
   console.log(`seeded local fixtures into ${target.host}/${target.database}: ${Object.keys(FIXTURE_PERSONAS).join(', ')}`);
   console.log('sign in locally with POST /api/dev/session {persona} (see src/lib/fixtures.ts)');
