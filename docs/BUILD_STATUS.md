@@ -30,5 +30,3 @@ The repository was empty at audit time. The master prompt was retained in `docs/
 ## Next action
 
 Run the existing `scripts/postgres.ts`, `scripts/migrate.ts`, and `scripts/seed.ts` in a normal local/Docker/Supabase environment with IPC enabled. Then execute the integration cases in `docs/TEST_PLAN.md`, attach redacted screenshots/receipts under `docs/evidence/`, and move P0 to PASS before calling P1A/P1B/P1C accepted.
-
-Mirai is documented as an optional OpenAI-compatible code-generation provider only. Its credential is not in the product. This Codex task continues on its configured provider; a running task cannot be hot-switched to another endpoint.

@@ -33,5 +33,5 @@ The default Turbopack build can require child-process port binding in this manag
 
 ## Provider and secrets
 
-The product does not contain a Mirai key or any other live credential. Mirai can be configured in a separately managed CLI process using its documented OpenAI-compatible Responses base URL, but this Codex task cannot switch its provider during an active run. Production authentication, payment, email, storage, and deployment require explicit credentials and release evidence.
+The product does not contain any live credential. Production authentication, payment, email, storage, and deployment require explicit credentials and release evidence.
 

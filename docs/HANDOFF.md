@@ -30,7 +30,6 @@ Claude ran PostgreSQL in the user's normal macOS shell. It added DB-backed integ
   4. Wire a scheduler (Inngest/cron) to `src/modules/jobs`.
   5. Add dispute/finance resolution and an admin queue for `reconciliation_cases`.
   6. Split provider calls out of DB transactions before any real adapter.
-  7. Remove the stale Mirai notes (the user dropped Mirai).
 
 ## Current state
 
@@ -45,5 +44,3 @@ Claude ran PostgreSQL in the user's normal macOS shell. It added DB-backed integ
 1. Use a normal local/Docker/Supabase PostgreSQL runtime and run `db:start` (or set `DATABASE_MIGRATION_URL`/`DATABASE_URL`), `db:migrate`, and `db:seed`.
 2. Add database-backed integration tests for authorization, capacity race, idempotency, order lifecycle, requests, and auctions from `docs/TEST_PLAN.md`.
 3. Capture redacted UI evidence at 360/768/1440px, update `docs/ACCEPTANCE.md`, then proceed with the later master phases.
-
-Mirai API details are in `docs/evidence/p0-foundation.md`; no secret is persisted. A new CLI process may be configured with Mirai's documented Responses endpoint, but the current Codex task cannot change provider mid-run.
