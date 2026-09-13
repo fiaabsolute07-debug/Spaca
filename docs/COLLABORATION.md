@@ -20,9 +20,14 @@ Both halves are full implementation work with their own tests.
 | **Codex** | `src/app/**` **except** `src/app/api/**`; `src/components/**`; `src/app/globals.css`; `tests/e2e/**`; `playwright.config.ts`; `.github/workflows/**`; `scripts/env-check.ts`, `scripts/release-check.ts` (new scripts other than the three Claude scripts); `README.md`; `docs/PAYMENT_READINESS.md`, `docs/runbooks/**`, `docs/STAGING.md`, `docs/RELEASE_CHECKLIST.md`, `docs/ACCEPTANCE.md`, `docs/BUILD_STATUS.md`, `docs/HANDOFF.md`, `docs/REQUIREMENTS_TRACEABILITY.md`, `docs/PRODUCT_SPEC.md`, `docs/MIRAI_PROVIDER.md`, `docs/evidence/codex-*.md`, `docs/evidence/astra-review-*.md` |
 | Shared, change by request only | `package.json`, `pnpm-lock.yaml`, `tsconfig.json`, `vitest.config.ts`, `next.config.ts`. Write the requested change in your evidence file; Claude applies it. |
 
+**How Codex is connected.** Claude dispatches each Codex task with the official Codex CLI:
+- Command: `~/.local/bin/codex exec -C <repo> -s workspace-write -o <report>`. The binary is signed by OpenAI OpCo, LLC and runs in a sandbox with no network.
+- Codex writes code and its evidence file. It does **not** commit and does **not** edit this board.
+- Claude reviews each Codex diff, writes `docs/evidence/claude-review-<task>.md`, commits the Codex paths as `<task>: … (Codex)`, and updates the board status.
+
 Rules:
 - Never edit the other owner's paths. Put requests in your evidence/review file.
-- **Git:** commit only your own paths (`git add <paths>`, never `git add -A`). No reset, rebase, stash or checkout of others' files. Commit messages start with the task id.
+- **Git:** Claude is the only committer. Commit only the task's paths (`git add <paths>`, never `git add -A`). No reset, rebase, stash or checkout of others' files. Commit messages start with the task id.
 - UI reads only exported read models and posts only commands documented in `docs/UI_CONTRACT.md`. If the UI needs a new field or command, write the request in `docs/evidence/codex-<task>.md`; Claude adds it and updates the contract.
 - Codex cannot run DB suites. Claude runs `RUN_DB_INTEGRATION=1 vitest run` and E2E against local PostgreSQL, and records results in `docs/evidence/claude-*.md`.
 - No live money, public deployment, external messages or secrets. Label mock, sandbox, testnet and live separately. A green build is not acceptance.
@@ -38,7 +43,7 @@ Status values: TODO · IN_PROGRESS · REVIEW · DONE · BLOCKED.
 | W1-0 | Split the command route into domain modules (`bf5e2e2`) | regression 83/83 | — | DONE |
 | W1-A | Supply engine v2: service versions + order terms snapshot, weekly capacity buckets (timezone/DST), shared pools, lock order, suspended-user new-sale block, seed guard. Migration 0003. | SUP-01..04, CAP-01/02/06/07/08/09, SEC-09/10, FND-07 | W1-0 | IN_PROGRESS |
 | W1-B | Order lifecycle engine (§7.2): expected/delivery versions, work clock at funding, APPROVED→COMPLETED on release, auto-accept + ReviewHold + reminders, mutual cancellation requests, reviews. Migration 0004. | ORD-01..11/13/15/16, REV-01/02, CAP-12 | W1-A | TODO |
-| W1-S | Dev-only fixture session endpoint for E2E (`POST /api/dev/session`, local only, fail closed in production) | FND-03, SEC-08 | W1-0 | TODO |
+| W1-S | Dev-only fixture session endpoint for E2E (`POST /api/dev/session`, local only, fail closed in production), §17.3 personas, FND-07 seed guard (`bf9ccba`) | FND-03, FND-07, SEC-08 | W1-0 | DONE |
 | W2-B | Roles/audit/operator backend: `user_roles`, audit log, finance refund + dispute resolution, reconciliation retry, suspend user, feature flags + checkout kill switch | SEC-12/13, OPS-04/05, FND-05 | W1-B | TODO |
 | W2-S | Storage backend: upload intents, private delivery assets, signed downloads, MIME/size validation | SEC-05/06/14, ORD-07 | W1-B | TODO |
 | W3+ | P2 requests v2, P3 auctions v2, P4 crypto (local/testnet-blocked), P5 discovery backend, P6 PUBLISH/ACCESS/DIGITAL backend | REQ, AUC, CRY, DSC, XPL | W2 | TODO |
