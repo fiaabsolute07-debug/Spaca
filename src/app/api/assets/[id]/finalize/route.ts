@@ -1,11 +1,11 @@
 import { NextResponse } from 'next/server';
 import { finalizeUpload } from '@/modules/storage/service';
-import { assetRoute } from '@/modules/storage/http';
+import { jsonRoute } from '@/lib/json-route';
 
 /** POST → { id, state: READY | QUARANTINED | REJECTED }. Non-READY outcomes answer 422 with the recorded state. */
 export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {
   const { id } = await context.params;
-  const response = await assetRoute(request, (actor) => finalizeUpload(actor!, id));
+  const response = await jsonRoute(request, (actor) => finalizeUpload(actor!, id));
   if (response.status !== 200) return response;
   const body = (await response.clone().json()) as { state: string; detail?: string };
   if (body.state === 'READY') return response;

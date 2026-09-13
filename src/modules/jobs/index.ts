@@ -27,6 +27,7 @@ import { isProviderError } from '@/modules/payments/providers';
 import { enqueueNotification } from '@/modules/notifications/enqueue';
 import { approveOrder } from '@/modules/orders/commands';
 import { closeAuction } from '@/modules/auctions/commands';
+import { recheckPendingDeposits, scanChainDeposits } from '@/modules/crypto/deposits';
 import { latestDelivery, termsOf } from '@/modules/orders/lifecycle';
 import { FINALIZE_GRACE_SECONDS, type StorageBucket } from '@/modules/storage/policy';
 import { getStorageProvider } from '@/modules/storage/provider';
@@ -434,9 +435,30 @@ export async function closeDueAuctions(options: { limit?: number; auctionId?: st
   return result;
 }
 
+/** Chain indexer for every enabled network: pending deposits first (finality/reorg), then new settlement logs. */
+export async function indexChainDeposits(): Promise<JobReport> {
+  const { result, tally } = report('chain_indexer');
+  const networks = await sql<Row[]>`select chain_id from app.chain_networks where enabled order by chain_id`;
+  for (const network of networks) {
+    const chainId = Number(network.chain_id);
+    for (const run of [recheckPendingDeposits, scanChainDeposits]) {
+      try {
+        const outcome = await run(chainId);
+        if (outcome.error) tally(outcome.error);
+        for (const [name, count] of Object.entries(outcome.outcomes)) for (let i = 0; i < count; i++) tally(name);
+      } catch (error) {
+        console.error('chain_indexer failed', chainId, error instanceof Error ? error.name : error);
+        tally('ERROR');
+      }
+    }
+  }
+  return result;
+}
+
 export async function runJobsOnce(): Promise<JobReport[]> {
   return [
     await reprocessWebhookInbox(),
+    await indexChainDeposits(),
     await reconcileProviderOperations(),
     await expireCheckoutHolds(),
     await expireHireOffers(),

@@ -143,3 +143,25 @@ Commands (error codes follow §13.3):
 - cancel_auction: auction_id, reason (optional). Seller only, before any bid; otherwise 409.
 - close_auction: auction_id (seller). 422 before the deadline, 409 if already closed. The close_due_auctions job does the same automatically.
 - admin_invalidate_bid: bid_id, reason. Moderator/admin; only while the auction is open.
+
+## W5-C1 additions (2026-09-14): crypto checkout (local devnet)
+
+getOrderData additions:
+- order.payment_rail: MOCK_PROVIDER | CRYPTO.
+- payment_receipt: the latest PAYMENT_CONFIRMED payload (rail, network_mode, chain_id, tx_hash, log_index, asset, amount_atomic).
+- crypto_payment (buyer only): { id, status AWAITING_DEPOSIT|PENDING_FINALITY|CONFIRMED|EXCEPTION|CANCELLED, status_reason, chain_id, network_name, network_mode LOCAL|TESTNET, symbol, decimals, amount_atomic, amount_display, recipient, reference, expires_at, last_deposit{tx_hash, status, reason} } | null.
+- crypto_options (buyer only; AWAITING_PAYMENT; flag on): [asset_id, symbol, decimals, kind, chain_id, network_name, mode, amount_display].
+- Always label LOCAL as simulated and TESTNET as test tokens. Never show a USD value for tokens.
+
+Command:
+- create_crypto_payment: order_id, chain_id, asset_id (optional), wallet_id (optional).
+- Errors: 422 FEATURE_DISABLED, UNSUPPORTED_ASSET, SLOT_EXPIRED; 409 when a card payment or deposit is in progress.
+
+API routes:
+- POST /api/wallets/challenge {chain_id, address} → {challenge_id, message, expires_at}. Sign `message` with personal_sign.
+- POST /api/wallets/verify {challenge_id, signature} → {wallet_id, address, chain_id}. Single use.
+- POST /api/crypto/deposits {intent_id, tx_hash} → {results:[{status CREDITED|PENDING_FINALITY|NOT_FOUND|REJECTED|DUPLICATE|REORGED, reason, funding}]}.
+  - The hash is a hint only. Refresh the order after CREDITED, PENDING_FINALITY or REJECTED.
+
+Dev only:
+- POST /api/dev/local-chain/pay {intent_id} → {tx_hash}. Simulates the wallet on LOCAL networks; 404 in production.

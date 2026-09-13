@@ -11,6 +11,7 @@ const target = assertLocalDatabaseTarget(url);
 const sql = postgres(url, { max: 1, connect_timeout: 10 });
 
 const creator = FIXTURE_PERSONAS.creator_c;
+const LOCAL_DEVNET = { chainId: 1337001, settlement: '0x5e7713e00000000000000000000000000000c0de', usdcToken: '0x05dc000000000000000000000000000000000006' };
 const poolId = '20000000-0000-4000-8000-000000000001';
 const serviceId = '30000000-0000-4000-8000-000000000001';
 
@@ -59,6 +60,16 @@ try {
     }
     await tx`insert into app.service_samples (service_id,sample_id,creator_id)
       select ${serviceId}, id, creator_id from app.samples where creator_id=${creator.id} on conflict do nothing`;
+    // Simulated local devnet (no real chain). The 18-decimal native USDC and the 6-decimal token interface are separate
+    // registry entries; an intent names one, and an intent is credited at most once, so one balance is never double-counted.
+    // Crypto checkout stays behind CRYPTO_CHECKOUT_ENABLED, which an admin turns on with an audit reason.
+    await tx`insert into app.chain_networks (chain_id,name,mode,settlement_address,finality_confirmations,enabled,verification_note)
+      values (${LOCAL_DEVNET.chainId},'Local devnet (simulated)','LOCAL',${LOCAL_DEVNET.settlement},3,true,'In-process simulator for local development and tests; not a real chain')
+      on conflict (chain_id) do nothing`;
+    await tx`insert into app.chain_assets (chain_id,symbol,kind,contract_address,decimals,balance_key,usd_pegged,transfer_behavior,allowlisted)
+      values (${LOCAL_DEVNET.chainId},'USDC','NATIVE',null,18,'USDC',true,'STANDARD',true),
+             (${LOCAL_DEVNET.chainId},'USDC','ERC20',${LOCAL_DEVNET.usdcToken},6,'USDC-ERC20',true,'STANDARD',true)
+      on conflict do nothing`;
   });
   console.log(`seeded local fixtures into ${target.host}/${target.database}: ${Object.keys(FIXTURE_PERSONAS).join(', ')}`);
   console.log('sign in locally with POST /api/dev/session {persona} (see src/lib/fixtures.ts)');

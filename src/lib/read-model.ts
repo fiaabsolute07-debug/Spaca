@@ -1,4 +1,5 @@
 import { sql } from './db';
+import { formatAtomic, usdMinorToAtomic } from '@/modules/crypto/registry';
 import type { Actor } from './auth';
 import { poolAvailability } from '@/modules/capacity';
 
@@ -90,7 +91,7 @@ export async function getDashboardData(actor: Actor) {
 export async function getOrderData(actor: Actor, id: string) {
   const [order] = asRows(await sql`select o.id,o.buyer_id,o.creator_id,o.service_id,o.service_version_id,o.source,o.title,o.status,o.amount_minor,o.platform_fee_minor,o.provider_fee_minor,
       o.currency,o.brief,o.terms,o.brief_ready_at,o.funded_at,o.work_start_at,o.delivery_due_at,o.review_due_at,o.revision_due_at,o.revision_count,o.approved_at,o.completed_at,
-      o.cancelled_at,o.cancellation_refund_minor,o.status_before_dispute,o.version,o.settlement_status,o.payment_status,o.created_at,
+      o.cancelled_at,o.cancellation_refund_minor,o.status_before_dispute,o.version,o.settlement_status,o.payment_status,o.payment_rail,o.created_at,
       bu.display_name as buyer_name,cu.display_name as creator_name
     from app.orders o join app.users bu on bu.id=o.buyer_id join app.users cu on cu.id=o.creator_id
     where o.id=${id} and (o.buyer_id=${actor.id} or o.creator_id=${actor.id})`);
@@ -107,6 +108,19 @@ export async function getOrderData(actor: Actor, id: string) {
       from app.storage_assets a left join app.delivery_assets da on da.asset_id=a.id
       where a.order_id=${id} and a.lifecycle_state <> 'DELETED' group by a.id order by a.created_at`,
   ]);
+  const isBuyer = actor.id === String(order.buyer_id);
+  // Crypto checkout (W5-C1): the buyer sees their latest intent; both parties see how the order was paid.
+  const [cryptoIntent] = isBuyer ? asRows(await sql`select i.id,i.status,i.status_reason,i.chain_id,i.network_mode,i.amount_atomic,i.recipient,i.reference,i.expires_at,
+      a.symbol,a.decimals,a.kind as asset_kind,n.name as network_name,
+      (select json_build_object('tx_hash',d.tx_hash,'status',d.status,'reason',d.reason) from app.chain_deposits d where d.intent_id=i.id order by d.created_at desc limit 1) as last_deposit
+    from app.crypto_payment_intents i join app.chain_assets a on a.id=i.asset_id join app.chain_networks n on n.chain_id=i.chain_id
+    where i.order_id=${id} order by i.created_at desc limit 1`) : [];
+  const cryptoEnabled = isBuyer && order.status === 'AWAITING_PAYMENT' && (await sql`select enabled from app.feature_flags where key='CRYPTO_CHECKOUT_ENABLED'`)[0]?.enabled === true;
+  const cryptoOptions = cryptoEnabled ? asRows(await sql`select a.id as asset_id,a.symbol,a.decimals,a.kind,n.chain_id,n.name as network_name,n.mode
+    from app.chain_assets a join app.chain_networks n on n.chain_id=a.chain_id
+    where n.enabled and a.usd_pegged and a.allowlisted and n.mode in ('LOCAL','TESTNET') ${process.env.NODE_ENV === 'production' ? sql`and n.mode <> 'LOCAL'` : sql``}
+    order by n.chain_id, (a.kind='NATIVE') desc`) : [];
+  const [paymentConfirmed] = asRows(await sql`select payload from app.order_events where order_id=${id} and kind='PAYMENT_CONFIRMED' order by created_at desc limit 1`);
   // Unattached delivery uploads stay private to their uploader until they are part of a submitted delivery.
   const files = asRows(assets).filter((file) => file.purpose !== 'DELIVERY' || String(file.owner_id) === actor.id || (file.attachments as unknown[]).length > 0);
   const terms = (order.terms ?? {}) as Record<string, unknown>;
@@ -122,6 +136,9 @@ export async function getOrderData(actor: Actor, id: string) {
     active_cancellation_request: asRows(cancellations).find((c) => c.status === 'REQUESTED') ?? null,
     active_review_hold: asRows(holds).find((h) => h.resolved_at === null) ?? null,
     files,
+    payment_receipt: paymentConfirmed ? paymentConfirmed.payload : null,
+    crypto_payment: cryptoIntent ? { ...cryptoIntent, amount_display: formatAtomic(BigInt(String(cryptoIntent.amount_atomic)), Number(cryptoIntent.decimals)) } : null,
+    crypto_options: cryptoOptions.map((option) => ({ ...option, amount_display: formatAtomic(usdMinorToAtomic(BigInt(String(order.amount_minor)), Number(option.decimals)), Number(option.decimals)) })),
   };
 }
 

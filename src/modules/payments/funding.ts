@@ -166,6 +166,11 @@ export async function completeMockCheckout(buyerId: string, orderId: string, out
  * captured funds, cancellation is refused until the webhook is processed (then refund instead).
  */
 export async function cancelOpenFunding(tx: Tx, orderId: string): Promise<void> {
+  // A crypto deposit seen on chain but not yet final is an uncertain payment, like an UNKNOWN provider call (CRY-05).
+  const [pendingChain] = await tx<Row[]>`select id from app.crypto_payment_intents where order_id=${orderId} and status='PENDING_FINALITY' limit 1`;
+  if (pendingChain) throw new PaymentFlowError('A crypto deposit for this order is waiting for finality; retry after it settles', 'INVALID_STATE');
+  await tx`update app.crypto_payment_intents set status='CANCELLED',status_reason='Order cancelled before a deposit arrived',updated_at=now()
+    where order_id=${orderId} and status='AWAITING_DEPOSIT'`;
   if (!mockPaymentsEnabled()) return;
   const [open] = await tx<Row[]>`select operation_id,provider_reference from app.provider_operations
     where order_id=${orderId} and kind='funding.create' and status='SUCCEEDED' and provider_reference is not null
@@ -196,6 +201,7 @@ export async function cancelOpenFunding(tx: Tx, orderId: string): Promise<void> 
 /** Requests a full refund of provider-confirmed funding. The order shows REFUNDED only after the provider confirms. */
 export async function requestProviderRefund(tx: Tx, order: Row, reason: RefundReason): Promise<ProviderCallResult> {
   const orderId = String(order.id);
+  if (order.payment_rail === 'CRYPTO') throw new PaymentFlowError('Crypto refunds need the chain settlement adapter, which is not implemented yet', 'UNAVAILABLE');
   const [funding] = await tx<Row[]>`select provider_reference from app.provider_operations
     where order_id=${orderId} and kind='funding.create' and outcome->>'fundingStatus'='SUCCEEDED' order by created_at desc limit 1`;
   if (!funding) throw new PaymentFlowError('No provider-confirmed funding exists for this order', 'INVALID_STATE');
@@ -239,6 +245,7 @@ export function feePayerPolicy(): FeePayerPolicy {
 export async function requestCreatorRelease(tx: Tx, order: Row): Promise<ProviderCallResult> {
   const orderId = String(order.id);
   if (!(await isFlagEnabled(tx, 'PAYOUT_CREATION_ENABLED'))) throw new PaymentFlowError('New payouts are paused by the payout kill switch', 'UNAVAILABLE');
+  if (order.payment_rail === 'CRYPTO') throw new PaymentFlowError('Crypto payouts need the chain settlement adapter, which is not implemented yet', 'UNAVAILABLE');
   const [funding] = await tx<Row[]>`select provider_reference from app.provider_operations
     where order_id=${orderId} and kind='funding.create' and outcome->>'fundingStatus'='SUCCEEDED' order by created_at desc limit 1`;
   if (!funding) throw new PaymentFlowError('No provider-confirmed funding exists for this order', 'INVALID_STATE');
@@ -510,6 +517,59 @@ async function applyFundingEvent(tx: Tx, event: VerifiedEvent): Promise<string> 
     return updated.length ? 'PAYMENT_FAILED' : 'NO_REGRESSION';
   }
   return 'IGNORED';
+}
+
+export type ChainFundingFact = {
+  orderId: string;
+  amountMinor: bigint;
+  chainId: number;
+  networkMode: string;
+  txHash: string;
+  logIndex: number;
+  assetSymbol: string;
+  amountAtomic: string;
+};
+
+/**
+ * Applies a server-verified, final on-chain deposit to its order (master §11.4). Same guards as provider funding:
+ * exact amount, AWAITING_PAYMENT with a live or reconciling hold, one credit per chain event; otherwise a case.
+ */
+export async function applyChainFunding(tx: Tx, fact: ChainFundingFact): Promise<'FUNDED' | 'LATE_FUNDING' | 'DUPLICATE_FUNDING' | 'AMOUNT_MISMATCH' | 'DUPLICATE_FACT'> {
+  const { orderId } = fact;
+  const ledgerKey = `funding:chain:${fact.chainId}:${fact.txHash.toLowerCase()}:${fact.logIndex}`;
+  const [order] = await tx<Row[]>`select * from app.orders where id=${orderId} for update`;
+  if (!order) throw new PaymentFlowError('Order not found for a verified chain deposit', 'INVALID_STATE');
+  const [existing] = await tx<Row[]>`select id from app.ledger_transactions where idempotency_key=${ledgerKey}`;
+  if (existing) return 'DUPLICATE_FACT';
+  const chainRef = { rail: 'CRYPTO', network_mode: fact.networkMode, chain_id: fact.chainId, tx_hash: fact.txHash, log_index: fact.logIndex, asset: fact.assetSymbol, amount_atomic: fact.amountAtomic };
+  if (fact.amountMinor !== BigInt(String(order.amount_minor)) || String(order.currency) !== 'USD') {
+    await openCase(tx, orderId, null, 'AMOUNT_MISMATCH', 'HIGH', 'On-chain deposit amount differs from the order snapshot; refund or top up with operator approval');
+    return 'AMOUNT_MISMATCH';
+  }
+  const [reservation] = await tx<Row[]>`select * from app.reservations where order_id=${orderId} for update`;
+  if (order.payment_status === 'SUCCEEDED' || order.status !== 'AWAITING_PAYMENT' || !['HELD', 'RECONCILING'].includes(String(reservation?.state))) {
+    const kind = order.payment_status === 'SUCCEEDED' ? 'DUPLICATE_FUNDING' : 'LATE_FUNDING';
+    await openCase(tx, orderId, null, kind, 'HIGH', 'An on-chain deposit arrived that the order cannot accept; refund it from the settlement address with operator approval');
+    await orderEvent(tx, orderId, kind, chainRef);
+    return kind;
+  }
+  const amount = fact.amountMinor;
+  await tx`update app.orders set status='FUNDED',payment_status='SUCCEEDED',payment_rail='CRYPTO',provider_fee_minor=0,funded_at=now(),
+    version=version+1,updated_at=now() where id=${orderId}`;
+  await recomputeWorkClock(tx, orderId);
+  await commitOrderReservation(tx, orderId);
+  await orderEvent(tx, orderId, 'PAYMENT_CONFIRMED', { ...chainRef, platform_fee_minor: '0', provider_fee_minor: '0' });
+  await ledger(tx, orderId, 'FUNDING_CAPTURED', ledgerKey, [
+    [`chain_clearing:${fact.chainId}`, amount],
+    [`order_principal:${orderId}`, -amount],
+  ], 'USD');
+  await outbox(tx, orderId, `notify:payment.confirmed:${orderId}`, {
+    templateId: 'payment.confirmed', recipientId: String(order.buyer_id), params: { orderRef: orderId, amount: amount.toString(), currency: 'USD' },
+  });
+  await outbox(tx, orderId, `notify:order.new:${orderId}`, {
+    templateId: 'order.new', recipientId: String(order.creator_id), params: { orderRef: orderId, serviceTitle: String(order.title).slice(0, 120) },
+  });
+  return 'FUNDED';
 }
 
 async function applyRefundEvent(tx: Tx, event: VerifiedEvent): Promise<string> {

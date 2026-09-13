@@ -1,9 +1,9 @@
 import { createUploadIntent } from '@/modules/storage/service';
-import { assetRoute, readInput } from '@/modules/storage/http';
+import { jsonRoute, readInput } from '@/lib/json-route';
 
 /** POST purpose, filename, mime, size, order_id? → { id, upload: { url, method, headers, expires_at } }. */
 export async function POST(request: Request) {
-  return assetRoute(request, async (actor) => {
+  return jsonRoute(request, async (actor) => {
     const input = await readInput(request);
     return createUploadIntent(actor!, {
       purpose: input.purpose ?? '',

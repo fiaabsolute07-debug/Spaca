@@ -3,11 +3,12 @@ import type { CommandHandler } from '@/lib/commands';
 import { adminCommands } from '@/modules/admin/commands';
 import { auctionCommands } from '@/modules/auctions/commands';
 import { catalogCommands } from '@/modules/catalog/commands';
+import { cryptoCommands } from '@/modules/crypto/commands';
 import { orderCommands } from '@/modules/orders/commands';
 import { requestCommands } from '@/modules/requests/commands';
 import { rewardCommands } from '@/modules/rewards/commands';
 
-const modules = [catalogCommands, orderCommands, requestCommands, auctionCommands, rewardCommands, adminCommands];
+const modules = [catalogCommands, orderCommands, requestCommands, auctionCommands, rewardCommands, cryptoCommands, adminCommands];
 
 export const commandHandlers: Readonly<Record<string, CommandHandler>> = (() => {
   const merged: Record<string, CommandHandler> = {};

@@ -1,5 +1,6 @@
 import { CommandForm, Field, date, money, num, str, type Row } from '../ui';
 import { mockPaymentsEnabled } from '@/modules/payments/funding';
+import { CryptoPaymentPanel } from '../crypto/crypto-payment-panel';
 
 type Props = {
   order: Row;
@@ -10,13 +11,15 @@ type Props = {
   latestDeliveryVersion: number | null;
   activeCancellation: Row | null;
   activeHold: Row | null;
+  cryptoPayment?: Row | null;
+  cryptoOptions?: Row[];
   route: string;
 };
 
 const ACTIVE_WORK = ['IN_PROGRESS', 'DELIVERED', 'REVISION_REQUESTED'];
 
 /** Actions per master §7.2; the server re-checks every rule, the UI only offers what is currently valid. */
-export function OrderNextStepPanel({ order: o, buyer, creator, actorId, reviews, latestDeliveryVersion, activeCancellation, activeHold, route }: Props) {
+export function OrderNextStepPanel({ order: o, buyer, creator, actorId, reviews, latestDeliveryVersion, activeCancellation, activeHold, cryptoPayment = null, cryptoOptions = [], route }: Props) {
   const status = str(o.status);
   const orderId = str(o.id);
   const briefReady = Boolean(o.brief_ready_at);
@@ -39,11 +42,13 @@ export function OrderNextStepPanel({ order: o, buyer, creator, actorId, reviews,
       <Field name="brief" label="Project brief" type="textarea" required placeholder="Product, audience, goal, key message, required facts and links (at least 20 characters)." />
     </CommandForm>}
 
-    {status === 'AWAITING_PAYMENT' && buyer && mockPaymentsEnabled() && <form method="post" action="/api/dev/mock-checkout" className="command-form">
+    {status === 'AWAITING_PAYMENT' && buyer && mockPaymentsEnabled() && !['AWAITING_DEPOSIT', 'PENDING_FINALITY'].includes(str(cryptoPayment?.status)) && <form method="post" action="/api/dev/mock-checkout" className="command-form">
       <input type="hidden" name="order_id" value={orderId} />
       <p className="muted">Local test provider. The order is funded only after the provider&apos;s signed confirmation is verified. No real funds move.</p>
       <button className="button" type="submit">Pay with local test provider<span aria-hidden>↗</span></button>
     </form>}
+
+    {status === 'AWAITING_PAYMENT' && buyer && <CryptoPaymentPanel orderId={orderId} intent={cryptoPayment} options={cryptoOptions} route={route} />}
 
     {status === 'FUNDED' && creator && (briefReady
       ? <CommandForm command="start" label="Start work" values={base} returnTo={route}>

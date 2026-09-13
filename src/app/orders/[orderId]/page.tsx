@@ -4,6 +4,7 @@ import { OrderTimelinePanel } from '@/components/order-workspace/timeline-panel'
 import { OrderDeliveryPanel } from '@/components/order-workspace/delivery-panel';
 import { OrderBriefPanel } from '@/components/order-workspace/brief-panel';
 import { OrderFilesPanel } from '@/components/order-workspace/files-panel';
+import { NetworkBadge } from '@/components/crypto/crypto-payment-panel';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { getOrderData } from '@/lib/read-model';
@@ -59,9 +60,12 @@ export default async function OrderPage({
         title={str(o.title)}
         description={`${str(o.buyer_name)} and ${str(o.creator_name)} · ${money(o.amount_minor)} · Platform fee $0.00`}
       />
-      <Badge>
-        {str(o.payment_status, 'PENDING')}
-      </Badge>
+      <div className="inline-actions">
+        <Badge>
+          {str(o.payment_status, 'PENDING')}
+        </Badge>
+        {str(o.payment_rail) === 'CRYPTO' && d.payment_receipt ? <NetworkBadge mode={row(d.payment_receipt).network_mode} /> : null}
+      </div>
     </div>
     <div className="split">
       <div>
@@ -80,6 +84,8 @@ export default async function OrderPage({
           latestDeliveryVersion={d.latest_delivery_version === null ? null : Number(d.latest_delivery_version)}
           activeCancellation={d.active_cancellation_request ? row(d.active_cancellation_request) : null}
           activeHold={d.active_review_hold ? row(d.active_review_hold) : null}
+          cryptoPayment={d.crypto_payment ? row(d.crypto_payment) : null}
+          cryptoOptions={rows(d.crypto_options)}
           route={route}
         />
         <OrderMessagesPanel order={o} messages={messages} route={route} />
