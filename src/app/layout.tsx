@@ -1,0 +1,10 @@
+import type { Metadata } from 'next';
+import Link from 'next/link';
+import {getActor} from '@/lib/auth';
+import './globals.css';
+export const metadata:Metadata={title:'Capacity — Good work, directly.',description:'Book independent creators. Clear scope, real availability, zero platform fees.'};
+// The shell reads the current session and therefore must stay request-time
+// rendered. This also keeps `next build` from trying to contact a local or
+// production database while collecting static metadata.
+export const dynamic='force-dynamic';
+export default async function RootLayout({children}:{children:React.ReactNode}){const actor=await getActor();return <html lang="en"><body><div className="sandbox-banner"><span className="live-dot"/> LOCAL SANDBOX <span>Test accounts & simulated payments. No real funds move.</span></div><header className="header"><Link href="/" className="wordmark"><span className="brand-icon">✳</span>capacity<span className="brand-period">.</span></Link><nav aria-label="Main navigation"><Link href="/explore">Find creators</Link><Link href="/requests">Open briefs</Link><Link href="/auctions">Auctions</Link></nav><div className="header-actions">{actor?<><Link href="/dashboard" className="button button-dark compact">Workspace ↗</Link><form method="post" action="/api/auth"><input type="hidden" name="action" value="logout"/><button className="plain-button">Log out</button></form></>:<><Link href="/sign-in" className="login-link">Log in</Link><Link href="/sign-up" className="button button-dark compact">Get started ↗</Link></>}</div></header>{children}<footer><Link href="/" className="wordmark">✳ capacity.</Link><p>Good work deserves the whole payment.<br/>0% platform fees. Always.</p><div><Link href="/support">Support</Link><Link href="/terms">Terms</Link><Link href="/privacy">Privacy</Link><Link href="/refund-policy">Refund policy</Link></div><small>Local development environment · All displayed transactions are test activity.</small></footer></body></html>}

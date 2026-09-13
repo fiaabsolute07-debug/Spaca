@@ -1,0 +1,100 @@
+import { sql } from './db';
+import type { Actor } from './auth';
+
+export type ReadRow = Record<string, unknown>;
+const asRows = (value: unknown): ReadRow[] => Array.isArray(value) ? value as ReadRow[] : [];
+
+async function serviceRows(actorId?: string) {
+  const services = actorId
+    ? await sql`select s.id,s.title,s.description,s.taxonomy,s.price_minor,s.currency,s.turnaround_hours,s.revision_limit,s.status,s.creator_id,u.display_name as creator_name,p.handle,p.niche,p.avatar_color,cp.id as pool_id,cp.total_units,cp.total_units-cp.reserved_units-cp.committed_units as available_units from app.services s join app.users u on u.id=s.creator_id left join app.profiles p on p.user_id=s.creator_id join app.capacity_pools cp on cp.id=s.pool_id where s.creator_id=${actorId} order by s.created_at desc`
+    : await sql`select s.id,s.title,s.description,s.taxonomy,s.price_minor,s.currency,s.turnaround_hours,s.revision_limit,s.status,s.creator_id,u.display_name as creator_name,p.handle,p.niche,p.avatar_color,cp.id as pool_id,cp.total_units,cp.total_units-cp.reserved_units-cp.committed_units as available_units from app.services s join app.users u on u.id=s.creator_id left join app.profiles p on p.user_id=s.creator_id join app.capacity_pools cp on cp.id=s.pool_id where s.status='PUBLISHED' order by s.created_at desc`;
+  const samples = actorId
+    ? await sql`select id,creator_id,title,url,description,visibility,moderation_status,created_at from app.samples where creator_id=${actorId} order by created_at desc`
+    : await sql`select id,creator_id,title,url,description,visibility,moderation_status,created_at from app.samples where visibility='PUBLIC' and moderation_status='APPROVED' order by created_at desc`;
+  const sampleMap = new Map<string, ReadRow[]>();
+  for (const sample of asRows(samples)) {
+    const key = String(sample.creator_id);
+    const current = sampleMap.get(key) ?? [];
+    current.push(sample);
+    sampleMap.set(key, current);
+  }
+  return asRows(services).map((service): ReadRow => ({ ...service, samples: sampleMap.get(String(service.creator_id)) ?? [] }));
+}
+
+export async function getPublicData(options: { q?: string; category?: string } = {}) {
+  const [allServices, requests, auctions] = await Promise.all([
+    serviceRows(),
+    sql`select r.id,r.buyer_id,r.title,r.brief,r.taxonomy,r.budget_minor,r.per_creator_cap_minor,r.target_hires,r.deadline,r.status,u.display_name as buyer_name,(select count(*) from app.applications a where a.request_id=r.id) as application_count from app.requests r join app.users u on u.id=r.buyer_id where r.status in ('OPEN','SELECTING') and r.deadline>now() order by r.deadline asc`,
+    sql`select a.id,a.service_id,a.seller_id,s.title,u.display_name as creator_name,a.starting_price_minor,a.current_price_minor,a.minimum_increment_minor,a.buy_now_price_minor,a.ends_at,a.starts_at,a.status,a.bid_count,a.winner_id from app.auctions a join app.services s on s.id=a.service_id join app.users u on u.id=a.seller_id where a.status in ('SCHEDULED','LIVE','AWAITING_WINNER_PAYMENT') and a.ends_at>now() order by a.ends_at asc`,
+  ]);
+  const q = options.q?.trim().toLowerCase();
+  const category = options.category?.trim().toUpperCase();
+  const services = allServices.filter((service) => {
+    const matchesCategory = !category || String(service.taxonomy) === category;
+    const haystack = `${service.title} ${service.description} ${service.creator_name} ${service.niche}`.toLowerCase();
+    return matchesCategory && (!q || haystack.includes(q));
+  });
+  return { services, requests: asRows(requests), auctions: asRows(auctions) };
+}
+
+export async function getDashboardData(actor: Actor) {
+  const [services, orders, applications, requests, auctions, profile, stats] = await Promise.all([
+    serviceRows(actor.id),
+    sql`select o.id,o.buyer_id,o.creator_id,o.service_id,o.source,o.title,o.status,o.amount_minor,o.platform_fee_minor,o.provider_fee_minor,o.currency,o.brief,o.delivery_due_at,o.review_due_at,o.revision_count,o.version,o.buyer_name,o.creator_name,o.settlement_status,o.payment_status,o.created_at from (select o.*,bu.display_name as buyer_name,cu.display_name as creator_name from app.orders o join app.users bu on bu.id=o.buyer_id join app.users cu on cu.id=o.creator_id) o where o.buyer_id=${actor.id} or o.creator_id=${actor.id} order by o.created_at desc`,
+    sql`select a.id,a.request_id,a.creator_id,r.title as request_title,a.quote_minor,a.status,a.note,cu.display_name as creator_name from app.applications a join app.requests r on r.id=a.request_id join app.users cu on cu.id=a.creator_id where a.creator_id=${actor.id} order by a.created_at desc`,
+    sql`select r.id,r.buyer_id,r.title,r.brief,r.taxonomy,r.budget_minor,r.per_creator_cap_minor,r.target_hires,r.deadline,r.status,u.display_name as buyer_name,(select count(*) from app.applications a where a.request_id=r.id) as application_count from app.requests r join app.users u on u.id=r.buyer_id where r.buyer_id=${actor.id} order by r.created_at desc`,
+    sql`select a.id,a.service_id,a.seller_id,s.title,u.display_name as creator_name,a.starting_price_minor,a.current_price_minor,a.minimum_increment_minor,a.buy_now_price_minor,a.ends_at,a.starts_at,a.status,a.bid_count,a.winner_id from app.auctions a join app.services s on s.id=a.service_id join app.users u on u.id=a.seller_id where a.seller_id=${actor.id} order by a.created_at desc`,
+    sql`select p.handle,p.bio,p.niche,p.avatar_color,p.social_url,u.display_name,u.email from app.users u left join app.profiles p on p.user_id=u.id where u.id=${actor.id}`,
+    sql`select count(*) filter (where (buyer_id=${actor.id} or creator_id=${actor.id}) and status='COMPLETED') as completed_orders,count(*) filter (where (buyer_id=${actor.id} or creator_id=${actor.id}) and status not in ('COMPLETED','CANCELLED','REFUNDED')) as active_orders,coalesce(sum(amount_minor) filter (where buyer_id=${actor.id}),0) as gross_minor,coalesce(sum(platform_fee_minor) filter (where buyer_id=${actor.id}),0) as platform_fee_minor from app.orders where buyer_id=${actor.id} or creator_id=${actor.id}`,
+  ]);
+  const [profileRow] = asRows(profile);
+  const [statsRow] = asRows(stats);
+  const serviceList = asRows(services);
+  const available = serviceList.reduce((sum, service) => sum + Number(service.available_units ?? 0), 0);
+  return { orders: asRows(orders), services: serviceList, applications: asRows(applications), requests: asRows(requests), auctions: asRows(auctions), profile: profileRow ?? {}, stats: { ...(statsRow ?? {}), available_minor: available } };
+}
+
+export async function getOrderData(actor: Actor, id: string) {
+  const [order] = asRows(await sql`select o.id,o.buyer_id,o.creator_id,o.service_id,o.source,o.title,o.status,o.amount_minor,o.platform_fee_minor,o.provider_fee_minor,o.currency,o.brief,o.delivery_due_at,o.review_due_at,o.revision_count,o.version,o.buyer_name,o.creator_name,o.settlement_status,o.payment_status,o.created_at from (select o.*,bu.display_name as buyer_name,cu.display_name as creator_name from app.orders o join app.users bu on bu.id=o.buyer_id join app.users cu on cu.id=o.creator_id) o where o.id=${id} and (o.buyer_id=${actor.id} or o.creator_id=${actor.id})`);
+  if (!order) return null;
+  const [deliveries, events, messages, reviews] = await Promise.all([
+    sql`select id,order_id,body,url,version,created_at from app.deliveries where order_id=${id} order by version desc`,
+    sql`select id,kind,payload,created_at from app.order_events where order_id=${id} order by created_at asc`,
+    sql`select m.id,m.body,m.created_at,u.display_name from app.messages m join app.users u on u.id=m.sender_id where m.order_id=${id} order by m.created_at asc`,
+    sql`select rating,body,created_at from app.reviews where order_id=${id} order by created_at desc`,
+  ]);
+  return { order, deliveries: asRows(deliveries), events: asRows(events), messages: asRows(messages), reviews: asRows(reviews) };
+}
+
+export async function getServiceData(id: string) {
+  const [service] = asRows(await sql`select s.id,s.title,s.description,s.taxonomy,s.price_minor,s.currency,s.turnaround_hours,s.revision_limit,s.status,s.creator_id,u.display_name as creator_name,p.handle,p.bio,p.niche,p.avatar_color,cp.id as pool_id,cp.total_units,cp.total_units-cp.reserved_units-cp.committed_units as available_units from app.services s join app.users u on u.id=s.creator_id left join app.profiles p on p.user_id=s.creator_id join app.capacity_pools cp on cp.id=s.pool_id where s.id=${id} and s.status='PUBLISHED'`);
+  if (!service) return null;
+  const samples = await sql`select id,creator_id,title,url,description,created_at from app.samples where creator_id=${String(service.creator_id)} and visibility='PUBLIC' and moderation_status='APPROVED' order by created_at desc`;
+  return { service, creator: { id: service.creator_id, display_name: service.display_name ?? service.creator_name, bio: service.bio, niche: service.niche, handle: service.handle, avatar_color: service.avatar_color }, samples: asRows(samples) };
+}
+
+export async function getCreatorData(handle: string) {
+  const [creator] = asRows(await sql`select u.id,u.display_name,p.handle,p.bio,p.niche,p.avatar_color,(select count(*) from app.orders o where o.creator_id=u.id and o.status='COMPLETED') as completed_jobs,(select round(avg(r.rating)::numeric,1) from app.reviews r where r.creator_id=u.id) as rating,(select count(*) from app.services s where s.creator_id=u.id and s.status='PUBLISHED') as services_count from app.users u join app.profiles p on p.user_id=u.id where p.handle=${handle} and u.status='ACTIVE'`);
+  if (!creator) return null;
+  const [services, samples] = await Promise.all([
+    serviceRows(String(creator.id)),
+    sql`select id,creator_id,title,url,description,created_at from app.samples where creator_id=${String(creator.id)} and visibility='PUBLIC' and moderation_status='APPROVED' order by created_at desc`,
+  ]);
+  return { creator, services, samples: asRows(samples) };
+}
+
+export async function getRequestData(actor: Actor | null, id: string) {
+  const [request] = asRows(await sql`select r.id,r.buyer_id,r.title,r.brief,r.taxonomy,r.budget_minor,r.per_creator_cap_minor,r.target_hires,r.deadline,r.status,u.display_name as buyer_name from app.requests r join app.users u on u.id=r.buyer_id where r.id=${id} and (r.status in ('OPEN','SELECTING','FILLED') or r.buyer_id=${actor?.id ?? null})`);
+  if (!request) return null;
+  const applications = actor
+    ? await sql`select a.id,a.creator_id,a.quote_minor,a.note,a.status,a.turnaround_hours,u.display_name as creator_name from app.applications a join app.users u on u.id=a.creator_id where a.request_id=${id} and (a.creator_id=${actor.id} or ${actor.id}=${String(request.buyer_id)}) order by a.created_at asc`
+    : [];
+  return { request, applications: asRows(applications) };
+}
+
+export async function getAuctionData(actor: Actor | null, id: string) {
+  const [auction] = asRows(await sql`select a.id,a.service_id,a.seller_id,s.title,u.display_name as creator_name,a.starting_price_minor,a.current_price_minor,a.minimum_increment_minor,a.buy_now_price_minor,a.ends_at,a.starts_at,a.status,a.bid_count,a.winner_id from app.auctions a join app.services s on s.id=a.service_id join app.users u on u.id=a.seller_id where a.id=${id} and (a.status in ('SCHEDULED','LIVE','AWAITING_WINNER_PAYMENT','CLOSED') or a.seller_id=${actor?.id ?? null})`);
+  if (!auction) return null;
+  const bids = await sql`select b.amount_minor,b.created_at,concat('Bidder ',left(replace(b.bidder_id::text,'-',''),6)) as display_name from app.bids b where b.auction_id=${id} order by b.amount_minor desc,b.created_at asc`;
+  return { auction, bids: asRows(bids) };
+}
