@@ -1,5 +1,6 @@
 allowBuilds:
-  '@embedded-postgres/darwin-arm64': set this to true or false
-  esbuild: set this to true or false
-  protobufjs: set this to true or false
-  unrs-resolver: set this to true or false
+  # Native binaries needed locally: embedded PostgreSQL runtime, esbuild (tsx/vitest), unrs-resolver (eslint).
+  '@embedded-postgres/darwin-arm64': true
+  esbuild: true
+  unrs-resolver: true
+  protobufjs: false
