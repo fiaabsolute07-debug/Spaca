@@ -45,7 +45,7 @@ Status values: TODO · IN_PROGRESS · REVIEW · DONE · BLOCKED.
 | W1-B | Order lifecycle engine (§7.2): expected/delivery versions, work clock at funding, APPROVED→COMPLETED on release, auto-accept + ReviewHold + reminders, mutual cancellation requests, reviews. Migration 0004. Includes the order/booking UI (Codex at usage limit). Evidence `docs/evidence/claude-W1-B.md` | ORD-01..11/13/15/16, REV-01/02/03, CAP-12 | W1-A | DONE |
 | W1-S | Dev-only fixture session endpoint for E2E (`POST /api/dev/session`, local only, fail closed in production), §17.3 personas, FND-07 seed guard (`bf9ccba`) | FND-03, FND-07, SEC-08 | W1-0 | DONE |
 | W2-B | Roles/audit/operator backend: `user_roles`, append-only audit log, finance refund + dispute resolution, reconciliation retry, case/moderation/suspension, feature flags + checkout/bid/payout kill switches, operator queue read models. Migration 0005. Evidence `docs/evidence/claude-W2-B.md` | SEC-12/13, OPS-04/05, FND-05 | W1-B | DONE |
-| W2-S | Storage backend: upload intents, private delivery assets, signed downloads, MIME/size validation | SEC-05/06/14, ORD-07 | W1-B | TODO |
+| W2-S | Storage: upload intents, finalize (size/signature/SHA-256, quarantine), private delivery/brief/dispute files, 5-minute signed downloads, sample files, orphan cleanup, delivery upload UI. Local filesystem adapter only (Supabase adapter + AV scanning not done). Migration 0006. Evidence `docs/evidence/claude-W2-S.md` | SEC-01/05/06/14, ORD-07 | W1-B | DONE |
 | W3+ | P2 requests v2, P3 auctions v2, P4 crypto (local/testnet-blocked), P5 discovery backend, P6 PUBLISH/ACCESS/DIGITAL backend | REQ, AUC, CRY, DSC, XPL | W2 | TODO |
 
 ### Codex (Astra)

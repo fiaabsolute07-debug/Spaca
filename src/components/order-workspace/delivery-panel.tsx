@@ -1,13 +1,23 @@
+import { FileList } from '../files/file-list';
+import { FileUploadField } from '../files/file-upload-field';
 import { Badge, CommandForm, Field, date, str, type Row } from '../ui';
+
+const attachedTo = (files: Row[], deliveryId: string) => files
+  .map((file) => ({ file, link: (file.attachments as Row[] | undefined ?? []).find((a) => str(a.delivery_id) === deliveryId) }))
+  .filter((entry) => entry.link)
+  .sort((a, b) => Number(a.link!.position) - Number(b.link!.position))
+  .map((entry) => entry.file);
 
 export function OrderDeliveryPanel({
   order: o,
   delivery,
+  files,
   creator,
   route
 }: {
   order: Row;
   delivery: Row[];
+  files: Row[];
   creator: boolean;
   route: string;
 }) {
@@ -27,7 +37,8 @@ export function OrderDeliveryPanel({
       <p className="prewrap">
         {str(item.body)}
       </p>
-      {Boolean(item.url) && <a className="text-link" href={str(item.url)} target="_blank" rel="noreferrer">Open attachment ↗</a>}
+      <FileList files={attachedTo(files, str(item.id))} />
+      {Boolean(item.url) && <a className="text-link" href={str(item.url)} target="_blank" rel="noreferrer">Open link ↗</a>}
     </div>) : <p className="muted">The creator has not delivered work yet.</p>}
     {creator && ['IN_PROGRESS', 'REVISION_REQUESTED'].includes(str(o.status)) && <CommandForm
       command="deliver"
@@ -41,9 +52,15 @@ export function OrderDeliveryPanel({
         name="body"
         label="Delivery note"
         type="textarea"
-        placeholder="The delivered content, or where to find it and usage notes (a link or at least 20 characters)."
+        placeholder="Usage notes or the delivered text (a file, a link or at least 20 characters)."
       />
-      <Field name="url" label="Optional file or link" placeholder="https://…" />
+      <FileUploadField
+        purpose="DELIVERY"
+        orderId={str(o.id)}
+        label="Files"
+        help="Up to 10 files: images 10 MB, PDF/DOCX 25 MB, video 250 MB. Files are private to this order."
+      />
+      <Field name="url" label="Optional link" placeholder="https://…" />
     </CommandForm>}
   </div>;
 }

@@ -88,6 +88,10 @@ export function checkEnvironment(env: Environment, target: EnvironmentTarget): E
   add('EMAIL_ALLOWED_RECIPIENTS', env.EMAIL_MODE === 'allowlist');
   add('INNGEST_EVENT_KEY', !!env.INNGEST_SIGNING_KEY);
   add('INNGEST_SIGNING_KEY', !!env.INNGEST_EVENT_KEY);
+  // The local filesystem adapter and its HMAC URLs are for local development only (W2-S).
+  add('STORAGE_PROVIDER', deployed, deployed ? oneOf('supabase') : oneOf('local', 'supabase'));
+  add('STORAGE_SIGNING_SECRET', false, (value) => !deployed && value.length >= 16);
+  add('LOCAL_STORAGE_DIR', false, () => !deployed);
   for (const name of ['SUPABASE_SERVER_SECRET_KEY', 'STORAGE_PUBLIC_BUCKET', 'STORAGE_PRIVATE_BUCKETS',
     'SUPPORT_CONTACT', 'POLICY_VERSION', 'WALLET_PROVIDER_CONFIG']) add(name);
   const arc = env.PAYMENT_PROVIDER === 'arc_usdc';

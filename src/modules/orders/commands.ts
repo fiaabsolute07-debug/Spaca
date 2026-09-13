@@ -20,6 +20,7 @@ import type { Actor } from '@/lib/auth';
 import { consumeOrderReservation, releaseOrderReservation } from '@/modules/capacity';
 import { enqueueNotification } from '@/modules/notifications/enqueue';
 import { PaymentFlowError, cancelOpenFunding, openCase, refundReasonFor, requestProviderRefund } from '@/modules/payments/funding';
+import { attachDeliveryAssets, lockDeliveryAssets, parseAssetIds } from '@/modules/storage/service';
 import {
   MIN_DELIVERY_NOTE_CHARS,
   REVISION_TURNAROUND_HOURS,
@@ -103,10 +104,16 @@ const deliver = withOrder(async ({ tx, actor, form, order, orderId, status, isCr
       throw new CommandError('Delivery link must be an http(s) URL');
     }
   }
-  // ORD-07: an empty or token delivery never starts the review clock.
-  if (!url && body.length < MIN_DELIVERY_NOTE_CHARS) throw new CommandError(`A delivery needs a link or at least ${MIN_DELIVERY_NOTE_CHARS} characters of delivered content`);
+  const assetIds = parseAssetIds(text(form, 'asset_ids', false, 1000));
+  // ORD-07: an empty or token delivery never starts the review clock; files must be finalized and not quarantined.
+  if (!url && !assetIds.length && body.length < MIN_DELIVERY_NOTE_CHARS) {
+    throw new CommandError(`A delivery needs a file, a link or at least ${MIN_DELIVERY_NOTE_CHARS} characters of delivered content`);
+  }
+  await lockDeliveryAssets(tx, orderId, actor.id, assetIds);
   const version = Number((await latestDelivery(tx, orderId))?.version ?? 0) + 1;
-  await tx`insert into app.deliveries (order_id,body,url,version,validation_status,submitted_by) values (${orderId},${body || '(see link)'},${url},${version},'VALID',${actor.id})`;
+  const [delivery] = await tx<Row[]>`insert into app.deliveries (order_id,body,url,version,validation_status,submitted_by)
+    values (${orderId},${body || (assetIds.length ? '(see attached files)' : '(see link)')},${url},${version},'VALID',${actor.id}) returning id`;
+  await attachDeliveryAssets(tx, orderId, String(delivery!.id), assetIds);
   await resolveReviewHold(tx, orderId, 'SUPERSEDED');
   await expirePendingCancellation(tx, orderId);
   const window = termsOf(order).reviewWindowHours;

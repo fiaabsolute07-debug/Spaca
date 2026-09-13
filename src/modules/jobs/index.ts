@@ -27,6 +27,8 @@ import { isProviderError } from '@/modules/payments/providers';
 import { enqueueNotification } from '@/modules/notifications/enqueue';
 import { approveOrder } from '@/modules/orders/commands';
 import { latestDelivery, termsOf } from '@/modules/orders/lifecycle';
+import { FINALIZE_GRACE_SECONDS, type StorageBucket } from '@/modules/storage/policy';
+import { getStorageProvider } from '@/modules/storage/provider';
 
 type Row = Record<string, unknown>;
 
@@ -290,6 +292,9 @@ export async function autoAcceptDeliveries(options: JobScope = {}): Promise<JobR
           return `HOLD_${reason}`;
         };
         if (!delivery || delivery.validation_status !== 'VALID') return hold('DELIVERY_NOT_VALID');
+        const [unsafeFile] = await tx<Row[]>`select 1 from app.delivery_assets da join app.storage_assets a on a.id=da.asset_id
+          where da.delivery_id=${delivery.id} and a.lifecycle_state <> 'READY' limit 1`;
+        if (unsafeFile) return hold('DELIVERY_NOT_VALID');
         if (!termsOf(order).autoAcceptConsent) return hold('NO_AUTO_ACCEPT_CONSENT');
         if (!delivery.buyer_viewed_at) return hold('NO_BUYER_NOTIFICATION_EVIDENCE');
         await approveOrder(tx, order, null, Number(delivery.version), 'ORDER_AUTO_APPROVED');
@@ -332,6 +337,53 @@ export async function sendOrderReminders(options: JobScope = {}): Promise<JobRep
   return result;
 }
 
+/**
+ * Master §4.4: removes objects of abandoned uploads after the finalize grace, and unattached delivery/sample
+ * files after `orphanGraceSeconds`. The DB row changes first (a trigger refuses referenced assets), the object after.
+ */
+export async function cleanupStorage(options: JobScope & { orphanGraceSeconds?: number } = {}): Promise<JobReport> {
+  const { result, tally } = report('cleanup_storage');
+  const provider = getStorageProvider();
+  const limit = options.limit ?? 100;
+  const intents = await sql<Row[]>`update app.upload_intents set closed_at=now(),outcome='ABANDONED',outcome_detail='finalize window passed'
+    where id in (select id from app.upload_intents where closed_at is null and expires_at < now() - (${FINALIZE_GRACE_SECONDS} * interval '1 second')
+      and ${scoped(sql`order_id`, options)} order by expires_at limit ${limit} for update skip locked)
+    returning bucket,object_key`;
+  for (const intent of intents) {
+    try {
+      await provider.remove(String(intent.bucket) as StorageBucket, String(intent.object_key));
+      tally('ABANDONED_UPLOAD_REMOVED');
+    } catch (error) {
+      console.error('cleanup_storage remove failed', error);
+      tally('ERROR');
+    }
+  }
+  const orphanGrace = ageFilter(options.orphanGraceSeconds ?? 24 * 3600);
+  const orphans = await sql<Row[]>`select a.id from app.storage_assets a where a.lifecycle_state='READY' and a.purpose in ('DELIVERY','SAMPLE')
+    and a.created_at < now() - (${orphanGrace} * interval '1 second') and ${scoped(sql`a.order_id`, options)}
+    and not exists (select 1 from app.delivery_assets d where d.asset_id=a.id) and not exists (select 1 from app.samples s where s.storage_asset_id=a.id)
+    order by a.created_at limit ${limit}`;
+  for (const orphan of orphans) {
+    try {
+      const [removed] = await sql<Row[]>`update app.storage_assets set lifecycle_state='DELETED',deleted_at=now() where id=${String(orphan.id)} and lifecycle_state='READY' returning bucket,object_key`;
+      if (!removed) {
+        tally('SKIPPED_STATE_CHANGED');
+        continue;
+      }
+      await provider.remove(String(removed.bucket) as StorageBucket, String(removed.object_key));
+      tally('ORPHAN_REMOVED');
+    } catch (error) {
+      // The guard trigger refuses assets that became referenced after the scan.
+      if (String((error as Error).message).includes('referenced storage assets')) tally('SKIPPED_REFERENCED');
+      else {
+        console.error('cleanup_storage orphan failed', orphan.id, error);
+        tally('ERROR');
+      }
+    }
+  }
+  return result;
+}
+
 export async function runJobsOnce(): Promise<JobReport[]> {
   return [
     await reprocessWebhookInbox(),
@@ -341,5 +393,6 @@ export async function runJobsOnce(): Promise<JobReport[]> {
     await releaseReadySettlements(),
     await sendOrderReminders(),
     await dispatchNotificationOutbox(),
+    await cleanupStorage(),
   ];
 }

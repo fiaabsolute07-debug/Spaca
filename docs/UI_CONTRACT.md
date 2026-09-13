@@ -76,3 +76,14 @@ Commands (all require `reason` ≥10 chars; missing role → 403; closed item �
 - admin_grant_role / admin_revoke_role: user_id, role — admin; not self. → /admin/users
 - admin_set_flag: key, enabled true|false — admin; LIVE_PAYMENTS_ENABLED refuses to enable (422). → /admin/flags
 Kill switches: disabled flags return 422 FEATURE_DISABLED on book/create_request/apply/accept_offer/create_auction/bid/buy_now/create_pool, checkout creation, and creator release. Show the disabled state; do not hide existing orders.
+
+## W2-S additions (2026-09-13) — files
+Upload (client component `src/components/files/file-upload-field.tsx` already implements it):
+1. `POST /api/assets/upload-intents` JSON/form { purpose DELIVERY|BRIEF|DISPUTE|SAMPLE, filename, mime, size, order_id (not for SAMPLE) } → { id, filename, max_bytes, upload: { url, method: PUT, headers, expires_at } }. 422 UNSUPPORTED_ASSET (type/extension/size), 403 wrong participant/suspended sample, 404 order not visible, 409 order state, 429 quota.
+2. `PUT upload.url` with exactly `size` bytes and the same Content-Type (413 larger, 409 reused URL, 403 invalid/expired).
+3. `POST /api/assets/{id}/finalize` → 200 { id, state: READY } or 422 { id, state: QUARANTINED|REJECTED, error }; repeat calls return the recorded outcome.
+Download: `POST /api/assets/{id}/download-url` → { url, expires_at } (5 min); request a fresh URL per click, never render URLs into HTML or logs. 404 when not visible, 409 when quarantined.
+Who may upload: DELIVERY creator (IN_PROGRESS/REVISION_REQUESTED); BRIEF buyer (AWAITING_PAYMENT/FUNDED); DISPUTE participants (IN_PROGRESS/DELIVERED/REVISION_REQUESTED/DISPUTED); SAMPLE active creators.
+Types: PNG/JPEG/GIF/WebP ≤10 MB; PDF/DOCX ≤25 MB (BRIEF: images+documents only); MP4/MOV/WebM ≤250 MB. SVG/HTML never.
+Commands: `deliver` + `asset_ids` (comma-separated READY DELIVERY files of this order, ≤10; files alone are a valid delivery). `add_sample` + `asset_id` (READY SAMPLE file; `url` then optional). `admin_quarantine_asset`: asset_id, reason — moderator/admin.
+getOrderData → files[{ id, purpose, owner_id, filename, mime, size_bytes, lifecycle_state, created_at, attachments[{ delivery_id, position }] }]; unattached DELIVERY uploads are only listed for their uploader.

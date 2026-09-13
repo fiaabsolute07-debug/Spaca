@@ -298,7 +298,8 @@ describe.skipIf(!RUN_DB)('ORD — cancellation after work starts', () => {
     const row = await orderRow(orderId);
     const [request] = await sql`select status from app.cancellation_requests where id=${requestId}`;
     if (accept.status === 200) {
-      expect(row.status).toBe('CANCELLED');
+      // The full refund's post-commit mock webhook may already have landed (CANCELLED → REFUNDED).
+      expect(['CANCELLED', 'REFUNDED']).toContain(row.status);
       expect(request!.status).toBe('ACCEPTED');
     } else {
       expect(row.status).toBe('DELIVERED');

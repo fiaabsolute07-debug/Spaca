@@ -9,6 +9,7 @@ import { enqueueNotification } from '@/modules/notifications/enqueue';
 import { approveOrder } from '@/modules/orders/commands';
 import { latestDelivery, termsOf } from '@/modules/orders/lifecycle';
 import { PaymentFlowError, openCase, requestProviderRefund } from '@/modules/payments/funding';
+import { quarantineAsset } from '@/modules/storage/service';
 import { audit, reasonOf, requireRole, type FeatureFlagKey, type PrivilegedRole } from './policy';
 
 const orderSnapshot = (o: Row) => ({ status: o.status, payment_status: o.payment_status, settlement_status: o.settlement_status, version: o.version, cancellation_refund_minor: o.cancellation_refund_minor ?? null });
@@ -153,9 +154,26 @@ const moderateSample: CommandHandler = async ({ tx, actor, form }) => {
   if (!['APPROVED', 'REJECTED'].includes(decision)) throw new CommandError('decision must be APPROVED or REJECTED');
   const [sample] = await tx<Row[]>`select * from app.samples where id=${sampleId} for update`;
   if (!sample) throw new CommandError('Sample not found', 'NOT_FOUND');
+  if (decision === 'APPROVED' && sample.storage_asset_id) {
+    const [asset] = await tx<Row[]>`select lifecycle_state from app.storage_assets where id=${sample.storage_asset_id} for share`;
+    if (asset?.lifecycle_state !== 'READY') throw new CommandError('The sample file is quarantined or removed and cannot be published', 'DOMAIN_RULE');
+  }
   await tx`update app.samples set moderation_status=${decision},moderated_by=${actor.id},moderated_at=now(),moderation_reason=${reason} where id=${sampleId}`;
   await audit(tx, actor, `sample.${decision.toLowerCase()}`, 'sample', sampleId, reason, { moderation_status: sample.moderation_status }, { moderation_status: decision });
   return { path: '/admin/moderation', message: `Sample ${decision.toLowerCase()}` };
+};
+
+/** Pulls an unsafe file from every download path; deliveries using it stop counting toward auto-accept (ORD-07). */
+const quarantineFile: CommandHandler = async ({ tx, actor, form }) => {
+  requireRole(actor, ['moderator', 'admin'], 'File quarantine');
+  const reason = reasonOf(form);
+  const assetId = uuid(form, 'asset_id');
+  const before = await quarantineAsset(tx, assetId, reason);
+  if (before.purpose === 'SAMPLE') {
+    await tx`update app.samples set moderation_status='REJECTED',moderated_by=${actor.id},moderated_at=now(),moderation_reason=${reason} where storage_asset_id=${assetId}`;
+  }
+  await audit(tx, actor, 'asset.quarantine', 'storage_asset', assetId, reason, { lifecycle_state: before.lifecycle_state, bucket: before.bucket }, { lifecycle_state: 'QUARANTINED' });
+  return { path: before.order_id ? `/admin/orders/${before.order_id}` : '/admin/moderation', message: 'File quarantined' };
 };
 
 const setUserStatus = (target: 'SUSPENDED' | 'ACTIVE'): CommandHandler => async ({ tx, actor, form }) => {
@@ -217,6 +235,7 @@ export const adminCommands: Record<string, CommandHandler> = {
   admin_resolve_case: resolveCase,
   admin_assign_case: assignCase,
   admin_moderate_sample: moderateSample,
+  admin_quarantine_asset: quarantineFile,
   admin_suspend_user: setUserStatus('SUSPENDED'),
   admin_reactivate_user: setUserStatus('ACTIVE'),
   admin_grant_role: setRole(true),

@@ -13,6 +13,7 @@ const productionEnv = {
   NEXT_PUBLIC_SUPABASE_URL: 'https://proj.supabase.co',
   NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: 'sb_publishable_example',
   DEV_SESSIONS: 'off',
+  STORAGE_PROVIDER: 'supabase',
   PAYMENT_MODE: 'sandbox',
   LIVE_PAYMENTS_ENABLED: 'false',
 };
@@ -34,6 +35,14 @@ describe('env:check — fail closed per environment (§19.2)', () => {
     expect(report.ok).toBe(false);
     for (const name of ['DATABASE_URL', 'PAYMENT_MODE', 'DEV_SESSIONS', 'AUTH_MODE', 'PLATFORM_FEE_BPS']) expect(row(report, name)?.status).toBe('INVALID');
     expect(row(report, 'DATABASE_URL')?.host).toBe('loopback');
+  });
+
+  it('production refuses the local storage adapter and its signing/dir settings', () => {
+    const report = checkEnvironment({ ...productionEnv, STORAGE_PROVIDER: 'local', STORAGE_SIGNING_SECRET: 'local_dev_only_storage_signing_fixture', LOCAL_STORAGE_DIR: '.local/storage' }, 'production');
+    expect(report.ok).toBe(false);
+    for (const name of ['STORAGE_PROVIDER', 'STORAGE_SIGNING_SECRET', 'LOCAL_STORAGE_DIR']) expect(row(report, name)?.status).toBe('INVALID');
+    const { STORAGE_PROVIDER: _omit, ...withoutStorage } = productionEnv;
+    expect(row(checkEnvironment(withoutStorage, 'production'), 'STORAGE_PROVIDER')?.status).toBe('MISSING');
   });
 
   it('live payments require an explicit fee payer policy and live provider keys', () => {

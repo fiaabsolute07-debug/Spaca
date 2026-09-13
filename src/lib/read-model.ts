@@ -91,14 +91,20 @@ export async function getOrderData(actor: Actor, id: string) {
     from app.orders o join app.users bu on bu.id=o.buyer_id join app.users cu on cu.id=o.creator_id
     where o.id=${id} and (o.buyer_id=${actor.id} or o.creator_id=${actor.id})`);
   if (!order) return null;
-  const [deliveries, events, messages, reviews, cancellations, holds] = await Promise.all([
+  const [deliveries, events, messages, reviews, cancellations, holds, assets] = await Promise.all([
     sql`select id,order_id,body,url,version,validation_status,buyer_viewed_at,created_at from app.deliveries where order_id=${id} order by version desc`,
     sql`select id,kind,payload,created_at from app.order_events where order_id=${id} order by created_at asc`,
     sql`select m.id,m.body,m.created_at,u.display_name from app.messages m join app.users u on u.id=m.sender_id where m.order_id=${id} order by m.created_at asc`,
     sql`select rating,body,reviewer_id,created_at from app.reviews where order_id=${id} order by created_at desc`,
     sql`select id,requested_by,counterparty_id,reason,refund_amount_minor,status,created_at,responded_at from app.cancellation_requests where order_id=${id} order by created_at desc`,
     sql`select reason,created_at,resolved_at,resolution from app.review_holds where order_id=${id} order by created_at desc`,
+    sql`select a.id,a.purpose,a.owner_id,a.filename,a.mime,a.size_bytes,a.lifecycle_state,a.created_at,
+        coalesce(json_agg(json_build_object('delivery_id',da.delivery_id,'position',da.position)) filter (where da.delivery_id is not null),'[]') as attachments
+      from app.storage_assets a left join app.delivery_assets da on da.asset_id=a.id
+      where a.order_id=${id} and a.lifecycle_state <> 'DELETED' group by a.id order by a.created_at`,
   ]);
+  // Unattached delivery uploads stay private to their uploader until they are part of a submitted delivery.
+  const files = asRows(assets).filter((file) => file.purpose !== 'DELIVERY' || String(file.owner_id) === actor.id || (file.attachments as unknown[]).length > 0);
   const terms = (order.terms ?? {}) as Record<string, unknown>;
   const latest = asRows(deliveries)[0];
   return {
@@ -111,6 +117,7 @@ export async function getOrderData(actor: Actor, id: string) {
     cancellation_requests: asRows(cancellations),
     active_cancellation_request: asRows(cancellations).find((c) => c.status === 'REQUESTED') ?? null,
     active_review_hold: asRows(holds).find((h) => h.resolved_at === null) ?? null,
+    files,
   };
 }
 

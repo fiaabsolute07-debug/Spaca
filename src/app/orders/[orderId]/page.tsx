@@ -3,6 +3,7 @@ import { OrderNextStepPanel } from '@/components/order-workspace/next-step-panel
 import { OrderTimelinePanel } from '@/components/order-workspace/timeline-panel';
 import { OrderDeliveryPanel } from '@/components/order-workspace/delivery-panel';
 import { OrderBriefPanel } from '@/components/order-workspace/brief-panel';
+import { OrderFilesPanel } from '@/components/order-workspace/files-panel';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { getOrderData } from '@/lib/read-model';
@@ -41,7 +42,8 @@ export default async function OrderPage({
     delivery = rows(d.deliveries),
     events = rows(d.events),
     messages = rows(d.messages),
-    reviews = rows(d.reviews);
+    reviews = rows(d.reviews),
+    files = rows(d.files);
   const creator = actor.id === str(o.creator_id),
     buyer = actor.id === str(o.buyer_id);
   return <main className="container">
@@ -64,7 +66,8 @@ export default async function OrderPage({
     <div className="split">
       <div>
         <OrderBriefPanel order={o} />
-        <OrderDeliveryPanel order={o} delivery={delivery} creator={creator} route={route} />
+        <OrderFilesPanel order={o} files={files} buyer={buyer} />
+        <OrderDeliveryPanel order={o} delivery={delivery} files={files} creator={creator} route={route} />
         <OrderTimelinePanel events={events} />
       </div>
       <aside>

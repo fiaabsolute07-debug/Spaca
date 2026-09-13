@@ -19,6 +19,7 @@ import type { Actor } from '@/lib/auth';
 import { ensureBuckets, insertReservation, lockAvailableBucket, lockOwnedPool, setPoolTimezone, setWeeklyUnits } from '@/modules/capacity';
 import { isValidTimeZone } from '@/modules/capacity/weeks';
 import { assertFlags } from '@/modules/admin/policy';
+import { lockSampleAsset } from '@/modules/storage/service';
 
 const TAXONOMIES = ['CREATE', 'PUBLISH', 'ACCESS', 'DIGITAL'];
 export const MIN_PUBLIC_SAMPLES = 3;
@@ -85,12 +86,16 @@ const updateProfile: CommandHandler = async ({ tx, actor, form }) => {
 
 const addSample: CommandHandler = async ({ tx, actor, form }) => {
   const title = text(form, 'title', true, 120);
-  const url = httpUrl(text(form, 'url', true, 1000), 'url');
+  const assetId = text(form, 'asset_id', false, 60) || null;
+  // SEC-14: an uploaded sample must be the creator's own SAMPLE upload; delivery files never become portfolio.
+  if (assetId) await lockSampleAsset(tx, actor.id, uuid(form, 'asset_id'));
+  const urlValue = text(form, 'url', !assetId, 1000);
+  const url = urlValue ? httpUrl(urlValue, 'url') : null;
   const description = text(form, 'description', false, 2000);
   const visibility = text(form, 'visibility', false) || 'PUBLIC';
   if (!['PUBLIC', 'PRIVATE'].includes(visibility)) throw new CommandError('Sample visibility is invalid');
-  const [sample] = await tx<Row[]>`insert into app.samples (creator_id,title,url,description,visibility,moderation_status)
-    values (${actor.id},${title},${url},${description},${visibility},'PENDING') returning id`;
+  const [sample] = await tx<Row[]>`insert into app.samples (creator_id,title,url,description,visibility,moderation_status,storage_asset_id)
+    values (${actor.id},${title},${url},${description},${visibility},'PENDING',${assetId}) returning id`;
   const serviceId = String(form.get('service_id') ?? '').trim();
   if (serviceId) {
     await ownedService(tx, actor, serviceId);
