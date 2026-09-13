@@ -65,6 +65,7 @@ export function statusForCode(code: CommandErrorCode): number {
     case 'CAPACITY_REDUCTION_CONFLICT':
     case 'ORDER_STATE_CONFLICT':
     case 'QUOTE_CHANGED':
+    case 'BUY_NOW_UNAVAILABLE':
       return 409;
     case 'RATE_LIMITED':
       return 429;

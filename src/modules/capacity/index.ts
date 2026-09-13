@@ -29,11 +29,14 @@ export async function ensureBuckets(tx: Tx, poolId: string, weeks = BOOKING_HORI
  * Locks the earliest bookable bucket with a free unit. A bucket is bookable while
  * `now() <= ends_at - turnaround` (latest checkout for work that must fit the week).
  */
-export async function lockAvailableBucket(tx: Tx, poolId: string, turnaroundHours: number, preferredBucketId?: string | null): Promise<Row> {
+/** `workStartsNotBefore` pushes the feasibility check past a later start (an auction's end plus its winner window). */
+export async function lockAvailableBucket(tx: Tx, poolId: string, turnaroundHours: number, preferredBucketId?: string | null, workStartsNotBefore?: Date | null): Promise<Row> {
   await tx`select id from app.capacity_pools where id=${poolId} for update`;
   await ensureBuckets(tx, poolId);
+  const earliest = workStartsNotBefore?.toISOString() ?? null;
   const candidates = await tx<Row[]>`select id from app.capacity_buckets
-    where pool_id=${poolId} and ends_at - (${turnaroundHours} * interval '1 hour') >= now() and starts_at < now() + (${BOOKING_HORIZON_WEEKS * 7} * interval '1 day')
+    where pool_id=${poolId} and ends_at - (${turnaroundHours} * interval '1 hour') >= greatest(now(), coalesce(${earliest}::timestamptz, now()))
+      and starts_at < now() + (${BOOKING_HORIZON_WEEKS * 7} * interval '1 day')
       and (${preferredBucketId ?? null}::uuid is null or id=${preferredBucketId ?? null}::uuid)
     order by starts_at asc`;
   if (preferredBucketId && candidates.length === 0) throw new CommandError('That week is no longer bookable; choose another week', 'SLOT_EXPIRED');

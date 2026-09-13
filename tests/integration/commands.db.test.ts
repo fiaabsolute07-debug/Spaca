@@ -261,29 +261,29 @@ describe.skipIf(!RUN_DB)('TEST_PLAN 7 — auctions', () => {
     expect((await getAuctionData(null, auctionId))?.auction.id).toBe(auctionId);
 
     const bid = (actor: TestUser, amount: string) => command(actor, { command: 'bid', idempotency_key: key('bid'), auction_id: auctionId, amount });
-    expect((await bid(seller, '200')).status).toBe(400);
-    expect((await bid(bidder1, '105')).status).toBe(400);
+    expect((await bid(seller, '200')).status).toBe(403);
+    expect((await bid(bidder1, '95')).status).toBe(422);
     expect((await bid(bidder1, '110')).status).toBe(200);
 
     const buyNow = await command(bidder3, { command: 'buy_now', idempotency_key: key('bn'), auction_id: auctionId });
-    expect(buyNow.status).toBe(400);
+    expect(buyNow.status).toBe(409);
 
     const concurrent = await Promise.all([bid(bidder2, '120'), bid(bidder3, '120')]);
     expect(concurrent.filter((r) => r.status === 200)).toHaveLength(1);
-    expect((await bid(bidder1, '125')).status).toBe(400);
+    expect((await bid(bidder1, '125')).status).toBe(422);
 
     const early = await command(seller, { command: 'close_auction', idempotency_key: key('close'), auction_id: auctionId });
-    expect(early.status).toBe(400);
+    expect(early.status).toBe(422);
     expect((await command(bidder1, { command: 'retract_bid', idempotency_key: key('retract'), auction_id: auctionId })).status).toBe(400);
 
     await new Promise((resolve) => setTimeout(resolve, Math.max(0, endsAt.getTime() - Date.now()) + 1100));
-    expect((await bid(bidder1, '200')).status).toBe(400);
+    expect((await bid(bidder1, '200')).status).toBe(422);
     const closed = await command(seller, { command: 'close_auction', idempotency_key: key('close'), auction_id: auctionId });
     expect(closed.status).toBe(200);
     const [order] = await sql`select buyer_id,amount_minor,platform_fee_minor,source from app.orders where id=${String(closed.body.id)}`;
     const [winningBid] = await sql`select bidder_id from app.bids where auction_id=${auctionId} and amount_minor=12000`;
     expect(order).toMatchObject({ buyer_id: winningBid!.bidder_id, amount_minor: '12000', platform_fee_minor: '0', source: 'AUCTION' });
-    expect((await command(seller, { command: 'close_auction', idempotency_key: key('close2'), auction_id: auctionId })).status).toBe(400);
+    expect((await command(seller, { command: 'close_auction', idempotency_key: key('close2'), auction_id: auctionId })).status).toBe(409);
     const [{ count }] = await sql`select count(*)::int as count from app.bids where auction_id=${auctionId}`;
     expect(count).toBe(2);
   }, 20_000);

@@ -54,7 +54,7 @@ export async function getPublicData(options: { q?: string; category?: string } =
   const [allServices, requests, auctions] = await Promise.all([
     serviceRows(),
     sql`select r.id,r.buyer_id,r.title,r.brief,r.taxonomy,r.budget_minor,r.per_creator_cap_minor,r.target_hires,r.deadline,r.status,u.display_name as buyer_name,(select count(*) from app.applications a where a.request_id=r.id) as application_count from app.requests r join app.users u on u.id=r.buyer_id where r.status='OPEN' and r.application_deadline>now() order by r.application_deadline asc`,
-    sql`select a.id,a.service_id,a.seller_id,s.title,u.display_name as creator_name,a.starting_price_minor,a.current_price_minor,a.minimum_increment_minor,a.buy_now_price_minor,a.ends_at,a.starts_at,a.status,a.bid_count,a.winner_id from app.auctions a join app.services s on s.id=a.service_id join app.users u on u.id=a.seller_id where a.status in ('SCHEDULED','LIVE','AWAITING_WINNER_PAYMENT') and a.ends_at>now() order by a.ends_at asc`,
+    sql`select a.id,a.service_id,a.seller_id,s.title,u.display_name as creator_name,a.starting_price_minor,a.current_price_minor,a.minimum_increment_minor,a.buy_now_price_minor,a.ends_at,a.starts_at,a.status,a.bid_count,a.winner_id from app.auctions a join app.services s on s.id=a.service_id join app.users u on u.id=a.seller_id where a.status in ('SCHEDULED','LIVE') and a.ends_at>now() order by a.ends_at asc`,
   ]);
   const q = options.q?.trim().toLowerCase();
   const category = options.category?.trim().toUpperCase();
@@ -187,11 +187,66 @@ export async function getRequestData(actor: Actor | null, id: string) {
   return { request, applications: asRows(applications), campaign };
 }
 
+const AUCTION_PUBLIC_STATES = ['SCHEDULED', 'LIVE', 'AWAITING_WINNER_PAYMENT', 'SETTLED', 'NO_BIDS', 'WINNER_DEFAULTED'];
+
+/**
+ * §10.6 snapshot: server time, version, highest valid bid, next minimum, Buy Now availability and the viewer's
+ * own standing. Bidders appear under a per-auction pseudonym; no ids, emails or payout data.
+ */
 export async function getAuctionData(actor: Actor | null, id: string) {
-  const [auction] = asRows(await sql`select a.id,a.service_id,a.seller_id,s.title,u.display_name as creator_name,a.starting_price_minor,a.current_price_minor,a.minimum_increment_minor,a.buy_now_price_minor,a.ends_at,a.starts_at,a.status,a.bid_count,a.winner_id from app.auctions a join app.services s on s.id=a.service_id join app.users u on u.id=a.seller_id where a.id=${id} and (a.status in ('SCHEDULED','LIVE','AWAITING_WINNER_PAYMENT','CLOSED') or a.seller_id=${actor?.id ?? null})`);
+  if (!/^[0-9a-f-]{36}$/i.test(id)) return null;
+  const [auction] = asRows(await sql`select a.id,a.service_id,a.seller_id,a.title,u.display_name as creator_name,a.starting_price_minor,a.current_price_minor,a.minimum_increment_minor,
+      a.buy_now_price_minor,a.starts_at,a.ends_at,a.status,a.bid_count,a.first_valid_bid_at,a.payment_due_at,a.version,a.closed_at,a.cancel_reason,a.current_bid_id,
+      (a.winner_id = ${actor?.id ?? null}::uuid) as viewer_is_winner, now() as server_now
+    from app.auctions a join app.users u on u.id=a.seller_id
+    where a.id=${id} and (a.status = any(${AUCTION_PUBLIC_STATES}) or a.seller_id=${actor?.id ?? null}::uuid)`);
   if (!auction) return null;
-  const bids = await sql`select b.amount_minor,b.created_at,concat('Bidder ',left(replace(b.bidder_id::text,'-',''),6)) as display_name from app.bids b where b.auction_id=${id} order by b.amount_minor desc,b.created_at asc`;
-  return { auction, bids: asRows(bids) };
+  const bids = asRows(await sql`select concat('Bidder ', upper(substr(md5(b.auction_id::text || ':' || b.bidder_id::text), 1, 6))) as display_name,
+      b.amount_minor,b.created_at,b.sequence,(b.bidder_id = ${actor?.id ?? null}::uuid) as mine
+    from app.bids b where b.auction_id=${id} and b.status='ACCEPTED' order by b.amount_minor desc, b.sequence asc`);
+  const top = bids[0];
+  const serverNow = new Date(String(auction.server_now));
+  const open = ['SCHEDULED', 'LIVE'].includes(String(auction.status));
+  const live = open && serverNow >= new Date(String(auction.starts_at)) && serverNow < new Date(String(auction.ends_at));
+  const nextMinimum = top ? (BigInt(String(top.amount_minor)) + BigInt(String(auction.minimum_increment_minor))).toString() : String(auction.starting_price_minor);
+  let viewer: ReadRow | null = null;
+  if (actor) {
+    const [intent] = asRows(await sql`select kind,status,order_id,expires_at from app.auction_purchase_intents where auction_id=${id} and buyer_id=${actor.id} order by created_at desc limit 1`);
+    const myBest = bids.find((b) => b.mine === true);
+    let standing = 'NONE';
+    if (actor.id === String(auction.seller_id)) standing = 'SELLER';
+    else if (intent) standing = intent.status === 'ACTIVE' ? (intent.kind === 'BUY_NOW' ? 'BOUGHT_PAY' : 'WON_PAY') : intent.status === 'FUNDED' ? 'WON' : 'DEFAULTED';
+    else if (myBest) standing = open ? (top?.mine === true ? 'WINNING' : 'OUTBID') : auction.status === 'CANCELLED' ? 'CANCELLED' : 'LOST';
+    viewer = { standing, my_highest_minor: myBest?.amount_minor ?? null, order_id: intent?.order_id ?? null, payment_due_at: intent?.expires_at ?? null };
+  }
+  return {
+    auction: {
+      ...auction,
+      live,
+      accepting_bids: live,
+      next_minimum_minor: nextMinimum,
+      highest_bid_minor: top?.amount_minor ?? null,
+      buy_now_available: live && auction.buy_now_price_minor != null && auction.first_valid_bid_at == null,
+    } as ReadRow,
+    bids: bids.map(({ mine: _mine, ...bid }) => bid),
+    viewer,
+  };
+}
+
+/** Bidder dashboard (§10.6 My bids): standing per auction the actor bid on or bought. */
+export async function getMyBids(actor: Actor) {
+  const rows = asRows(await sql`select a.id,a.title,a.status,a.ends_at,a.payment_due_at,max(b.amount_minor) as my_highest_minor,a.current_price_minor,
+      (select bb.bidder_id from app.bids bb where bb.auction_id=a.id and bb.status='ACCEPTED' order by bb.amount_minor desc, bb.sequence asc limit 1) = ${actor.id}::uuid as leading,
+      i.kind as intent_kind,i.status as intent_status,i.order_id
+    from app.auctions a join app.bids b on b.auction_id=a.id and b.bidder_id=${actor.id} and b.status='ACCEPTED'
+    left join lateral (select * from app.auction_purchase_intents x where x.auction_id=a.id and x.buyer_id=${actor.id} order by x.created_at desc limit 1) i on true
+    group by a.id,i.kind,i.status,i.order_id order by a.ends_at desc limit 100`);
+  return rows.map((row): ReadRow => {
+    const open = ['SCHEDULED', 'LIVE'].includes(String(row.status));
+    const standing = row.intent_status === 'ACTIVE' ? 'WON_PAY' : row.intent_status === 'FUNDED' ? 'WON'
+      : row.intent_status ? 'DEFAULTED' : open ? (row.leading ? 'WINNING' : 'OUTBID') : row.status === 'CANCELLED' ? 'CANCELLED' : 'LOST';
+    return { ...row, standing };
+  });
 }
 
 /** The creator's own capacity pools, for choosing where accepted request work is scheduled (REQ-06). */

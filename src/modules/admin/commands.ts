@@ -10,6 +10,7 @@ import { approveOrder } from '@/modules/orders/commands';
 import { latestDelivery, termsOf } from '@/modules/orders/lifecycle';
 import { PaymentFlowError, openCase, requestProviderRefund } from '@/modules/payments/funding';
 import { quarantineAsset } from '@/modules/storage/service';
+import { recomputeHighestBid } from '@/modules/auctions/commands';
 import { audit, reasonOf, requireRole, type FeatureFlagKey, type PrivilegedRole } from './policy';
 
 const orderSnapshot = (o: Row) => ({ status: o.status, payment_status: o.payment_status, settlement_status: o.settlement_status, version: o.version, cancellation_refund_minor: o.cancellation_refund_minor ?? null });
@@ -163,6 +164,25 @@ const moderateSample: CommandHandler = async ({ tx, actor, form }) => {
   return { path: '/admin/moderation', message: `Sample ${decision.toLowerCase()}` };
 };
 
+/** §10.3: a moderator invalidates a bid with evidence; history is kept, the leader is recomputed, Buy Now stays off. */
+const invalidateBid: CommandHandler = async ({ tx, actor, form }) => {
+  requireRole(actor, ['moderator', 'admin'], 'Bid invalidation');
+  const reason = reasonOf(form);
+  const bidId = uuid(form, 'bid_id');
+  const [lookup] = await tx<Row[]>`select auction_id from app.bids where id=${bidId}`;
+  if (!lookup) throw new CommandError('Bid not found', 'NOT_FOUND');
+  const auctionId = String(lookup.auction_id);
+  const [auction] = await tx<Row[]>`select * from app.auctions where id=${auctionId} for update`;
+  if (!['SCHEDULED', 'LIVE'].includes(String(auction!.status))) throw new CommandError('Bids can only be invalidated while the auction is open', 'ORDER_STATE_CONFLICT');
+  const [bid] = await tx<Row[]>`select * from app.bids where id=${bidId} for update`;
+  if (bid!.status !== 'ACCEPTED') throw new CommandError('This bid is already invalidated', 'ORDER_STATE_CONFLICT');
+  await tx`update app.bids set status='INVALIDATED',invalidated_reason=${reason},invalidated_by=${actor.id},invalidated_at=now() where id=${bidId}`;
+  const top = await recomputeHighestBid(tx, auctionId);
+  await audit(tx, actor, 'bid.invalidate', 'bid', bidId, reason, { status: 'ACCEPTED', amount_minor: String(bid!.amount_minor), current_bid_id: auction!.current_bid_id },
+    { status: 'INVALIDATED', current_bid_id: top ? String(top.id) : null, first_valid_bid_at: auction!.first_valid_bid_at });
+  return { path: `/auctions/${auctionId}`, message: 'Bid invalidated; the highest valid bid was recomputed' };
+};
+
 /** Pulls an unsafe file from every download path; deliveries using it stop counting toward auto-accept (ORD-07). */
 const quarantineFile: CommandHandler = async ({ tx, actor, form }) => {
   requireRole(actor, ['moderator', 'admin'], 'File quarantine');
@@ -236,6 +256,7 @@ export const adminCommands: Record<string, CommandHandler> = {
   admin_assign_case: assignCase,
   admin_moderate_sample: moderateSample,
   admin_quarantine_asset: quarantineFile,
+  admin_invalidate_bid: invalidateBid,
   admin_suspend_user: setUserStatus('SUSPENDED'),
   admin_reactivate_user: setUserStatus('ACTIVE'),
   admin_grant_role: setRole(true),

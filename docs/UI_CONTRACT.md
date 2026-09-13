@@ -118,3 +118,28 @@ Commands:
 - accept_offer: offer_id, pool_id (the creator's own), bucket_id optional. Redirects to /orders/{id} in AWAITING_PAYMENT. Errors: 422 QUOTE_EXPIRED, 409 capacity or state.
 
 Operator command redirects: `admin_*` form posts return to their `return_to` (not the entity path); `message`/`error` are appended with `?` or `&` so query-bearing return paths work.
+
+## W4-A additions (2026-09-14): auctions v2
+Auction statuses:
+- Open: SCHEDULED, LIVE.
+- Sale in progress: AWAITING_WINNER_PAYMENT.
+- Terminal: SETTLED, NO_BIDS, WINNER_DEFAULTED, CANCELLED.
+
+Read models:
+- getAuctionData(actor|null, id) → { auction, bids, viewer }.
+  - auction: + first_valid_bid_at, payment_due_at, version, server_now, live/accepting_bids, next_minimum_minor, highest_bid_minor, buy_now_available, cancel_reason.
+  - bids: [display_name (per-auction pseudonym), amount_minor, created_at, sequence]. Only accepted bids.
+  - viewer: { standing NONE|WINNING|OUTBID|WON_PAY|BOUGHT_PAY|WON|LOST|DEFAULTED|SELLER|CANCELLED, my_highest_minor, order_id, payment_due_at } | null.
+- GET /api/auctions/{id}/snapshot: the same JSON. Poll every 5 s while visible; never mark a bid accepted from client state.
+- getMyBids(actor) → [id, title, status, ends_at, payment_due_at, my_highest_minor, current_price_minor, standing, order_id].
+
+Commands (error codes follow §13.3):
+- create_auction: service_id, starting_price, minimum_increment, buy_now_price (optional, > start), starts_at (≤5 min in the past), ends_at (≤7 days after start).
+- bid: auction_id, amount. First bid ≥ start; later bids ≥ highest + increment.
+  - 422 BID_TOO_LOW; the message carries the new minimum.
+  - 422 AUCTION_NOT_LIVE / AUCTION_ENDED.
+  - 403 seller.
+- buy_now: auction_id. Only before the first valid bid, otherwise 409 BUY_NOW_UNAVAILABLE. Redirects to /orders/{id}; the checkout hold is 15 min.
+- cancel_auction: auction_id, reason (optional). Seller only, before any bid; otherwise 409.
+- close_auction: auction_id (seller). 422 before the deadline, 409 if already closed. The close_due_auctions job does the same automatically.
+- admin_invalidate_bid: bid_id, reason. Moderator/admin; only while the auction is open.

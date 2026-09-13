@@ -26,6 +26,7 @@ import {
 import { isProviderError } from '@/modules/payments/providers';
 import { enqueueNotification } from '@/modules/notifications/enqueue';
 import { approveOrder } from '@/modules/orders/commands';
+import { closeAuction } from '@/modules/auctions/commands';
 import { latestDelivery, termsOf } from '@/modules/orders/lifecycle';
 import { FINALIZE_GRACE_SECONDS, type StorageBucket } from '@/modules/storage/policy';
 import { getStorageProvider } from '@/modules/storage/provider';
@@ -76,9 +77,7 @@ export async function expireCheckoutHolds(options: JobScope = {}): Promise<JobRe
         await tx`update app.reservations set state='RELEASED' where id=${String(reservation.id)}`; // counters via DB trigger
         await tx`update app.orders set status='CANCELLED',version=version+1,updated_at=now() where id=${orderId}`;
         await tx`insert into app.order_events (order_id,actor_id,kind,payload) values (${orderId},${null},'HOLD_EXPIRED',${JSON.stringify({ released_units: 1 })}::jsonb)`;
-        if (order.source === 'AUCTION' && order.source_ref) {
-          await tx`update app.auctions set status='EXPIRED',updated_at=now() where id=${String(order.source_ref)} and status='AWAITING_WINNER_PAYMENT'`;
-        }
+        // Auction sales default through the order trigger (drizzle/0008); the auction never reopens.
         return 'RELEASED';
       }));
     } catch (error) {
@@ -416,12 +415,32 @@ export async function expireHireOffers(options: { limit?: number; requestId?: st
   return result;
 }
 
+/** §10.5: SCHEDULED auctions go LIVE at their start; due auctions close once each, even if this job runs late or twice. */
+export async function closeDueAuctions(options: { limit?: number; auctionId?: string } = {}): Promise<JobReport> {
+  const { result, tally } = report('close_due_auctions');
+  const only = options.auctionId ? sql`id=${options.auctionId}` : sql`true`;
+  const started = await sql<Row[]>`update app.auctions set status='LIVE',version=version+1,updated_at=now()
+    where status='SCHEDULED' and starts_at <= now() and ends_at > now() and ${only} returning id`;
+  for (let i = 0; i < started.length; i++) tally('STARTED');
+  const due = await sql<Row[]>`select id from app.auctions where status in ('SCHEDULED','LIVE') and ends_at <= now() and ${only} order by ends_at limit ${options.limit ?? 50}`;
+  for (const auction of due) {
+    try {
+      tally((await sql.begin((tx) => closeAuction(tx, String(auction.id)))).outcome);
+    } catch (error) {
+      console.error('close_due_auctions failed', auction.id, error);
+      tally('ERROR');
+    }
+  }
+  return result;
+}
+
 export async function runJobsOnce(): Promise<JobReport[]> {
   return [
     await reprocessWebhookInbox(),
     await reconcileProviderOperations(),
     await expireCheckoutHolds(),
     await expireHireOffers(),
+    await closeDueAuctions(),
     await autoAcceptDeliveries(),
     await releaseReadySettlements(),
     await sendOrderReminders(),

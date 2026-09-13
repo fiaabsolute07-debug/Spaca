@@ -47,7 +47,8 @@ Status values: TODO · IN_PROGRESS · REVIEW · DONE · BLOCKED.
 | W2-B | Roles/audit/operator backend: `user_roles`, append-only audit log, finance refund + dispute resolution, reconciliation retry, case/moderation/suspension, feature flags + checkout/bid/payout kill switches, operator queue read models. Migration 0005. Evidence `docs/evidence/claude-W2-B.md` | SEC-12/13, OPS-04/05, FND-05 | W1-B | DONE |
 | W2-S | Storage: upload intents, finalize (size/signature/SHA-256, quarantine), private delivery/brief/dispute files, 5-minute signed downloads, sample files, orphan cleanup, delivery upload UI. Local filesystem adapter only (Supabase adapter + AV scanning not done). Migration 0006. Evidence `docs/evidence/claude-W2-S.md` | SEC-01/05/06/14, ORD-07 | W1-B | DONE |
 | W3-R | P2 requests v2: versioned private quotes, 24 h hire offers holding request budget/hire count (DB CHECK counters), creator capacity-plan confirmation, canonical order per hire, funding/refund/lapse budget sync trigger, close/cancel, offer expiry job, campaign read model + request UI. Migration 0007. Evidence `docs/evidence/claude-W3-R.md` | REQ-01..10 (REQ-11 PARTIAL) | W2 | DONE |
-| W4+ | P3 auctions v2, P4 crypto (local/testnet-blocked), P5 discovery backend, P6 PUBLISH/ACCESS/DIGITAL backend | AUC, CRY, DSC, XPL | W3-R | TODO |
+| W4-A | P3 auctions v2: exact state enum + DB transition guard, write-once first_valid_bid_at, sequenced idempotent bids with moderated invalidation, single purchase intent (WINNER 24 h / BUY_NOW checkout TTL), idempotent close job, default without relist, snapshot polling UI + My bids. Migration 0008. Evidence `docs/evidence/claude-W4-A.md` | AUC-01..14 | W3-R | DONE |
+| W5+ | P4 crypto (local simulation; testnet BLOCKED), P5 discovery backend, P6 PUBLISH/ACCESS/DIGITAL backend | CRY, DSC, XPL | W4-A | TODO |
 
 ### Codex (Astra)
 

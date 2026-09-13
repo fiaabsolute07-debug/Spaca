@@ -120,7 +120,7 @@ describe.skipIf(!RUN_DB)('expire_checkout_holds', () => {
     expect((await jobs.expireCheckoutHolds({ orderId })).examined).toBe(0);
   });
 
-  it('expires an unpaid Buy Now auction order and marks the auction expired', async () => {
+  it('expires an unpaid Buy Now auction order and defaults the auction (no silent relist)', async () => {
     const seller = await createUser('auc-exp-seller');
     const buyer = await createUser('auc-exp-buyer');
     const { serviceId } = await createPublishedService(command, seller, { capacity: 1 });
@@ -136,7 +136,7 @@ describe.skipIf(!RUN_DB)('expire_checkout_holds', () => {
     await expireHold(orderId);
     expect((await jobs.expireCheckoutHolds({ orderId })).outcomes).toEqual({ RELEASED: 1 });
     const [auction] = await sql`select status from app.auctions where id=${auctionId}`;
-    expect(auction!.status).toBe('EXPIRED');
+    expect(auction!.status).toBe('WINNER_DEFAULTED');
   });
 });
 
@@ -315,7 +315,7 @@ describe.skipIf(!RUN_DB)('local jobs route', () => {
     expect(ok.status).toBe(200);
     const body = (await ok.json()) as { reports: { job: string }[] };
     expect(body.reports.map((r) => r.job)).toEqual([
-      'reprocess_webhook_inbox', 'reconcile_provider_operations', 'expire_checkout_holds', 'expire_hire_offers', 'auto_accept_deliveries', 'release_ready_settlements', 'order_reminders', 'dispatch_notification_outbox', 'cleanup_storage',
+      'reprocess_webhook_inbox', 'reconcile_provider_operations', 'expire_checkout_holds', 'expire_hire_offers', 'close_due_auctions', 'auto_accept_deliveries', 'release_ready_settlements', 'order_reminders', 'dispatch_notification_outbox', 'cleanup_storage',
     ]);
     const blocked = await jobsRoute.POST(new Request(`${ORIGIN}/api/dev/jobs`, { method: 'POST', headers: { origin: 'https://attacker.test' } }));
     expect(blocked.status).toBe(403);
