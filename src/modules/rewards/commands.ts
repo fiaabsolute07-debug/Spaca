@@ -1,6 +1,8 @@
 import { CommandError, text, type CommandHandler } from '@/lib/commands';
+import { assertFlags } from '@/modules/admin/policy';
 
 const createPool: CommandHandler = async ({ tx, actor, form }) => {
+  await assertFlags(tx, ['TOKEN_REWARDS_ENABLED']);
   const requestId = text(form, 'request_id', false) || null;
   const symbol = text(form, 'asset_symbol');
   const atomic = text(form, 'amount');

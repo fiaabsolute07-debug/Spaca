@@ -59,3 +59,20 @@ Commands (all take order_id; optional expected_version → 409 VERSION_CONFLICT)
 - respond_cancellation: request_id, decision accept|reject|withdraw (no order_id needed) — counterparty accepts/rejects, requester withdraws; 409 if the order changed since the request.
 - review: rating 1-5, body — buyer, COMPLETED only; repeat submits keep one review.
 - mark_delivery_viewed — buyer.
+
+## W2-B additions (2026-09-13) — operator console
+Actor roles = marketplace roles (`buyer`, `creator`) + active `app.user_roles` grants (`moderator`, `finance`, `support`, `admin`). Hide nothing for security; every check is server-side.
+Read models (`src/modules/admin/queries.ts`, throw OperatorAccessError for non-operators → render 404/403 page):
+- getOperatorQueues(actor) → { roles, cases[id,kind,severity,status,order_id,next_action,assigned_to,age_seconds], disputes[id,order_id,status,assigned_to,status_before_dispute,age_seconds,(amount_minor,currency for finance)], review_holds, provider_operations[operation_id,kind,status,order_id,provider_reference(redacted),last_error], failed_outbox, reconciling_holds, pending_samples[id,creator_id,title,url,visibility], overdue_orders, feature_flags[key,enabled,description,changed_by,changed_reason,updated_at] }. Sections a role cannot see come back as [].
+- getAuditLog(actor, { entityType?, entityId?, limit? }) — finance/admin.
+Commands (all require `reason` ≥10 chars; missing role → 403; closed item → 409):
+- admin_resolve_dispute: dispute_id, outcome RESUME|APPROVE|REFUND_FULL|REFUND_PARTIAL, refund_amount (USD, REFUND_PARTIAL only). RESUME: finance/support/admin; others finance/admin. → /admin/disputes
+- admin_refund_order: order_id — finance/admin; CANCELLED + REFUND_PENDING/SUCCEEDED only. → /admin/orders/{id}
+- admin_retry_operation: operation_id — finance/admin; reconciles with the same operation id. → /admin/operations
+- admin_resolve_case: case_id, status RESOLVED|IGNORED — finance/support/admin. → /admin/cases
+- admin_assign_case: case_id, assignee_id (must hold finance/support/admin). → /admin/cases
+- admin_moderate_sample: sample_id, decision APPROVED|REJECTED — moderator/admin. → /admin/moderation
+- admin_suspend_user / admin_reactivate_user: user_id — moderator/admin; not self; admins only by admin. → /admin/users
+- admin_grant_role / admin_revoke_role: user_id, role — admin; not self. → /admin/users
+- admin_set_flag: key, enabled true|false — admin; LIVE_PAYMENTS_ENABLED refuses to enable (422). → /admin/flags
+Kill switches: disabled flags return 422 FEATURE_DISABLED on book/create_request/apply/accept_offer/create_auction/bid/buy_now/create_pool, checkout creation, and creator release. Show the disabled state; do not hide existing orders.

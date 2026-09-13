@@ -6,7 +6,10 @@ export type FixturePersona = {
   id: string;
   email: string;
   displayName: string;
+  /** Marketplace roles stored on the user (buyer/creator). */
   roles: string[];
+  /** Privileged roles granted through app.user_roles (moderator/finance/support/admin). */
+  grants?: string[];
   status: 'ACTIVE' | 'SUSPENDED';
   handle?: string;
 };
@@ -18,9 +21,9 @@ export const FIXTURE_PERSONAS = {
   creator_d: { id: '10000000-0000-4000-8000-000000000004', email: 'creator-d@example.test', displayName: 'Minh Le', roles: ['buyer', 'creator'], status: 'ACTIVE', handle: 'minh-frames' },
   dual_e: { id: '10000000-0000-4000-8000-000000000005', email: 'dual@example.test', displayName: 'Quinn Vo', roles: ['buyer', 'creator'], status: 'ACTIVE', handle: 'quinn-dual' },
   suspended: { id: '10000000-0000-4000-8000-000000000006', email: 'suspended@example.test', displayName: 'Suspended Creator', roles: ['buyer', 'creator'], status: 'SUSPENDED', handle: 'suspended-creator' },
-  moderator: { id: '10000000-0000-4000-8000-000000000007', email: 'moderator@example.test', displayName: 'Mod Operator', roles: ['moderator'], status: 'ACTIVE' },
-  finance: { id: '10000000-0000-4000-8000-000000000008', email: 'finance@example.test', displayName: 'Finance Operator', roles: ['finance'], status: 'ACTIVE' },
-  admin: { id: '10000000-0000-4000-8000-000000000009', email: 'admin@example.test', displayName: 'Local Admin', roles: ['admin'], status: 'ACTIVE' },
+  moderator: { id: '10000000-0000-4000-8000-000000000007', email: 'moderator@example.test', displayName: 'Mod Operator', roles: [], grants: ['moderator'], status: 'ACTIVE' },
+  finance: { id: '10000000-0000-4000-8000-000000000008', email: 'finance@example.test', displayName: 'Finance Operator', roles: [], grants: ['finance'], status: 'ACTIVE' },
+  admin: { id: '10000000-0000-4000-8000-000000000009', email: 'admin@example.test', displayName: 'Local Admin', roles: [], grants: ['admin'], status: 'ACTIVE' },
 } as const satisfies Record<string, FixturePersona>;
 
 export type FixturePersonaKey = keyof typeof FIXTURE_PERSONAS;

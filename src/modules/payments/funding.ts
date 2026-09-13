@@ -15,6 +15,7 @@ import type postgres from 'postgres';
 import { sql } from '@/lib/db';
 import { commitOrderReservation } from '@/modules/capacity';
 import { recomputeWorkClock } from '@/modules/orders/lifecycle';
+import { isFlagEnabled } from '@/modules/admin/policy';
 import {
   MockPaymentProvider,
   computeRequestHash,
@@ -107,6 +108,7 @@ async function recordCallFailure(tx: Tx, operationId: string, error: unknown): P
  */
 export async function ensureFundingIntent(tx: Tx, buyerId: string, orderId: string): Promise<ProviderCallResult> {
   const provider = getMockPaymentProvider();
+  if (!(await isFlagEnabled(tx, 'CHECKOUT_CREATION_ENABLED'))) throw new PaymentFlowError('Checkout is temporarily paused; existing payments and refunds continue', 'UNAVAILABLE');
   const [order] = await tx<Row[]>`select id,buyer_id,creator_id,status,payment_status,amount_minor,platform_fee_minor,currency from app.orders where id=${orderId} for update`;
   if (!order || String(order.buyer_id) !== buyerId) throw new PaymentFlowError('Order not found or not funded by this account', 'FORBIDDEN');
   if (order.status !== 'AWAITING_PAYMENT' || !['PENDING', 'PROCESSING', 'FAILED'].includes(String(order.payment_status))) {
@@ -236,6 +238,7 @@ export function feePayerPolicy(): FeePayerPolicy {
  */
 export async function requestCreatorRelease(tx: Tx, order: Row): Promise<ProviderCallResult> {
   const orderId = String(order.id);
+  if (!(await isFlagEnabled(tx, 'PAYOUT_CREATION_ENABLED'))) throw new PaymentFlowError('New payouts are paused by the payout kill switch', 'UNAVAILABLE');
   const [funding] = await tx<Row[]>`select provider_reference from app.provider_operations
     where order_id=${orderId} and kind='funding.create' and outcome->>'fundingStatus'='SUCCEEDED' order by created_at desc limit 1`;
   if (!funding) throw new PaymentFlowError('No provider-confirmed funding exists for this order', 'INVALID_STATE');

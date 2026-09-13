@@ -11,7 +11,7 @@ import { sql } from '@/lib/db';
 import { commandHandlers } from '@/modules/commands';
 import { PaymentFlowError, deliverPendingMockWebhooks, mockPaymentsEnabled } from '@/modules/payments/funding';
 
-const SUSPENDED_ALLOWED_COMMANDS = new Set(['start', 'deliver', 'revision', 'approve', 'dispute', 'cancel', 'refund', 'review', 'message', 'pause_service', 'archive_service']);
+const SUSPENDED_ALLOWED_COMMANDS = new Set(['start', 'deliver', 'revision', 'approve', 'dispute', 'cancel', 'request_cancellation', 'respond_cancellation', 'refund', 'review', 'message', 'mark_delivery_viewed', 'submit_brief', 'pause_service', 'archive_service']);
 
 const safeReturnTo = (value: string | null, fallback: string) =>
   value && value.startsWith('/') && !value.startsWith('//') && value.length < 300 ? value : fallback;
@@ -43,7 +43,9 @@ export async function POST(request: Request) {
   try {
     const handler = commandHandlers[command];
     if (!handler) throw new CommandError('Unknown command');
-    if (!['buyer', 'creator'].some((role) => actor.roles.includes(role))) throw new CommandError('This account cannot perform marketplace actions', 'FORBIDDEN');
+    // Operator commands check privileged roles themselves; marketplace commands need a buyer/creator account.
+    const operatorCommand = command.startsWith('admin_');
+    if (!operatorCommand && !['buyer', 'creator'].some((role) => actor.roles.includes(role))) throw new CommandError('This account cannot perform marketplace actions', 'FORBIDDEN');
     // SEC-10: suspended accounts keep existing obligations (delivery, messages, cancellation/refund, reviews) but start nothing new.
     if (actor.status !== 'ACTIVE' && !SUSPENDED_ALLOWED_COMMANDS.has(command)) throw new CommandError('This account is suspended; only existing orders can be handled', 'ACCOUNT_SUSPENDED');
     const inputHash = hashInput(valuesOf(form));

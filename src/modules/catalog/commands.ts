@@ -18,6 +18,7 @@ import {
 import type { Actor } from '@/lib/auth';
 import { ensureBuckets, insertReservation, lockAvailableBucket, lockOwnedPool, setPoolTimezone, setWeeklyUnits } from '@/modules/capacity';
 import { isValidTimeZone } from '@/modules/capacity/weeks';
+import { assertFlags } from '@/modules/admin/policy';
 
 const TAXONOMIES = ['CREATE', 'PUBLISH', 'ACCESS', 'DIGITAL'];
 export const MIN_PUBLIC_SAMPLES = 3;
@@ -194,6 +195,7 @@ const setPoolTimezoneCommand: CommandHandler = async ({ tx, actor, form }) => {
 
 const book: CommandHandler = async ({ tx, actor, form }) => {
   if (actor.status !== 'ACTIVE') throw new CommandError('Suspended accounts cannot place new orders', 'ACCOUNT_SUSPENDED');
+  await assertFlags(tx, ['BOOKING_ENABLED', 'CHECKOUT_CREATION_ENABLED']);
   const serviceId = text(form, 'service_id');
   const brief = text(form, 'brief', true, 12000);
   if (brief.length < 20) throw new CommandError('Share a brief of at least 20 characters', 'BRIEF_INCOMPLETE');

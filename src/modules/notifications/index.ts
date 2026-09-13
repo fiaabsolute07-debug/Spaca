@@ -57,6 +57,7 @@ export interface NotificationTemplateParams {
   'payout.failed': OrderRef;
   'refund.updated': OrderRef & Money & { refundStatus: 'PENDING' | 'SUCCEEDED' | 'FAILED' };
   'dispute.opened': OrderRef;
+  'dispute.resolved': OrderRef;
   'request.application_received': { requestRef: string };
   'request.hire_offer': { requestRef: string };
   'auction.outbid': { auctionRef: string } & Money;
@@ -329,6 +330,16 @@ export const NOTIFICATION_TEMPLATES: { readonly [K in NotificationTemplateId]: N
     defaultChannels: BOTH,
     params: { orderRef: 'ref' },
     body: () => 'A dispute was opened on an order. Releases are paused while it is reviewed.',
+    linkPath: orderLink,
+  }),
+  'dispute.resolved': template({
+    id: 'dispute.resolved',
+    category: 'transactional',
+    subject: 'Dispute resolved',
+    allowedChannels: BOTH,
+    defaultChannels: BOTH,
+    params: { orderRef: 'ref' },
+    body: () => 'An operator resolved the dispute on this order. The outcome and any refund status are on the order page.',
     linkPath: orderLink,
   }),
   'request.application_received': template({

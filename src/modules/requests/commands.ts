@@ -1,11 +1,13 @@
 import { CommandError, instant, integer, money, orderEvent, text, type CommandHandler, type Row } from '@/lib/commands';
 import { insertReservation, lockAvailableBucket } from '@/modules/capacity';
 import { CHECKOUT_HOLD_MINUTES } from '@/modules/catalog/commands';
+import { assertFlags } from '@/modules/admin/policy';
 
 const TAXONOMIES = ['CREATE', 'PUBLISH', 'ACCESS', 'DIGITAL'];
 
 const createRequest: CommandHandler = async ({ tx, actor, form }) => {
   if (actor.status !== 'ACTIVE') throw new CommandError('Suspended accounts cannot publish requests', 'ACCOUNT_SUSPENDED');
+  await assertFlags(tx, ['REQUESTS_ENABLED']);
   const title = text(form, 'title');
   const brief = text(form, 'brief');
   const taxonomy = text(form, 'taxonomy');
@@ -23,6 +25,7 @@ const createRequest: CommandHandler = async ({ tx, actor, form }) => {
 
 const apply: CommandHandler = async ({ tx, actor, form }) => {
   if (actor.status !== 'ACTIVE') throw new CommandError('Suspended accounts cannot apply to requests', 'ACCOUNT_SUSPENDED');
+  await assertFlags(tx, ['REQUESTS_ENABLED']);
   const requestId = text(form, 'request_id');
   const quote = money(text(form, 'quote'), 'quote');
   const note = text(form, 'note');
@@ -58,6 +61,7 @@ const respondToOffer: CommandHandler = async ({ tx, actor, form, command }) => {
   }
   if (String(application.status) !== 'SELECTED') throw new CommandError('This application is not selected');
   if (actor.status !== 'ACTIVE') throw new CommandError('Suspended accounts cannot accept new work', 'ACCOUNT_SUSPENDED');
+  await assertFlags(tx, ['REQUESTS_ENABLED', 'CHECKOUT_CREATION_ENABLED']);
   const [service] = await tx<Row[]>`select s.id,s.pool_id,s.published_version_id from app.services s
     where s.creator_id=${actor.id} and s.status='PUBLISHED' and s.taxonomy=${application.taxonomy} order by s.created_at desc limit 1`;
   if (!service) throw new CommandError('Publish a matching service before accepting this offer');

@@ -569,6 +569,7 @@ describe('notifications', () => {
       'payout.failed': { orderRef: 'ord_1' },
       'refund.updated': { orderRef: 'ord_1', amount: 10_000n, currency: 'USD', refundStatus: 'PENDING' },
       'dispute.opened': { orderRef: 'ord_1' },
+      'dispute.resolved': { orderRef: 'ord_1' },
       'request.application_received': { requestRef: 'req_1' },
       'request.hire_offer': { requestRef: 'req_1' },
       'auction.outbid': { auctionRef: 'auc_1', amount: 5_000n, currency: 'USD' },

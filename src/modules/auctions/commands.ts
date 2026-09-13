@@ -2,6 +2,7 @@ import { CommandError, instant, money, orderEvent, text, type CommandHandler, ty
 import type { Tx } from '@/lib/commands';
 import { insertReservation, lockAvailableBucket, releaseAuctionReservation } from '@/modules/capacity';
 import { ownedService } from '@/modules/catalog/commands';
+import { assertFlags } from '@/modules/admin/policy';
 
 /** Order terms for an auction sale come from the version the auction was created with (CAP-09 keeps the same claim). */
 async function auctionTerms(tx: Tx, auction: Row, priceMinor: string, kind: 'BUY_NOW' | 'WINNER') {
@@ -35,6 +36,7 @@ async function auctionTerms(tx: Tx, auction: Row, priceMinor: string, kind: 'BUY
 
 const createAuction: CommandHandler = async ({ tx, actor, form }) => {
   if (actor.status !== 'ACTIVE') throw new CommandError('Suspended accounts cannot create auctions', 'ACCOUNT_SUSPENDED');
+  await assertFlags(tx, ['AUCTIONS_ENABLED']);
   const service = await ownedService(tx, actor, text(form, 'service_id'));
   if (String(service.status) !== 'PUBLISHED') throw new CommandError('Only a published service can be auctioned');
   const starting = money(text(form, 'starting_price'), 'starting_price');
@@ -56,6 +58,7 @@ const createAuction: CommandHandler = async ({ tx, actor, form }) => {
 
 const bid: CommandHandler = async ({ tx, actor, form }) => {
   if (actor.status !== 'ACTIVE') throw new CommandError('Suspended accounts cannot bid', 'ACCOUNT_SUSPENDED');
+  await assertFlags(tx, ['AUCTIONS_ENABLED', 'BIDDING_ENABLED']);
   const auctionId = text(form, 'auction_id');
   const amount = money(text(form, 'amount'), 'amount');
   const [auction] = await tx<Row[]>`select * from app.auctions where id=${auctionId} for update`;
@@ -73,6 +76,7 @@ const bid: CommandHandler = async ({ tx, actor, form }) => {
 
 const buyNow: CommandHandler = async ({ tx, actor, form }) => {
   if (actor.status !== 'ACTIVE') throw new CommandError('Suspended accounts cannot buy', 'ACCOUNT_SUSPENDED');
+  await assertFlags(tx, ['AUCTIONS_ENABLED', 'CHECKOUT_CREATION_ENABLED']);
   const auctionId = text(form, 'auction_id');
   const [auction] = await tx<Row[]>`select a.*,r.pool_id,r.id as reservation_id from app.auctions a join app.reservations r on r.auction_id=a.id where a.id=${auctionId} for update`;
   if (!auction || !auction.buy_now_price_minor) throw new CommandError('Buy now is unavailable');

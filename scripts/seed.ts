@@ -28,6 +28,10 @@ try {
         values (${persona.id},${persona.email},${persona.displayName},${password ? hashPassword(password) : null},${[...persona.roles]},true,${persona.status})
         on conflict (id) do update set display_name=excluded.display_name,roles=excluded.roles,status=excluded.status,is_test=true,
           password_hash=coalesce(excluded.password_hash,app.users.password_hash)`;
+      for (const role of 'grants' in persona ? persona.grants : []) {
+        await tx`insert into app.user_roles (user_id,role,granted_reason) values (${persona.id},${role},'Local fixture bootstrap grant (seed.ts)')
+          on conflict do nothing`;
+      }
       if ('handle' in persona && persona.handle) {
         await tx`insert into app.profiles (user_id,handle,bio,niche,avatar_color)
           values (${persona.id},${persona.handle},${`${persona.displayName} — local test fixture profile.`},'Local fixture','#dce1ed')

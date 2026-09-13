@@ -86,18 +86,21 @@ export async function supabaseAuth() {
     setAll: (values) => { for (const { name, value, options } of values) { try { jar.set(name, value, options); } catch { /* Server component: refresh on next route request. */ } } },
   } });
 }
+/** Marketplace roles from the user row plus active privileged grants (never from the request). */
+const ACTOR_ROLES = sql`(u.roles || coalesce((select array_agg(r.role order by r.role) from app.user_roles r where r.user_id=u.id and r.revoked_at is null), '{}'::text[]))`;
+
 export async function getActor(): Promise<Actor | null> {
   if (!localAuthEnabled()) {
     const client = await supabaseAuth();
     const { data: { user }, error } = await client.auth.getUser();
     if (error || !user) return null;
     // SUSPENDED users keep access to existing obligations; the command envelope blocks new activity (SEC-10).
-    const [actor] = await sql<Actor[]>`select id,email,display_name,roles,is_test,status,timezone from app.users where auth_user_id=${user.id} and status in ('ACTIVE','SUSPENDED')`;
+    const [actor] = await sql<Actor[]>`select u.id,u.email,u.display_name,${ACTOR_ROLES} as roles,u.is_test,u.status,u.timezone from app.users u where u.auth_user_id=${user.id} and u.status in ('ACTIVE','SUSPENDED')`;
     return actor ?? null;
   }
   const token = (await cookies()).get(SESSION_COOKIE)?.value;
   if (!token || !/^[a-f0-9]{64}$/.test(token)) return null;
-  const [actor] = await sql<Actor[]>`select u.id,u.email,u.display_name,u.roles,u.is_test,u.status,u.timezone from app.sessions s join app.users u on u.id=s.user_id where s.token_hash=${hashSessionToken(token)} and s.expires_at>now() and u.status in ('ACTIVE','SUSPENDED')`;
+  const [actor] = await sql<Actor[]>`select u.id,u.email,u.display_name,${ACTOR_ROLES} as roles,u.is_test,u.status,u.timezone from app.sessions s join app.users u on u.id=s.user_id where s.token_hash=${hashSessionToken(token)} and s.expires_at>now() and u.status in ('ACTIVE','SUSPENDED')`;
   return actor ?? null;
 }
 export async function requireActor(): Promise<Actor> {
