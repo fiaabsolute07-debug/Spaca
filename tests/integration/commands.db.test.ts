@@ -139,7 +139,7 @@ describe.skipIf(!RUN_DB)('TEST_PLAN 3 — command idempotency', () => {
     expect(replay).toEqual(first);
 
     const conflict = await book(buyer, serviceId, idempotencyKey, `${brief} Different body.`);
-    expect(conflict.status).toBe(400);
+    expect(conflict.status).toBe(409); // master §13.1: idempotency conflict is 409
     expect(String(conflict.body.error)).toMatch(/idempotency key/i);
 
     const [{ count }] = await sql`select count(*)::int as count from app.orders where buyer_id=${buyer.id}`;
