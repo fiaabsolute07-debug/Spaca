@@ -1,46 +1,32 @@
 # HANDOFF
 
-Read `docs/MASTER_PROMPT.md`, `docs/BUILD_STATUS.md`, `docs/COLLABORATION.md`, `docs/ACCEPTANCE.md`, and `AGENTS.md` before changing files. Continue this repository; do not reset or initialize a second project.
+Read `docs/MASTER_PROMPT.md`, `docs/BUILD_STATUS.md`, `docs/COLLABORATION.md`, `docs/ACCEPTANCE.md` and AGENTS.md before changes. Continue this working tree without resets or overwriting another engineer. Platform fee always **0%**.
 
-## Claude → Codex update (2026-09-13, user-approved)
+As of 2026-09-14: **Claude coordinates, integrates, runs DB suites/browser checks and commits. Codex is dispatched via `codex exec`**, implements assigned paths and writes evidence without committing. This user-directed model supersedes the old Codex-lead instructions. Claude is currently editing P3 auction code, migrations, tests and auction pages; C3 touched documentation only.
 
-Claude ran PostgreSQL in the user's normal macOS shell. It added DB-backed integration tests and replaced client-side funding with provider-webhook funding. Start with `docs/CLAUDE_REPORT.md` ("Phase 2") and `docs/evidence/claude-db-integration.md`.
+Verified baseline **3bddff9**: **184/184 tests, 17 files with DB suites enabled; tsc exit 0** ([C6 review](evidence/claude-review-C6.md) and referenced commit). The count includes unit/provider tests. PostgreSQL startup/migrations/seed and DB integration work in Claude's shell. Codex cannot start PostgreSQL because the managed runner rejects IPC; do not describe this as a global database blocker or infer current process health from historical tests.
 
-- **DB works outside the Codex runner.** Run `tsx scripts/postgres.ts start` (TCP-only fix applied), then `tsx scripts/migrate.ts` and `tsx scripts/seed.ts`; all pass. A Postgres process may still be running on `127.0.0.1:55432`. Stop it with `tsx scripts/postgres.ts stop`.
-- **Gates (after phase 3):**
-  - `tsx scripts/migrate.ts` applies `0002_notifications.sql`
-  - `tsc` exit 0
-  - `RUN_DB_INTEGRATION=1 vitest run` → 83/83 (twice)
-  - `vitest run` without the flag → 49 passed, 34 skipped
-  - `next build --webpack` passes
-- **Phase 3 added:**
-  - durable jobs in `src/modules/jobs` (hold expiry, inbox reprocess, provider reconciliation, settlement release, outbox → notifications), run locally via `POST /api/dev/jobs`
-  - `app.notifications` in-app timeline and local email sink
-  - automatic full refund request when cancelling a funded order
-- **Fixed in lead-owned files** (review the diff):
-  - `sandbox_pay` mark-paid removed (403)
-  - idempotency advisory lock
-  - `close_auction` `FOR UPDATE` on an outer join
-  - anonymous request/auction pages crashing on `uuid = ''`
-  - refund no longer marks REFUNDED without the provider
-- **Next for Codex:**
-  1. Review and own these changes.
-  2. Move TEST_PLAN cases 1–7 in `docs/ACCEPTANCE.md` from NOT_RUN using the evidence file.
-  3. Capture UI evidence.
-  4. Wire a scheduler (Inngest/cron) to `src/modules/jobs`.
-  5. Add dispute/finance resolution and an admin queue for `reconciliation_cases`.
-  6. Split provider calls out of DB transactions before any real adapter.
+| Phase | Handoff status |
+|---|---|
+| P0 / P1A | done-local |
+| P1B | done-local with MockPaymentProvider; sandbox/live payments BLOCKED |
+| P1C | docs done; staging/live BLOCKED |
+| P2 | done-local; REQ-11 PARTIAL (comparison sort/filter missing) |
+| P3 | IN_PROGRESS — Claude; no results inferred from concurrent files |
+| P4–P6 | TODO |
 
-## Current state
+Local adapters are `MockPaymentProvider`, `LocalStorageProvider` (signature checking, no antivirus, no Supabase adapter), in-app notifications/local email sink and in-process jobs through `POST /api/dev/jobs`. `pnpm jobs:dev` polls that route; no Inngest integration exists. `sandbox_pay` returns 403. Fund only from verified provider facts, including the existing reconciliation fetch path. Mock provider history disappears when Next restarts; provider recovery must use the original process and operation ID.
 
-- P0 code foundation is in place: Next shell, strict TypeScript, auth route, read models, command route, durable migration, seed fixtures, payment/notification seams, and shared UI.
-- Direct checks pass: `tsc --noEmit -p tsconfig.json --incremental false`; `vitest run` (48 tests); webpack production build with placeholder env values.
-- PostgreSQL is **not running** in this managed runner. `scripts/postgres.ts start` is blocked by denied SysV `shmget` during embedded `initdb`, so migrations/seed/integration tests are pending. Do not report sandbox transaction PASS until those commands run.
-- Turbopack is blocked by child-process port binding; use `next build --webpack` for this runner's compile evidence.
-- No live payment, Supabase, email, storage, RPC, or deployment credentials are available. Never invent them.
+For Claude's local shell, existing scripts are `pnpm db:start`, `pnpm db:migrate`, `pnpm db:seed`, `pnpm db:test:prepare`, `pnpm dev`, `pnpm jobs:dev`, `pnpm typecheck`, `pnpm test:integration` and `pnpm release:check`. Run fixtures only against allowlisted local/test targets. Full recorded suite command: `RUN_DB_INTEGRATION=1 ./node_modules/.bin/vitest run`. No command in this handoff was executed by C3. `test:critical` currently omits the newer order/admin/storage/request suites; use the full suite for integration until Claude expands it. `test:e2e`, `test:contracts`, `smoke:staging`, `reconcile:dry-run` and configured lint tooling are NOT IMPLEMENTED as package scripts.
 
-## Next concrete work
+Next work for Claude:
 
-1. Use a normal local/Docker/Supabase PostgreSQL runtime and run `db:start` (or set `DATABASE_MIGRATION_URL`/`DATABASE_URL`), `db:migrate`, and `db:seed`.
-2. Add database-backed integration tests for authorization, capacity race, idempotency, order lifecycle, requests, and auctions from `docs/TEST_PLAN.md`.
-3. Capture redacted UI evidence at 360/768/1440px, update `docs/ACCEPTANCE.md`, then proceed with the later master phases.
+1. Integrate C3's allowed docs and [evidence](evidence/codex-C3.md), update your board, and reconcile the superseded AGENTS.md ownership text. Preserve concurrent P3 files.
+2. Finish P3 and record its own acceptance evidence; then refresh auction/job documentation against that accepted commit. Keep P4–P6 TODO meanwhile.
+3. Review pool → bucket → order consistency in order-first worker paths; add real hire-funding/expiry and cancellation/auto-release races. Close ORD-12 deadline amendments and ORD-14 chargeback gaps in planned follow-ups.
+4. Dispatch C5 full browser/E2E checks: 360/768/1440, keyboard/long text, multi-hire and populated dispute/case forms. Existing 360px checks do not close OPS-07/G3. Add P2 comparison controls/analytics/export follow-ups.
+5. Before staging: implement real provider/storage adapters and remote operation boundaries, deployed scheduler/alerts, safe reconcile dry-run, restore/rollback rehearsal and Supabase auth/storage tests. Credentials alone do not implement these integrations.
+
+Operational truth: bucket counters derive from reservations; consumed work is never returned after refund. Orders become COMPLETED only after confirmed release, with ReviewHold stored separately while DELIVERED. Request budget reservations commit on funding, release on unpaid lapse/full refund; partial refunds retain commitments and pre-0007 requests need a backfill decision. Privileged roles come from active `app.user_roles` grants; `/admin` actions require reasons and append-only audits. See [runbooks](runbooks/README.md) for actual pages, commands and the nine-job accepted baseline and current unverified P3 addition.
+
+G0–G4 remain PARTIAL; G5–G7 BLOCKED. No external email, deployment or live transaction is authorized by this handoff. Provider/identity/policy/reserve/infrastructure/launch decisions are in [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md).

@@ -1,30 +1,14 @@
 # Buyer charged; order not funded
 
-Status: procedure documented; incident rehearsal **NOT_RUN**. [Shared tooling and evidence limits](README.md) apply.
+Status: local procedure documented; end-to-end incident rehearsal **NOT_RUN**. Baseline `3bddff9`; concurrent P3 changes are unaccepted. [Shared tools and limits](README.md) apply. Platform fee always **0%**.
 
-Severity / escalation: HIGH; escalate to finance operator and engineering.
+Owner: finance + engineering; HIGH severity. Symptom: a debit is reported while `app.orders` is AWAITING_PAYMENT.
 
-Required access: authorized read-only database/log inspection; finance authority for monetary decisions and engineering authority for recovery changes. Local fixture actions require access to the isolated dev process. No production access is implied.
+1. Open `/admin/orders/[orderId]` and `/admin/operations`; correlate `app.provider_operations` with `app.webhook_inbox`, `app.order_events`, `app.reservations` and `app.reconciliation_cases`. Check original reference, account, amount and currency; a screenshot/return URL is not funding evidence.
+2. Finance/admin may submit `admin_retry_operation` from `/admin/operations` with the existing `operation_id` and reason. This performs lookup-first reconciliation for the associated order, potentially including its other operations; it is not a single-operation dry run. Inspect the returned outcomes and `/admin/audit`.
+3. For an isolated local fixture in the original Next process, the shared `POST /api/dev/jobs` hook reprocesses persisted inbox events and fetches missing mock provider facts. Funding may come from a verified webhook or `provider_api_fetch`; the latter deliberately has `signature_verified=false`.
+4. UNKNOWN/captured-before-cancel keeps a RECONCILING claim. If already released, retain the `LATE_FUNDING` case; assign via `admin_assign_case` on `/admin/cases`. Automatic refund/rebook consent for a resold slot is not proved; escalate instead of forcing funding. After a Next restart, `PROVIDER_OBJECT_MISSING` cannot be repaired by inventing a payment.
 
-## Symptoms
+Verify: one funding effect in `app.ledger_transactions`/`app.ledger_entries`, one transition/outbox semantic effect, and valid bucket commitment; otherwise keep the case open. Alerts for delayed funding and real-provider diagnosis tooling are NOT IMPLEMENTED.
 
-Buyer reports a debit but the order remains awaiting payment. Proposed alert: a verified payment remains unmapped for more than 5 minutes (alert wiring TODO).
-
-## How to detect (read-only)
-
-Find the order by ID or redacted provider reference. Read `app.orders`, `app.provider_operations` (operation ID, status, reference), `app.webhook_inbox` (mode, event, source, processing), `app.reconciliation_cases` and linked `app.reservations`. Match account, integer amount and currency. Compare `app.order_events`, `app.ledger_transactions`/`app.ledger_entries` and `app.outbox` for effects already applied.
-
-## Safe steps
-
-1. Confirm provider facts using the original operation/reference. A buyer screenshot or checkout redirect is insufficient. Preserve unknown outcomes and the capacity claim.
-2. For a local mock fixture in the original running process, use the dev jobs hook described in the index; `reprocess_webhook_inbox` and `reconcile_provider_operations` recover persisted events or fetch facts without a new charge.
-3. If funding is confirmed and capacity is valid, let the domain processor apply it once. If capacity is lost, retain the `PAYMENT_RECEIVED_NO_CAPACITY` case and escalate for provider-confirmed refund or rebooking with buyer consent. TODO: finance resolution workflow, admin queue UI and operator retry command.
-4. If provider memory was lost after a restart, retain the missing-object case. Do not recreate the provider payment to make the DB look consistent.
-
-## Expected result and invariant check
-
-Expected: one funding ledger transaction and transition, a valid capacity claim and deduplicated notification, or a tracked exception. Check balanced entries per currency and platform fee 0%. Record resolution evidence; a debit alone never proves funding. Record actor, UTC time, original IDs, reason, outcome and next owner in restricted incident evidence; use the audited case workflow when available.
-
-## Forbidden actions
-
-Never force paid, never set balances, never retry with a new key. Never create a replacement charge for an unknown result or accept an unsigned user claim as a provider fact.
+Never force paid/refunded/released state, write balances or capacity counters, delete audit evidence, or retry an uncertain financial effect with a new operation key. Record actor, UTC time, original identifiers, reason, observed result and next owner. No live payment, external email or deployment is authorized here.

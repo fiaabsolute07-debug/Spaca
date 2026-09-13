@@ -1,30 +1,16 @@
-# Auto-accept and dispute race
+# Auto-accept, dispute and mutual cancellation
 
-Status: procedure documented; incident rehearsal **NOT_RUN**. [Shared tooling and evidence limits](README.md) apply.
+Status: local procedure documented; end-to-end incident rehearsal **NOT_RUN**. Baseline `3bddff9`; concurrent P3 changes are unaccepted. [Shared tools and limits](README.md) apply. Platform fee always **0%**.
 
-Severity / escalation: HIGH; finance operator owns the dispute; engineering owns locking/recovery.
+Owner: finance/support + engineering; HIGH severity. W1-B implements these workflows; they are not pending scaffolds.
 
-Required access: authorized read-only database/log inspection; finance authority for monetary decisions and engineering authority for recovery changes. Local fixture actions require access to the isolated dev process. No production access is implied.
+1. Inspect `/admin/orders/[orderId]`, `/admin/operations`, `app.orders`, `app.deliveries`, `app.review_holds`, `app.cancellation_requests`, `app.disputes` and `app.order_events`. `orders_transition_guard` enforces the DB transition matrix and version bumps; delivery content/history is append-only.
+2. Work clock is fixed when funding and brief are ready: work_start = max(funded_at, brief_ready_at), due = work_start + turnaround. A late Start click does not move it. `revision`/`approve` on `/orders/[orderId]` carry `delivery_version`; stale versions conflict. Deadline amendments (ORD-12) remain **NOT IMPLEMENTED**.
+3. `auto_accept_deliveries` requires elapsed review window, valid latest delivery, READY attachments, consent, buyer-view evidence and no open dispute/pending cancellation. Missing evidence/invalid delivery creates `app.review_holds` plus a case; order stays DELIVERED. `order_reminders` queues due/review/overdue notices into the sink.
+4. The actual buyer opening `/orders/[orderId]` records `mark_delivery_viewed`; valid view recovery resolves the evidence hold and restarts a full review window. Do not manufacture buyer views or clear holds through SQL. A quarantined file still prevents auto-accept. There is no general operator “clear hold” command or email-delivery confirmation adapter.
+5. Use `/admin/disputes` → `admin_resolve_dispute` with a reason: RESUME (support/finance/admin), APPROVE or REFUND_FULL/REFUND_PARTIAL (finance/admin). RESUME restores the prior state and refreshes a delivered review window; APPROVE queues settlement, not immediate completion.
+6. Participant mutual cancellation on `/orders/[orderId]` uses `request_cancellation` / `respond_cancellation` (accept/reject/withdraw). Consent binds version/amount; accepted work consumes quota and confirmed refunds/remainder release follow the existing provider operations. If outcome is UNKNOWN, use `/admin/operations` lookup-first retry.
 
-## Symptoms
+Verify one serialized order event/decision and unchanged consented amount, with balanced ledger and no duplicate effect. W1-B proves competing order actions and delivery/cancellation races; complete refund/auto-release principal races and actual email-bounce recovery remain PARTIAL in the ledger. The broad jobs hook advances eligible work; it is not a freeze command.
 
-Acceptance/release and a revision, cancellation or dispute appear to overlap at the review deadline.
-
-## How to detect (read-only)
-
-Read `app.orders`, `app.deliveries`, `app.disputes` and `app.order_events` for latest delivery, review deadline and competing actions. Inspect `app.provider_operations`, `app.webhook_inbox`, `app.reconciliation_cases`, `app.ledger_transactions`/`app.ledger_entries`, `app.reservations` and `app.outbox`. ReviewHold, versioned delivery/consent and the full auto-accept workflow are pending lifecycle work; do not assume those fields/guards exist in this baseline.
-
-## Safe steps
-
-1. Preserve the timeline and original policy evidence. Establish whether a release was never submitted, submitted, unknown or confirmed.
-2. Before submission, freeze/re-evaluate through a reviewed domain action under the order lock. TODO: operator freeze/review resolution and full auto-accept/ReviewHold implementation; do not emulate these with SQL.
-3. After submission or an unknown result, retain factual state and lookup the original operation. Local mock reconciliation is available through the dev jobs hook only after evaluating all its effects. Do not call the hook merely to freeze an order; it can release other eligible orders.
-4. If already released, use refund/recovery handling from runbook 03. TODO: admin queue UI and operator retry command. Record actor, reason and evidence; external notifications require actual operator authority.
-
-## Expected result and invariant check
-
-Expected: one serialized outcome and no duplicate transfer; existing local tests prove open disputes freeze release, not the complete auto-accept race. Check ledger conservation, platform fee 0%, capacity state and notices match the factual outcome. Record actor, UTC time, original IDs, reason, outcome and next owner in restricted incident evidence; use the audited case workflow when available.
-
-## Forbidden actions
-
-Never force paid, never set balances, never retry with a new key. Never erase a dispute, alter a review deadline or claim a transfer was cancelled without provider evidence.
+Never force paid/refunded/released state, write balances or capacity counters, delete audit evidence, or retry an uncertain financial effect with a new operation key. Record actor, UTC time, original identifiers, reason, observed result and next owner. No live payment, external email or deployment is authorized here.

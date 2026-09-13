@@ -1,30 +1,16 @@
 # Capacity stuck in hold
 
-Status: procedure documented; incident rehearsal **NOT_RUN**. [Shared tooling and evidence limits](README.md) apply.
+Status: local procedure documented; end-to-end incident rehearsal **NOT_RUN**. Baseline `3bddff9`; concurrent P3 changes are unaccepted. [Shared tools and limits](README.md) apply. Platform fee always **0%**.
 
-Severity / escalation: MEDIUM; HIGH if counters disagree or oversell is possible. Escalate to engineering; finance operator resolves payment uncertainty.
+Owner: engineering + finance; MEDIUM, HIGH for counter mismatch or possible oversell.
 
-Required access: authorized read-only database/log inspection; finance authority for monetary decisions and engineering authority for recovery changes. Local fixture actions require access to the isolated dev process. No production access is implied.
+1. Read `app.reservations` (pool_id, bucket_id, order_id, state, units, expires_at) and `app.capacity_buckets`; `app.capacity_pools` holds configuration, not counters. Compare bucket reserved units with HELD+RECONCILING and committed units with COMMITTED+CONSUMED. Triggers derive these counters and the DB CHECK prevents totals above total_units.
+2. Follow the order on `/admin/orders/[orderId]` and uncertainty on `/admin/operations` / `/admin/cases`. Reconcile original provider operations before considering expiry; UNKNOWN or captured payments preserve RECONCILING capacity.
+3. In the isolated original Next process, the shared local hook runs `reconcile_provider_operations` before `expire_checkout_holds`. Expiry cancels a still-open provider intent before release, and rechecks state under locks. A terminal unpaid checkout releases once; consumed work never returns to inventory, even after refund.
+4. Capacity transaction contract: **pool → bucket(s) by start time → order**. Source review found order-first expiry/settlement paths updating reservations through bucket triggers; universal lock-order compliance is not proved. Escalate this consistency review to Claude; do not manually acquire reverse-order locks or repair counters.
+5. For request hires inspect `app.hire_offers`, `app.request_budget_reservations` and `/requests/[id]`. OFFERED expires after at most 24h via `expire_hire_offers`; ACCEPTED hands over to checkout expiry. The order trigger commits budget on FUNDED, releases on unpaid cancellation/lapse or full REFUNDED. Partial refunds stay committed. Pre-0007 requests have no reservation backfill; do not trust their zero counters as complete historical obligations.
+6. On invariant failure, an admin can disable `CHECKOUT_CREATION_ENABLED` on `/admin/flags` with a reason, preserving webhook/refund/reconciliation. Pool-specific kill switches and automatic repair are **NOT IMPLEMENTED**.
 
-## Symptoms
+Verify `reserved_units + committed_units <= total_units`, no duplicate claim, and request budget/count conservation. Weekly timezone changes preserve booked intervals but may leave a partial-week gap. No per-slot ACCESS model is accepted yet.
 
-An expired checkout still occupies capacity, or available units disagree with reservations.
-
-## How to detect (read-only)
-
-Read `app.reservations` state, units, expiry, pool/order/auction links and `app.capacity_pools`. Follow `app.provider_operations`, `app.webhook_inbox` and `app.reconciliation_cases` for the linked payment. Compare `app.order_events`, `app.ledger_transactions`/`app.ledger_entries` and `app.outbox`. Trace any request/auction handoff before applying a timer.
-
-## Safe steps
-
-1. UNKNOWN or unavailable provider results keep the claim. Determine whether each payment attempt is captured or terminal/cancelled before releasing capacity.
-2. For local mock fixtures, the dev jobs hook runs reconciliation before `expire_checkout_holds`. The expiry job rechecks the order/reservation under locks and cancels an open payment before release; unresolved payment keeps RECONCILING.
-3. Compare pool counters with reservation totals using the current schema and state rules; include weekly bucket counters when integrated. If they disagree, contain new bookings for that pool and escalate. TODO: audited pool kill switch/diagnostic repair, admin queue UI and operator retry command.
-4. Confirm a transferred auction/accepted-hire claim is owned by the new order; a previous expiry timer must not release it. Do not run broad jobs until their other effects are safe.
-
-## Expected result and invariant check
-
-Expected: RELEASED exactly once for a terminal unpaid checkout, or a preserved claim and case while funds are unresolved. Check no oversell, no double decrement, correct order event, balanced money ledger and platform fee 0%. Record actor, UTC time, original IDs, reason, outcome and next owner in restricted incident evidence; use the audited case workflow when available.
-
-## Forbidden actions
-
-Never force paid, never set balances, never retry with a new key. Never decrement capacity counters by hand, shorten expiry to bypass reconciliation or release a captured/unknown payment claim.
+Never force paid/refunded/released state, write balances or capacity counters, delete audit evidence, or retry an uncertain financial effect with a new operation key. Record actor, UTC time, original identifiers, reason, observed result and next owner. No live payment, external email or deployment is authorized here.

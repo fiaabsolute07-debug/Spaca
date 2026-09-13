@@ -1,32 +1,28 @@
 # BUILD_STATUS
 
-> **Update 2026-09-13 (Claude, user-approved):** the PostgreSQL IPC blocker is specific to the Codex managed runner.
-> - In the user's normal macOS shell, PostgreSQL 18.4 starts and `db:migrate`/`db:seed` pass (idempotent).
-> - DB-backed integration suites for TEST_PLAN 1–7, the payment adapter and durable jobs pass: `RUN_DB_INTEGRATION=1 vitest run` → 83/83. `tsc` and `next build --webpack` also pass.
-> - Funding is now provider-webhook driven (no client mark-paid).
-> - Hold expiry, reconciliation, inbox reprocess, settlement release and outbox → in-app notifications exist as jobs, but no scheduler is wired yet.
-> - Evidence: `docs/evidence/claude-db-integration.md`. Acceptance rows are not yet updated by the lead.
-> - UI screenshots, Supabase, Stripe sandbox, a deployed scheduler and dispute resolution remain NOT RUN.
+Updated 2026-09-14. Verified baseline: **3bddff9**. Platform fee is always **0%**, with integer money and database fee constraints. Claude coordinates and integrates; Codex is the second engineer dispatched through `codex exec`.
 
-Updated: 2026-09-13. Current phase: **P0 foundation — implementation complete, acceptance PARTIAL/BLOCKED by local PostgreSQL IPC**.
+| Phase | Official status | Scope / limits |
+|---|---|---|
+| P0 | done-local | Foundation, local auth/fixtures, PostgreSQL, contracts and operational scripts; clean-clone/frozen CI still unverified. |
+| P1A | done-local | Versioned supply, immutable sold terms, weekly shared capacity; remaining per-ID gaps in the ledger. |
+| P1B | done-local with mock provider | Funding, lifecycle, delivery/revision, auto-accept, mutual cancellation, reviews and operator refunds; sandbox/live payments **BLOCKED**. |
+| P1C | docs done | Readiness, runbooks, staging/restore/rollback plans; staging/live **BLOCKED**. Local operator console implemented. |
+| P2 | done-local | Versioned private quotes, budget reservations, multi-hire and campaign view; **REQ-11 PARTIAL** (no comparison sort/filter). |
+| P3 | IN_PROGRESS | Claude owns auction code, migrations, tests and pages; concurrent work has no acceptance claim here. |
+| P4–P6 | TODO | Crypto/rewards, advanced discovery, cross-platform/PUBLISH/ACCESS/DIGITAL and bank funding. |
 
-The repository was empty at audit time. The master prompt was retained in `docs/MASTER_PROMPT.md`, and the product/requirements/test documents now live beside it. Platform fee is **0%** in policy, schema checks, UI copy, and command calculations. No live accounts, payment credentials, Supabase project, or deployment target are configured.
+Latest verified results: **184/184 tests across 17 files with DB suites enabled**, plus **tsc exit 0**, at `3bddff9`. The full run includes unit/provider tests, not 184 exclusively DB tests. Sources: [C6 review](evidence/claude-review-C6.md) and its referenced commit; [W3-R](evidence/claude-W3-R.md) records the preceding suite. C3 did not rerun application tests or a build. Browser evidence covers W1-B booking through completion, W2-S private file delivery/download and 360px layout, W3-R request hire/funding, and C6 role isolation plus a 360px flag form. Full 768/1440, keyboard and multi-hire E2E checks remain NOT_RUN.
 
-## Verified
+PostgreSQL runs and DB suites pass in **Claude's shell**. The Codex managed runner cannot start PostgreSQL because its IPC permissions reject bootstrap shared memory; this is a runner limitation, not a global product/database blocker. Claude runs DB suites and browser checks and makes scoped commits. Codex writes only dispatched paths and evidence. Current assignments are in [COLLABORATION.md](COLLABORATION.md); the old Codex-lead split in AGENTS.md is superseded by the user's coordination instruction.
 
-- Strict TypeScript: PASS (direct `tsc`, exit 0).
-- Unit and payment contract tests: PASS (48 tests across auth and provider suites).
-- Webpack production build: PASS with placeholder build-time environment values; all app and API routes compile as dynamic routes.
-- UI: public marketplace, creator profile/service, buyer booking, order workspace, delivery/revision/dispute/review, request/application, auction/bid, auth and policy pages are implemented.
-- Backend: same-origin mutation guard, actor/role checks, idempotency, money-in-minor-units, row locks, capacity reservation, order events, outbox/ledger/provider-operation tables, and local seed fixtures are implemented.
-- Claude-owned provider/notification modules and tests are recorded in `docs/CLAUDE_REPORT.md`.
+Implemented local system:
 
-## Not accepted yet
+- `MockPaymentProvider`: in-memory provider state with durable application journals/inbox/ledger; local funding through verified mock webhooks or provider-API reconciliation facts. `sandbox_pay` is rejected (403), never a usable funding command. Provider calls still occur inside DB transactions; split journal commit/remote effects before a real adapter. Restarting Next loses mock provider history.
+- Capacity counters live on `app.capacity_buckets`, derived by triggers from `app.reservations`: HELD/RECONCILING reserve; COMMITTED/CONSUMED commit. Pool → bucket → order is the capacity lock contract; order-first worker paths need Claude's consistency review (C3 evidence). No manual counter repair.
+- `LocalStorageProvider`: upload intent → signed PUT → finalize with size/signature/SHA-256 checks; invalid files quarantined, private downloads expire after five minutes. **No antivirus and no Supabase Storage adapter**; signature CLEAN does not mean malware-free.
+- In-process jobs run through `POST /api/dev/jobs`, optionally polled by `pnpm jobs:dev`; durable rows survive, the mock provider does not. Nine accepted baseline jobs and the current unverified P3 tenth job are listed in [runbooks](runbooks/README.md). **Inngest integration and reconcile:dry-run are NOT IMPLEMENTED**. External email is sink-only.
+- Operator `/admin` pages use active `app.user_roles` grants, required reasons and append-only `app.audit_log`. Checkout/bid/payout creation kill switches preserve webhooks, refunds and reconciliation; enabling live also requires an environment gate and G6 readiness.
+- Orders use the DB transition matrix, fixed funding/brief work clock, delivery versions, page-view-based ReviewHold recovery and consented mutual cancellation. Request order triggers commit/release budget; partial refunds keep budget committed. Legacy requests before migration 0007 lack budget-reservation backfill.
 
-- `db:start` cannot initialize the embedded PostgreSQL binary in this managed runner. PostgreSQL's bootstrap probe falls back to SysV shared memory and the sandbox rejects `shmget(... size=56)` with `Operation not permitted`, even with mmap flags. Therefore `db:migrate`, `db:seed`, and database-backed integration/e2e acceptance are **BLOCKED**, and no transaction is claimed as executed.
-- Turbopack's default build is blocked by the runner's child-process port binding. The webpack build is the verified compile gate for this environment.
-- Live payment, notification, storage, production auth, observability, deployment, and real buyer evidence remain future gates.
-
-## Next action
-
-Run the existing `scripts/postgres.ts`, `scripts/migrate.ts`, and `scripts/seed.ts` in a normal local/Docker/Supabase environment with IPC enabled. Then execute the integration cases in `docs/TEST_PLAN.md`, attach redacted screenshots/receipts under `docs/evidence/`, and move P0 to PASS before calling P1A/P1B/P1C accepted.
+[Acceptance](ACCEPTANCE.md) and [traceability](REQUIREMENTS_TRACEABILITY.md) retain narrower gaps despite local phase delivery. Gates: **G0–G4 PARTIAL; G5–G7 BLOCKED**. Missing staging infrastructure, real payment/storage/email adapters, provider credentials/approval, entity/policies/reserve, launch authority and actual market evidence remain separate blockers. No sandbox, testnet, live money, deployment or production readiness is claimed.

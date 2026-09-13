@@ -1,30 +1,14 @@
 # Auction ended; no winner
 
-Status: procedure documented; incident rehearsal **NOT_RUN**. [Shared tooling and evidence limits](README.md) apply.
+Status: local procedure documented; end-to-end incident rehearsal **NOT_RUN**. Baseline `3bddff9`; concurrent P3 changes are unaccepted. [Shared tools and limits](README.md) apply. Platform fee always **0%**.
 
-Severity / escalation: MEDIUM; HIGH if duplicate order/winner or lost capacity. Escalate to engineering and the authorized auction owner.
+Owner: Claude for P3 integration; engineering/operator for incidents. MEDIUM, HIGH for duplicate winner/order or lost claim.
 
-Required access: authorized read-only database/log inspection; finance authority for monetary decisions and engineering authority for recovery changes. Local fixture actions require access to the isolated dev process. No production access is implied.
+1. Read `/auctions/[id]`, `app.auctions`, `app.bids`, `app.reservations` and related `app.orders`. Compare server deadline and committed sale path; screenshots are not winner evidence. Use `/admin/orders/[orderId]` and `/admin/operations` only for an already-created payment obligation.
+2. At accepted baseline `3bddff9`, the seller's `close_auction` command through `POST /api/commands` accepts `auction_id` and the standard idempotency envelope after the deadline. It returns one winner order with a 24h hold, or no-bid EXPIRED with released capacity. A second close is rejected. This is historical local behavior, not acceptance of P3 v2 or an instruction to impersonate a seller.
+3. **P3 IN_PROGRESS:** current `src/modules/jobs/index.ts` adds `closeDueAuctions` / `close_due_auctions` to `runJobsOnce`. Read-only inspection confirms the code exists; execution/NO_BIDS/WINNER_DEFAULTED and race results are **NOT_RUN under C3's evidence set**. Claude must review its migration, tests and final command contract before using the updated recovery flow.
+4. Do not execute the broad dev hook while Claude changes P3. Once integration is verified, use the documented hook in the original local process and inspect every report. Preserve the existing auction reservation on order handoff; never allocate a second unit or autocharge a runner-up.
 
-## Symptoms
+Verify one canonical winner/order/claim, or a terminal no-sale outcome backed by the accepted version. Late payment/resold-capacity recovery follows runbook 01. Deployed auction scheduling and alerting are **NOT IMPLEMENTED**; a local close function is not a deployed scheduler.
 
-The server deadline passed but the auction is still open. Proposed alert: close overdue by more than 2 minutes (alert wiring TODO).
-
-## How to detect (read-only)
-
-Read `app.auctions` deadline/state, `app.bids` and `app.reservations`; find linked `app.orders` and `app.order_events` for an already committed close/Buy Now. Inspect `app.provider_operations`, `app.webhook_inbox`, `app.reconciliation_cases`, `app.ledger_transactions`/`app.ledger_entries` and `app.outbox` if a winner order/payment already exists. Auction version checks remain a planned gate, not proof from the current baseline.
-
-## Safe steps
-
-1. Use server time and committed valid bids. Confirm no close or Buy Now already won the transaction race.
-2. Existing local command: the authenticated auction seller submits `close_auction` through `POST /api/commands` with `auction_id` and the original idempotency key. Follow the existing application form/contract; never impersonate a seller. A different-key close is rejected once closed; this is not an admin close tool.
-3. After no bids, verify EXPIRED and capacity release. After valid bids, verify one winner order, its payment deadline and reservation handoff. Use the committed result when close conflicts with Buy Now.
-4. TODO: scheduled/idempotent job/admin close workflow, version/deadline hardening, semantic notification repair, admin queue UI and operator retry command. The five-job dev hook does not close auctions.
-
-## Expected result and invariant check
-
-Expected: one committed winner and pending order, or no-bid expiry without an order; capacity moves once. Reconcile any existing payment before releasing its claim. Check no duplicate ledger/outbox effect and platform fee 0%. Record actor, UTC time, original IDs, reason, outcome and next owner in restricted incident evidence; use the audited case workflow when available.
-
-## Forbidden actions
-
-Never force paid, never set balances, never retry with a new key. Never select a winner from screenshots, accept a late bid or assign the next bidder without the specified consent flow.
+Never force paid/refunded/released state, write balances or capacity counters, delete audit evidence, or retry an uncertain financial effect with a new operation key. Record actor, UTC time, original identifiers, reason, observed result and next owner. No live payment, external email or deployment is authorized here.

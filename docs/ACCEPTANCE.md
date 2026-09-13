@@ -1,24 +1,184 @@
-# ACCEPTANCE
+# Acceptance ledger
 
-Status is conservative and evidence-linked. A compiled route or mock test is not a database transaction proof.
+As of 2026-09-14, verified baseline **3bddff9**. One row per master §18 ID, including unstarted work. Platform fee is always **0%**. P3 is in progress by Claude; historical auction evidence below does not verify that concurrent work.
 
-| Gate | Status | Evidence |
-| --- | --- | --- |
-| P0-01 audit and safe handoff | PASS | `AGENTS.md`, `docs/adr/001-local-runtime.md`, `docs/evidence/p0-foundation.md` |
-| P0-02 product spec, traceability, 0% fee | PASS | `docs/PRODUCT_SPEC.md`, `docs/REQUIREMENTS_TRACEABILITY.md`, `drizzle/0001_marketplace.sql` |
-| P0-03 pinned runtime/dependencies | PASS with follow-up | `package.json`, `pnpm-lock.yaml`, `.node-version`; Next build uses webpack because Turbopack is runner-blocked |
-| P0-04 Next UI, strict TS, error states | PASS | `src/app`, direct `tsc`, webpack build |
-| P0-05 auth and private/public boundary | PARTIAL | `tests/auth.test.ts`; database-backed authz pending PostgreSQL |
-| P0-06 migration, roles, grants | PARTIAL/BLOCKED | `drizzle/0001_marketplace.sql`, `scripts/migrate.ts`; `initdb` IPC failure in evidence |
-| P0-07 transaction/idempotency/money utilities | PARTIAL | `src/app/api/commands/route.ts`; integration execution pending PostgreSQL |
-| P0-08 fixture users and role shell | PARTIAL | `scripts/seed.ts`, route UI; seed cannot run until database is available |
-| P0-09 outbox/notification seams | PASS (seam) | `src/modules/notifications/index.ts`, schema outbox tables, `docs/CLAUDE_REPORT.md` |
-| P0-10 mock provider contract | PASS | `tests/providers.test.ts` — 43 provider tests |
-| P0-11 reproducible build/test docs | PASS with DB blocker | `docs/TEST_PLAN.md`, `docs/evidence/p0-foundation.md` |
-| P1A Creator/service/capacity | CODE COMPLETE / NOT ACCEPTED | UI + commands exist; requires DB/e2e evidence |
-| P1B Book Now | CODE COMPLETE / NOT ACCEPTED | UI + commands exist; requires DB/e2e evidence |
-| P2 Requests | CODE COMPLETE / NOT ACCEPTED | UI + commands exist; requires DB/e2e evidence |
-| P3 Auctions | CODE COMPLETE / NOT ACCEPTED | UI + commands exist; requires DB/e2e evidence |
-| Live payments, emails, storage, deployment | BLOCKED | Missing approved credentials/capabilities and production environment |
+| Gate | Status | Evidence / remaining work |
+|---|---|---|
+| G0 Reproducible | PARTIAL | Local blank/upgrade migrations, seed and checks pass; clean clone/frozen install/CI run absent. |
+| G1 Domain correct | PARTIAL | 184/184 with DB suites enabled at 3bddff9; full §18 races, finance edges and later phases remain. |
+| G2 Secure boundaries | PARTIAL | Local ownership, roles/audit and storage negatives pass; Supabase, full secret/SSRF/session matrix remain. |
+| G3 Usable | PARTIAL | W1-B/W3-R browser journeys, W2-S/C6 360px checks; 768/1440 and keyboard/full E2E remain. |
+| G4 Recoverable | PARTIAL | Mock journal/inbox/retry recovery passes; remote-success DB crash, restore and rollback rehearsal remain. |
+| G5 Deployable | BLOCKED | Staging environment/access absent; real adapters, deployed scheduler, smoke/restore/rollback not verified. |
+| G6 Live eligible | BLOCKED | Provider credentials/approval, entity/policies, fee payer/reserve, infrastructure and launch authority absent. |
+| G7 Market evidence | BLOCKED | No authorized real paid/completed transaction evidence; fixtures and mock payments do not count. |
 
-Required next evidence: run migration/seed against a PostgreSQL runtime with IPC enabled, execute `docs/TEST_PLAN.md`, and attach redacted screenshots/receipts under `docs/evidence/`. No live transaction is claimed.
+Gates match [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md). Latest recorded full run: **184/184 tests, 17 files, DB suites enabled; tsc exit 0**, in Claude's shell at `3bddff9` ([C6 review](evidence/claude-review-C6.md), which points to the commit for the full count). This includes unit/provider tests; it is not 184 exclusively database tests. C3 ran documentation checks only.
+
+PASS requires an executed, passed evidence-table test covering the criterion; PARTIAL retains narrower proof or the evidence's own qualification. NOT_RUN means no mapped execution; BLOCKED means a required external credential/provider/environment is absent. Environment describes evidence or the blocked target. `doc-only` is not execution. Pure contracts are `unit`; mock-provider DB tests are `local-db+mock`. No sandbox, testnet or live PASS is permitted. Phase delivery and gate/acceptance completion are separate.
+
+Sources: [P0](evidence/p0-foundation.md), [provider report](CLAUDE_REPORT.md), [DB](evidence/claude-db-integration.md), [W1-A](evidence/claude-W1-A.md), [W1-B](evidence/claude-W1-B.md), [C4](evidence/claude-C4.md), [C1](evidence/codex-C1.md), [C2](evidence/codex-C2.md), [W2-B](evidence/claude-W2-B.md), [W2-S](evidence/claude-W2-S.md), [W3-R](evidence/claude-W3-R.md), [C6](evidence/codex-C6.md), [C6 review](evidence/claude-review-C6.md). Later evidence supersedes older status prose. Table labels identify reported tests; commits identify the corresponding implementation, not a fresh C3 execution.
+
+| Family | PASS | PARTIAL | NOT_RUN | BLOCKED |
+|---|---:|---:|---:|---:|
+| FND | 2 | 5 | 0 | 0 |
+| SEC | 6 | 7 | 0 | 1 |
+| MOD | 0 | 0 | 2 | 0 |
+| SUP | 2 | 2 | 2 | 0 |
+| CAP | 7 | 4 | 1 | 0 |
+| ORD | 5 | 9 | 2 | 0 |
+| REV | 2 | 1 | 0 | 0 |
+| PAY | 4 | 13 | 2 | 1 |
+| BNK | 0 | 0 | 3 | 0 |
+| REQ | 8 | 3 | 0 | 0 |
+| AUC | 0 | 11 | 3 | 0 |
+| CRY | 0 | 2 | 11 | 1 |
+| DSC | 0 | 3 | 3 | 0 |
+| XPL | 0 | 0 | 6 | 0 |
+| OPS | 1 | 6 | 1 | 0 |
+| **Total** | 37 | 66 | 36 | 3 |
+
+| ID | Summary (≤12 words) | Status | Environment | Evidence (file + test name or commit) | Gap/next task |
+|---|---|---|---|---|---|
+| FND-01 | Reproduce clean checkout, migrations, seed, app and local jobs | PARTIAL | local-db+mock | [C4](evidence/claude-C4.md): `d05f9a2`, local env/check scripts; W1-A blank/upgrade and seed | Clean checkout/frozen install/CI execution still NOT_RUN. |
+| FND-02 | Reproduce CI build and preserve obligations during migration upgrades | PARTIAL | local-db+mock | [W1A](evidence/claude-W1-A.md): `dc68490`, FND-02 blank and populated migration upgrade | C4 CI authored; frozen install and previous-app compatibility not run. |
+| FND-03 | Run locally without live keys and visibly disable live | PASS | local-db+mock | [C4](evidence/claude-C4.md): `d05f9a2`, local defaults and production rejects mock; DB local suites | Local-only acceptance; actual provider sandbox/live remain BLOCKED. |
+| FND-04 | Switch buyer and creator views without privilege escalation | PARTIAL | local-db+mock | [W2B](evidence/claude-W2-B.md): `90678f8`, active grants and no self-grant; W1-A dual role | Buyer/creator role-switch browser journey not recorded. |
+| FND-05 | Reject direct commands when auction or crypto flags disable sales | PARTIAL | local-db+mock | [W2B](evidence/claude-W2-B.md): `90678f8`, FND-05 auctions off rejects direct API with no writes | Crypto-off direct API negative not recorded; P4. |
+| FND-06 | Keep test jobs confined to sinks and mock transfers | PASS | local-db+mock | [DB](evidence/claude-db-integration.md): Phase 3 Notifications and Settlement release tests; `2e00eca` | Local test scope only; staging isolation remains unverified. |
+| FND-07 | Reject production reset and seed targets before mutation | PARTIAL | unit | [W1-A](evidence/claude-W1-A.md): FND-07 seed guard unit tests; `dc68490` | Seed guard proven; reset-script coverage not recorded. |
+| SEC-01 | Block foreign buyers from private orders, actions and downloads | PARTIAL | local-db+mock | [W2S](evidence/claude-W2-S.md): `4173ae0`, SEC-01/05 short-lived files and outsider denial; DB TEST_PLAN 1 | Full foreign-buyer approve/message matrix not enumerated in evidence. |
+| SEC-02 | Block foreign creators from briefs, deliveries and payee changes | PARTIAL | local-db+mock | [DB](evidence/claude-db-integration.md): TEST_PLAN 1 foreign order/service/pool 403; `2e00eca` | Explicit delivery, brief and payee-tamper matrix absent. |
+| SEC-03 | Prevent browser Data API access to private schema | BLOCKED | sandbox | [W2S](evidence/claude-W2-S.md): `4173ae0`, limits: Supabase policies NOT_RUN | Supabase/Data API environment missing; local grants alone do not prove it. |
+| SEC-04 | Ignore client-supplied actor, roles, fees and payees | PARTIAL | local-db+mock | [W2B](evidence/claude-W2-B.md): `90678f8`, SEC-13/04 actor/system/role forgery | Explicit client fee/payee overwrite matrix still not recorded. |
+| SEC-05 | Enforce private asset scope and signed URL expiry | PASS | local-db+mock | [W2S](evidence/claude-W2-S.md): `4173ae0`, SEC-01/05 expiry, wrong signing secret and asset access | Local filesystem/signature checks only; no Supabase or antivirus claim. |
+| SEC-06 | Reject disguised, oversized or path-traversing uploads | PASS | local-db+mock | [W2S](evidence/claude-W2-S.md): `4173ae0`, SEC-06 markup/type/size/path/token negatives | Local filesystem/signature checks only; no Supabase or antivirus claim. |
+| SEC-07 | Prevent script execution, unsafe URLs and preview SSRF | PARTIAL | local-db+mock | [W1B](evidence/claude-W1-B.md): `3564912`, ORD-07 unsafe scheme rejected; W2-S markup quarantined | Browser script rendering/click and preview SSRF matrix NOT_RUN. |
+| SEC-08 | Reject foreign origins and expired sessions on financial mutations | PARTIAL | local-db+mock | [DB](evidence/claude-db-integration.md): TEST_PLAN 1 cross-origin 403; Jobs route 403; `2e00eca` | Expired-session financial mutation evidence absent. |
+| SEC-09 | Reject self-booking, self-bidding and self-application across roles | PASS | local-db+mock | [W1-A](evidence/claude-W1-A.md): SEC-09 dual-role self-book; [DB](evidence/claude-db-integration.md): TEST_PLAN 6/7 self-apply/seller bid rejection; `dc68490` | Keep cross-source regression in later phases. |
+| SEC-10 | Block suspended sellers while preserving existing obligation access | PARTIAL | local-db+mock | [W1-A](evidence/claude-W1-A.md): SEC-10 new-sale block and funded start/message/deliver; `dc68490` | Refund/support obligation access not explicitly tested. |
+| SEC-11 | Keep secrets and private payloads out of logs and bundles | PARTIAL | unit | [C4](evidence/claude-C4.md): `d05f9a2`, secret scan and environment report redaction unit tests | Provider errors, logs, private payloads and built-bundle scan incomplete. |
+| SEC-12 | Separate moderation and finance authority with audited actions | PASS | local-db+mock | [W2B](evidence/claude-W2-B.md): `90678f8`, SEC-12 moderator denial, finance reason/audit, append-only audit | C6 browser role matrix also passed locally; staff step-up remains outside proof. |
+| SEC-13 | Reject client-forged system actors and job provenance | PASS | local-db+mock | [W2B](evidence/claude-W2-B.md): `90678f8`, SEC-13/04 forged system actor ignored | Server-generated system provenance only; retain HTTP regression. |
+| SEC-14 | Prevent private delivery reuse without scope and ownership consent | PASS | local-db+mock | [W2S](evidence/claude-W2-S.md): `4173ae0`, SEC-14 delivery-to-sample and cross-order FK negatives | Local filesystem/signature checks only; no Supabase or antivirus claim. |
+| MOD-01 | Moderate deceptive briefs through reasoned policy and report queues | NOT_RUN | doc-only | — | Implement/report/test policy enforcement; text alone is insufficient. |
+| MOD-02 | Snapshot disclosure and creator editorial rights for published campaigns | NOT_RUN | doc-only | — | P6 PUBLISH terms, consent and moderation tests. |
+| SUP-01 | Require approved public samples before publishing a service | PASS | local-db+mock | [W1-A](evidence/claude-W1-A.md): SUP-01 three approved public samples plus linked sample; draft retained; `dc68490` | Browser field-error presentation still needs G3 evidence. |
+| SUP-02 | Show honest empty reputation for new creators | PARTIAL | local-db+mock | [W1B](evidence/claude-W1-B.md): `3564912`, REV-03 fixture exclusion and empty metrics; W1-A SUP-02 | Public New creator/— rendering not explicitly asserted in browser evidence. |
+| SUP-03 | Preserve sold versions and obtain consent for changed checkout terms | PARTIAL | local-db+mock | [W1A](evidence/claude-W1-A.md): `dc68490`, SUP-03 V1 immutability, V2 checkout and stale-version conflict | W1-B book consent/browser exists; changed-version buyer consent journey untested. |
+| SUP-04 | Pause or archive sales while preserving funded order obligations | PASS | local-db+mock | [W1-A](evidence/claude-W1-A.md): SUP-04 new sales 404, funded start/deliver preserved; `dc68490` | Keep obligation-access regression. |
+| SUP-05 | Explain CREATE handoff without imposing publication obligations | NOT_RUN | doc-only | — | Checkout copy/terms and buyer-flow evidence. |
+| SUP-06 | Keep profile and service sharing usable without X API | NOT_RUN | doc-only | — | Exercise share/sample flow with X API unavailable. |
+| CAP-01 | Allow exactly one claim from twenty concurrent last-slot bookings | PASS | local-db+mock | [W1-A](evidence/claude-W1-A.md): CAP-01 twenty buyers, one claim, nineteen 409s; `dc68490` | No sandbox or load-scale inference. |
+| CAP-02 | Share one pool quota across concurrent bookings of different services | PASS | local-db+mock | [W1-A](evidence/claude-W1-A.md): CAP-02 two services, ten concurrent requests, one claim; `dc68490` | Retain shared-bucket regression. |
+| CAP-03 | Release terminal unpaid expired holds exactly once without resurrection | PASS | local-db+mock | [DB](evidence/claude-db-integration.md): Phase 3 Hold expiry, repeated release and checkout refused afterwards; `2e00eca` | Browser refresh UX remains G3. |
+| CAP-04 | Preserve uncertain payment holds and prevent competing oversell | PARTIAL | local-db+mock | [DB](evidence/claude-db-integration.md): Hold expiry captured payment → RECONCILING and one case; `2e00eca` | Explicit UNKNOWN plus competing checkout race not evidenced. |
+| CAP-05 | Handle late funding after resale without a second commitment | PARTIAL | local-db+mock | [DB](evidence/claude-db-integration.md): TEST_PLAN 5 late funding case; `2e00eca` | Resold-slot fixture, refund/rebook consent and recovery missing. |
+| CAP-06 | Keep consumed weekly quota occupied after completion | PASS | local-db+mock | [W1A](evidence/claude-W1-A.md): `dc68490`, CAP-06 consumed unit remains committed | W1-B completes after release; consumed weekly quota remains occupied. |
+| CAP-07 | Reject capacity reduction below existing commitments | PASS | local-db+mock | [W1-A](evidence/claude-W1-A.md): CAP-07 two commitments, rejected reduction, DB CHECK; `dc68490` | Preserve all-or-nothing updates. |
+| CAP-08 | Keep timezone and DST buckets nonoverlapping and booked instants immutable | PASS | local-db+mock | [W1-A](evidence/claude-W1-A.md): CAP-08 timezone/exclusion test; weeks.test.ts 7/7; `dc68490` | Timezone changes can leave a partial-week gap; no bridge bucket. |
+| CAP-09 | Transfer auction reservation to its order without extra capacity | PARTIAL | local-db+mock | [W1A](evidence/claude-W1-A.md): `dc68490`, CAP-09 Buy Now retains the same reservation/bucket | Close-to-order branch not explicitly proved; Claude P3 in progress. |
+| CAP-10 | Serialize hire funding and expiry with budget and capacity consistency | PARTIAL | local-db+mock | [W3R](evidence/claude-W3-R.md): `3b0c0aa`, REQ-06/07 accepted offer survives expiry then funding commits | Sequential timer/funding test does not prove simultaneous funding/expiry race. |
+| CAP-11 | Prevent ACCESS appointment overlap including buffers | NOT_RUN | doc-only | — | P6 interval/slot model and nonoverlap tests. |
+| CAP-12 | Retain consumed work quota after cancellation and confirmed refund | PASS | local-db+mock | [W1B](evidence/claude-W1-B.md): `3564912`, CAP-12 / ORD-15 confirmed partial refund keeps capacity CONSUMED | No work quota returned after refund. |
+| ORD-01 | Complete canonical booking through funding, delivery, release and review eligibility | PARTIAL | local-db+mock | [W1B](evidence/claude-W1-B.md): `3564912`, payments lifecycle + browser booking through COMPLETED and review | Explicit receipt assertions missing from recorded full journey. |
+| ORD-02 | Block work before funding and a complete brief | PARTIAL | local-db+mock | [W1B](evidence/claude-W1-B.md): `3564912`, ORD-02 pending payment and missing brief refused | Missing-condition UI messages not explicitly browser-tested. |
+| ORD-03 | Set valid work-start and due instants when funding becomes ready | PARTIAL | local-db+mock | [W1B](evidence/claude-W1-B.md): `3564912`, ORD-03 max(funding, brief) + turnaround never null | Recorded fixture is auction-origin; unscheduled CREATE-specific case still needed. |
+| ORD-04 | Keep work deadlines independent of delayed Start clicks | PASS | local-db+mock | [W1B](evidence/claude-W1-B.md): `3564912`, ORD-04 delayed start retains fixed deadline | Retain clock regression. |
+| ORD-05 | Preserve delivery versions and reset review clock after one revision | PASS | local-db+mock | [W1B](evidence/claude-W1-B.md): `3564912`, ORD-05/06 append-only V1 and V2 review window | One revision and version history tested locally. |
+| ORD-06 | Reject exhausted revisions while retaining support and dispute access | PASS | local-db+mock | [W1B](evidence/claude-W1-B.md): `3564912`, ORD-06 second revision rejected; dispute remains possible | Retain credit-limit regression. |
+| ORD-07 | Reject unusable deliveries before review or automatic acceptance | PARTIAL | local-db+mock | [W1B](evidence/claude-W1-B.md): `3564912`, ORD-07 invalid delivery rejected; W2-S quarantined file blocks auto-accept | Local empty/quarantine checks pass; inaccessible remote-link delivery is not tested. |
+| ORD-08 | Reject approval of stale delivery versions | PASS | local-db+mock | [W1B](evidence/claude-W1-B.md): `3564912`, ORD-08 stale or absent delivery version refused | Conflict approves nothing. |
+| ORD-09 | Automatically accept eligible deliveries once with consent evidence | PASS | local-db+mock | [W1B](evidence/claude-W1-B.md): `3564912`, ORD-09/16 consent/view/window with concurrent replays, one approval | Mock release subsequently completes; email is sink-only. |
+| ORD-10 | Serialize dispute or revision against automatic acceptance | PARTIAL | local-db+mock | [W1B](evidence/claude-W1-B.md): `3564912`, ORD-10 concurrent approve/revision/dispute/auto-accept, one outcome | Shared-principal refund versus release recovery race not proved. |
+| ORD-11 | Hold review after notification failure and restore sufficient review time | PARTIAL | local-db+mock | [W1B](evidence/claude-W1-B.md): `3564912`, ORD-11 no-view hold and full-window restart on buyer view | Permanent notification-delivery failure/recovery not simulated; page-view evidence only. |
+| ORD-12 | Record mutually agreed deadline extensions as immutable amendments | NOT_RUN | doc-only | — | Versioned consent/amendment and metric tests; assign lifecycle follow-up. |
+| ORD-13 | Support policy-based late-work cancellation with confirmed refund workflow | PARTIAL | local-db+mock | [W1B](evidence/claude-W1-B.md): `3564912`, ORD-13 overdue notice and post-start cancellation request | Complete no-start/late-policy eligibility and refund UI matrix not recorded. |
+| ORD-14 | Preserve completed work history through later chargebacks | NOT_RUN | doc-only | — | Separate payment-dispute webhook/evidence/alert implementation. |
+| ORD-15 | Serialize agreed cancellation amounts against delivery and release | PARTIAL | local-db+mock | [W1B](evidence/claude-W1-B.md): `3564912`, ORD-15 agreed partial refund/remainder and delivery/acceptance race | Auto-release versus cancellation acceptance race not explicitly recorded. |
+| ORD-16 | Use buyer-view evidence despite secondary email failure | PARTIAL | local-db+mock | [W1B](evidence/claude-W1-B.md): `3564912`, ORD-09/16 buyer-view evidence permits one auto-approval | Secondary email bounce itself not simulated; no email provider confirmation. |
+| REV-01 | Reject reviews by outsiders or before eligible completion | PASS | local-db+mock | [W1B](evidence/claude-W1-B.md): `3564912`, REV-01/02 outsider/incomplete denial and concurrent unique review | Local eligibility and dedupe tested. |
+| REV-02 | Deduplicate eligible reviews across same-key and different-key retries | PASS | local-db+mock | [W1B](evidence/claude-W1-B.md): `3564912`, REV-01/02 outsider/incomplete denial and concurrent unique review | Local eligibility and dedupe tested. |
+| REV-03 | Exclude test work and display undefined empty performance metrics | PARTIAL | local-db+mock | [W1B](evidence/claude-W1-B.md): `3564912`, REV-03 fixtures excluded; eligible on-time count, rating and N | Empty public metric rendering (—) not explicitly browser-tested. |
+| PAY-01 | Keep platform fees zero across every source and financial surface | PARTIAL | local-db+mock | [DB](evidence/claude-db-integration.md): TEST_PLAN 4 fee zero; [Provider report](CLAUDE_REPORT.md): PAY-01 adapter tests; `2e00eca` | BOOK/REQUEST/AUCTION quote/checkout/receipt/UI/ledger matrix incomplete. |
+| PAY-02 | Disclose actual provider costs and settle creator net without markup | PARTIAL | local-db+mock | [DB](evidence/claude-db-integration.md): Settlement release 65000−1950=63050; [Provider report](CLAUDE_REPORT.md): PAY-02 10000−300=9700; `2e00eca` | Arithmetic/ledger proven; buyer cost disclosure not verified. |
+| PAY-03 | Subsidize provider costs without reducing creator entitlement | PARTIAL | local-db+mock | [DB](evidence/claude-db-integration.md): Settlement release subsidized transfer 65000, expense 1950; `2e00eca` | Explicit available-budget/reserve fixture not evidenced. |
+| PAY-04 | Block live checkout without an explicit fee-payer policy | PARTIAL | unit | [C4](evidence/claude-C4.md): `d05f9a2`, live requires explicit fee policy and live key shapes | Configuration unit guard passed; production checkout/actionable UI not exercised. |
+| PAY-05 | Deduplicate checkout retries, timeouts and conflicting request bodies | PASS | local-db+mock | [DB](evidence/claude-db-integration.md): TEST_PLAN 3 six concurrent same-key bookings; TEST_PLAN 5 accept-then-timeout; [Provider report](CLAUDE_REPORT.md): PAY-05; `2e00eca` | Real provider contract remains blocked separately. |
+| PAY-06 | Keep browser success redirects from proving funding | PARTIAL | local-db+mock | [DB](evidence/claude-db-integration.md): TEST_PLAN 5 PAY-06 provider-confirmed funding; `2e00eca` | Direct funding blocked; browser redirect and pending UI unverified. |
+| PAY-07 | Deduplicate signed webhook credits, transitions and semantic notifications | PASS | local-db+mock | [DB](evidence/claude-db-integration.md): TEST_PLAN 5 twenty deliveries/one ledger-event-outbox; Notifications concurrent dedupe; `2e00eca` | Mock signatures only; no provider sandbox claim. |
+| PAY-08 | Preserve successful funding despite older processing or failure events | PARTIAL | local-db+mock | [DB](evidence/claude-db-integration.md): TEST_PLAN 5 PAY-08 reverse order and stale failure; `2e00eca` | No-regression proven; independent payment-dispute lifecycle absent. |
+| PAY-09 | Reject unsigned, tampered or wrong-context provider events | PARTIAL | local-db+mock | [DB](evidence/claude-db-integration.md): TEST_PLAN 5 PAY-09 forged/unsigned/other account; [Provider report](CLAUDE_REPORT.md): signature tests; `2e00eca` | Wrong-environment inbox rejection not explicitly recorded. |
+| PAY-10 | Recover accepted-but-timed-out funding without another charge | PASS | local-db+mock | [DB](evidence/claude-db-integration.md): TEST_PLAN 5 PAY-10 UNKNOWN journal/same-op retry; Reconciliation lookup; `2e00eca` | Mock accepted-then-timeout only; real adapter remains unverified. |
+| PAY-11 | Recover transfer success after database crash without duplicate release | PARTIAL | local-db+mock | [DB](evidence/claude-db-integration.md): Phase 3 Reconciliation; [Provider report](CLAUDE_REPORT.md): PAY-11 timeout/lookup unit tests; `2e00eca` | No remote-transfer-success then DB-crash/restart test; journal boundary pending. |
+| PAY-12 | Keep unavailable payouts actionable without claiming money arrived | PARTIAL | local-db+mock | [W2B](evidence/claude-W2-B.md): `90678f8`, OPS-04 APPROVED/READY held; DB missing capability test | Provider balance shortage and bank payout capabilities still missing. |
+| PAY-13 | Serialize refunds and releases against the same principal | PARTIAL | unit | [Provider report](CLAUDE_REPORT.md): PAY-13 release/refund principal contract tests | Real DB concurrency, auto-release and external-effect recovery absent. |
+| PAY-14 | Bound cumulative refunds and confirm full refund only from facts | PARTIAL | local-db+mock | [W1B](evidence/claude-W1-B.md): `3564912`, ORD-15 agreed partial refund; DB full-refund replay; provider sums | Multiple cumulative partial refunds under DB concurrency not evidenced. |
+| PAY-15 | Track post-transfer refund deficits without inventing recovered funds | NOT_RUN | doc-only | [Provider report](CLAUDE_REPORT.md): PAY-15 explicitly not modeled | Implement reversal/insufficient-balance recovery and operator case tests. |
+| PAY-16 | Handle late actual costs under explicit caps without arbitrary debt | NOT_RUN | doc-only | [C2](evidence/codex-C2.md): e762801 cost policy/readiness plan; `e762801` | Before/after-settlement late-cost tests and operator policy absent. |
+| PAY-17 | Validate and roundtrip integer fiat and token amounts exactly | PARTIAL | unit | [Provider report](CLAUDE_REPORT.md): PAY-17 atomic amount validation; formatting tests | DB storage/serialization boundary and complete precision matrix absent. |
+| PAY-18 | Fail release checks if any platform fee becomes nonzero | PASS | unit | [C4](evidence/claude-C4.md): `d05f9a2`, nonzero/missing/dropped fee CHECK failures; release-check 4 PASS | Static/unit guard plus W1-A DB zero constraint; no live acceptance. |
+| PAY-19 | Keep bank payout failure separate from fulfillment and transfer | BLOCKED | sandbox | [Provider report](CLAUDE_REPORT.md): mock release only; [C2](evidence/codex-C2.md): e762801 readiness blockers; `e762801` | Provider bank payout integration/capability/keys missing; local modeling can proceed. |
+| PAY-20 | Reconcile missing webhooks and keep unresolved cases owned | PARTIAL | local-db+mock | [W2B](evidence/claude-W2-B.md): `90678f8`, OPS-05 same-operation retry/audit; DB lost-webhook reconciliation | Daily deployed scheduler, full outage-window and owner rehearsal remain. |
+| BNK-01 | Wait for verified asynchronous bank funding before work | NOT_RUN | doc-only | — | P6-09 bank funding adapter/policy and pending-state tests. |
+| BNK-02 | Apply bank-specific holds, late-funding and return recovery policies | NOT_RUN | doc-only | — | P6-09 bounded bank holds/returns; never reuse card hold duration. |
+| BNK-03 | Reject disabled or unsupported bank funding through direct API | NOT_RUN | doc-only | — | P6-09 negative feature/capability tests independent of payout support. |
+| REQ-01 | Publish requests and preserve owned application quote versions | PASS | local-db+mock | [W3R](evidence/claude-W3-R.md): `3b0c0aa`, REQ-01 budget/cap/deadline/self-apply guards | Version/sample/expiry persistence supplied by W3-R. |
+| REQ-02 | Keep one logical application with immutable update history | PASS | local-db+mock | [W3R](evidence/claude-W3-R.md): `3b0c0aa`, REQ-02 one application, immutable version history | Local duplicate/update test. |
+| REQ-03 | Keep competing creators from reading each other's private quotes | PASS | local-db+mock | [W3R](evidence/claude-W3-R.md): `3b0c0aa`, REQ-03 creator-only quotes, buyer all, anonymous none | Local read-model isolation. |
+| REQ-04 | Reconfirm stale quotes and capacity before selection | PARTIAL | local-db+mock | [W3R](evidence/claude-W3-R.md): `3b0c0aa`, REQ-04 changed/expired quote rejected | Stale availability at selection not exercised; capacity checked on acceptance. |
+| REQ-05 | Bound concurrent hires by target count, total and per-hire budgets | PASS | local-db+mock | [W3R](evidence/claude-W3-R.md): `3b0c0aa`, REQ-05 three concurrent selections constrained by budget/count | Per-hire cap also tested by REQ-01. |
+| REQ-06 | Reserve explicit bucket capacity for bespoke service-free quotes | PASS | local-db+mock | [W3R](evidence/claude-W3-R.md): `3b0c0aa`, REQ-06 own explicit pool, no service, HELD capacity and budget link | No-service bespoke order tested. |
+| REQ-07 | Transfer offer timers safely during acceptance and funding | PARTIAL | local-db+mock | [W3R](evidence/claude-W3-R.md): `3b0c0aa`, REQ-07 accepted offer survives timer; later funding commits | Concurrent offer-expiry/acceptance/webhook race not proved. |
+| REQ-08 | Preserve independent funded hires when requests close or fail | PASS | local-db+mock | [W3R](evidence/claude-W3-R.md): `3b0c0aa`, REQ-08 refund/lapse preserve funded hire; close retains orders | Partial refund retains COMMITTED budget; legacy requests are not backfilled. |
+| REQ-09 | Deduplicate repeated selection into one offer and order | PASS | local-db+mock | [W3R](evidence/claude-W3-R.md): `3b0c0aa`, REQ-09 two selections/two accepts yield one offer/order | Local concurrent uniqueness verified; no sandbox payment inference. |
+| REQ-10 | Materialize total budgets and reject reductions below commitments | PASS | local-db+mock | [W3R](evidence/claude-W3-R.md): `3b0c0aa`, REQ-10 cap×count and versioned reduction guard including SQL CHECK | Retain held/committed counter regression. |
+| REQ-11 | Keep quote comparisons transparent and awards explicitly buyer-selected | PARTIAL | local-db+mock | [W3R](evidence/claude-W3-R.md): `3b0c0aa`, REQ-11 no auto-award; manual compare cards | No sort/filter controls; CSV/analytics and multi-hire E2E also absent. |
+| AUC-01 | Reserve exclusive sale capacity and snapshot auction terms | PARTIAL | doc-only | [W1-A](evidence/claude-W1-A.md): dc68490 create_auction bucket and version snapshot; `dc68490` | P3 IN_PROGRESS (Claude); payout-ready/scheduling validation fixture missing. |
+| AUC-02 | Serialize equal bids with deterministic sequence and new minimum | PARTIAL | local-db+mock | [DB](evidence/claude-db-integration.md): TEST_PLAN 7 concurrent equal bids → one wins; `2e00eca` | P3 IN_PROGRESS (Claude); Deterministic DB sequence/new-minimum assertions not recorded; P3. |
+| AUC-03 | Enforce auction start and exact end boundaries server-side | PARTIAL | local-db+mock | [DB](evidence/claude-db-integration.md): TEST_PLAN 7 late bids rejected; `2e00eca` | P3 IN_PROGRESS (Claude); Pre-start/exact-equality/Buy Now with delayed worker untested; P3. |
+| AUC-04 | Reject seller, suspended and unverified bids without changing highest | PARTIAL | local-db+mock | [DB](evidence/claude-db-integration.md): TEST_PLAN 7 seller rejected; [W1-A](evidence/claude-W1-A.md): suspended command restrictions; `dc68490` | P3 IN_PROGRESS (Claude); Suspended/unverified bid and unchanged-highest assertions absent. |
+| AUC-05 | Close no-bid auctions once and release their claims | PARTIAL | doc-only | [W1-A](evidence/claude-W1-A.md): dc68490 no-bid close releases by state; `dc68490` | P3 IN_PROGRESS (Claude); NO_BIDS semantics and repeated close worker test absent; P3. |
+| AUC-06 | Close repeatedly into one winner, order and payment deadline | PARTIAL | local-db+mock | [DB](evidence/claude-db-integration.md): TEST_PLAN 7 winner order 12000, second close rejected; `2e00eca` | P3 IN_PROGRESS (Claude); Worker replay/deadline assertions absent; P3. |
+| AUC-07 | Resolve first bid, Buy Now and close into one sale | PARTIAL | local-db+mock | [W1-A](evidence/claude-W1-A.md): CAP-09 Buy Now reservation transfer; `dc68490` | P3 IN_PROGRESS (Claude); simultaneous three-way sale-path race absent. |
+| AUC-08 | Keep Buy Now disabled after a valid bid is invalidated | PARTIAL | local-db+mock | [DB](evidence/claude-db-integration.md): TEST_PLAN 7 Buy Now disabled after first bid; `2e00eca` | P3 IN_PROGRESS (Claude); moderator invalidation and immutable first_valid_bid_at absent. |
+| AUC-09 | Allow bids above the former Buy Now price | NOT_RUN | doc-only | — | P3 IN_PROGRESS (Claude); first-bid then above-old-Buy-Now fixture. |
+| AUC-10 | Default unpaid winners without automatically charging runners-up | PARTIAL | local-db+mock | [DB](evidence/claude-db-integration.md): Hold expiry cancels unpaid orders; `2e00eca` | P3 IN_PROGRESS (Claude); WINNER_DEFAULTED and runner-up no-charge assertions absent. |
+| AUC-11 | Keep expired Buy Now auctions closed and require explicit relisting | PARTIAL | local-db+mock | [DB](evidence/claude-db-integration.md): Hold expiry expired Buy Now → EXPIRED; `2e00eca` | P3 IN_PROGRESS (Claude); reload/retry/relist-new-ID and capacity tests absent. |
+| AUC-12 | Serialize seller cancellation against the first valid bid | NOT_RUN | doc-only | — | P3 IN_PROGRESS (Claude); cancellation/first-bid lock race. |
+| AUC-13 | Refresh server auction truth after network loss or sleep | NOT_RUN | doc-only | — | P3 IN_PROGRESS (Claude); P3/C5 reconnect/version/minimum/winner UI evidence. |
+| AUC-14 | Handle late winner payments after released capacity safely | PARTIAL | local-db+mock | [DB](evidence/claude-db-integration.md): TEST_PLAN 5 generic late funding case; `2e00eca` | P3 IN_PROGRESS (Claude); winner-specific resold-slot and refund/exception test absent. |
+| CRY-01 | Label testnet checkout, receipts and metrics without live revenue | BLOCKED | testnet | [C2](evidence/codex-C2.md): e762801 crypto readiness blockers; `e762801` | P4 Arc provider/network/configuration and testnet execution missing. |
+| CRY-02 | Reject fake or mismatched chain funding references | NOT_RUN | doc-only | — | P4 verifier with chain/asset/recipient/order negative fixtures. |
+| CRY-03 | Deduplicate chain deposits by chain, transaction and log index | NOT_RUN | doc-only | — | P4 durable indexer replay test. |
+| CRY-04 | Preserve native and token USDC precision without double counting | PARTIAL | unit | [Provider report](CLAUDE_REPORT.md): PAY-17 integer validation and USDC formatting | No crypto balance/native-token reconciliation test; P4. |
+| CRY-05 | Recover finality, RPC outages and replacements from safe checkpoints | NOT_RUN | doc-only | — | P4 indexer/checkpoint/replacement tests. |
+| CRY-06 | Require every mandatory reward asset before marking funding complete | NOT_RUN | doc-only | — | P4 required-asset pool funding tests. |
+| CRY-07 | Conserve each pool asset under competing hire allocations | NOT_RUN | doc-only | — | P4 concurrent multiasset allocation/budget/capacity tests. |
+| CRY-08 | Retry failed reward components without paying successful components again | NOT_RUN | doc-only | — | P4 mixed-component settlement/completion tests. |
+| CRY-09 | Refund only confirmed unallocated pool balances | NOT_RUN | doc-only | — | P4 unused-refund versus active/disputed obligation tests. |
+| CRY-10 | Reject release signatures replayed across orders, chains or nonces | NOT_RUN | doc-only | — | P4 contract/server replay and payee/amount tests. |
+| CRY-11 | Reject malicious or unsupported token behavior without conservation breaches | NOT_RUN | doc-only | — | P4 reentrancy/token-behavior invariant tests. |
+| CRY-12 | Issue unique evidenced NFT or perk entitlements without invented valuations | NOT_RUN | doc-only | — | P4/P6 duplicate claim and entitlement-proof tests. |
+| CRY-13 | Exercise privileged pause and recovery without arbitrary fund access | NOT_RUN | doc-only | — | P4 custody/role compromise/recovery simulations. |
+| CRY-14 | Keep mainnet blocked until availability and review gates pass | PARTIAL | doc-only | [C2](evidence/codex-C2.md): e762801 separate testnet/live readiness and release plan; `e762801` | P4 isolated release-guard test absent; actual mainnet eligibility BLOCKED. |
+| DSC-01 | Filter and paginate eligible listings deterministically | PARTIAL | local-db+mock | [DB](evidence/claude-db-integration.md): TEST_PLAN 1 public/approved/published catalogue isolation; `2e00eca` | P5 full taxonomy/price/time filters and stable pagination tests. |
+| DSC-02 | Display actionable empty and error states without invented listings | NOT_RUN | doc-only | — | P5 empty search/DB outage browser tests. |
+| DSC-03 | Exclude ended auctions despite stale caches | PARTIAL | local-db+mock | [DB](evidence/claude-db-integration.md): TEST_PLAN 7 late bid rejected; `2e00eca` | P5 ending-soon query/cache refresh exclusion untested. |
+| DSC-04 | Label cold-start discovery without fabricating popularity | NOT_RUN | doc-only | — | P5 sparse-data ranking/curated-label tests. |
+| DSC-05 | Refresh availability after sale or pause and reject stale checkout | PARTIAL | local-db+mock | [W1-A](evidence/claude-W1-A.md): SUP-04 sales stopped; CAP-01 last-slot race; `dc68490` | P5 public cache invalidation/CTA revalidation evidence absent. |
+| DSC-06 | Meet recorded search SLOs on representative service and bid volumes | NOT_RUN | doc-only | — | P5 authorized benchmark/query-plan evidence; no scale claim. |
+| XPL-01 | Label manually supplied social accounts as self-reported | NOT_RUN | doc-only | — | P6 URL and public-label tests; no fake verification. |
+| XPL-02 | Verify PUBLISH delivery against channel, timing, disclosure and proof | NOT_RUN | doc-only | — | P6 snapshot-specific PUBLISH lifecycle tests. |
+| XPL-03 | Enforce timezone, buffer, cancellation and no-show rules for ACCESS | NOT_RUN | doc-only | — | P6 appointment policy/lifecycle tests beyond weekly buckets. |
+| XPL-04 | Issue separate private entitlements for nonexclusive digital purchases | NOT_RUN | doc-only | — | P6 DIGITAL entitlements independent of weekly quota. |
+| XPL-05 | Allow one concurrent sale of an exclusive digital license | NOT_RUN | doc-only | — | P6 stock/entitlement transaction race. |
+| XPL-06 | Enforce versioned private download and refund entitlement rules | NOT_RUN | doc-only | — | P6 rights/version/refund download authorization tests. |
+| OPS-01 | Recover worker crashes after remote success without duplicate effects | PARTIAL | local-db+mock | [DB](evidence/claude-db-integration.md): Inbox reprocess simulated crash; Reconciliation lookup; `2e00eca` | Transfer-success/DB-write crash plus restart still absent; journal split required. |
+| OPS-02 | Restore isolated backups and replay safely with conserved obligations | NOT_RUN | doc-only | [C2](evidence/codex-C2.md): e762801 restore plan only; `e762801` | Provision isolated backup/storage rehearsal and record measured results. |
+| OPS-03 | Deploy and roll back compatible schema changes without financial loss | PARTIAL | local-db+mock | [W1-A](evidence/claude-W1-A.md): FND-02 populated migration upgrade; `dc68490` | No old-app/new-schema or rollback rehearsal; 0003 drops pool counters. |
+| OPS-04 | Stop new charges while preserving reconciliation and refund obligations | PASS | local-db+mock | [W2B](evidence/claude-W2-B.md): `90678f8`, OPS-04 checkout/payout kill switches with webhook/refund/reconcile continuity | Local-only; no staging propagation latency measurement. |
+| OPS-05 | Let a new operator reproduce smoke and audited operation recovery | PARTIAL | local-db+mock | [C6](evidence/claude-review-C6.md): `3bddff9`, admin DB retry/audit plus role matrix and 360px flag submission | New operator runbook-to-retry rehearsal and populated dispute/case browser forms NOT_RUN. |
+| OPS-06 | Report only eligible real completions once with zero platform revenue | PARTIAL | local-db+mock | [W1B](evidence/claude-W1-B.md): `3564912`, REV-03 eligible completions exclude fixtures | Weekly report, real-order dedupe and platform revenue report not implemented/tested. |
+| OPS-07 | Keep full commerce usable on mobile and keyboard-only | PARTIAL | browser-local | [C6](evidence/claude-review-C6.md): `3bddff9`, browser role matrix and 360px flags; W2-S 360px file journey | 768/1440, keyboard-only, long-text and full commerce viewport evidence missing. |
+| OPS-08 | Expose concrete live blockers without claiming unauthorized readiness | PARTIAL | unit | [C4](evidence/claude-C4.md): `d05f9a2`, production missing config fails; C2 readiness artifacts | Entity/provider/budget/authority completeness is not enforced by the static release check. |

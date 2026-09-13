@@ -1,31 +1,16 @@
 # Restore and rollback
 
-Status: procedure documented; incident rehearsal **NOT_RUN**. [Shared tooling and evidence limits](README.md) apply.
+Status: local procedure documented; end-to-end incident rehearsal **NOT_RUN**. Baseline `3bddff9`; concurrent P3 changes are unaccepted. [Shared tools and limits](README.md) apply. Platform fee always **0%**.
 
-Severity / escalation: CRITICAL for data loss/conservation failure; engineering incident lead and authorized operator own promotion.
+Owner: engineering + infrastructure operator; CRITICAL for corruption or missing obligations. Staging/backup access is **BLOCKED**; OPS-02 restore and OPS-03 rollout/rollback rehearsal are **NOT_RUN**.
 
-Required access: authorized read-only database/log inspection; finance authority for monetary decisions and engineering authority for recovery changes. Local fixture actions require access to the isolated dev process. No production access is implied.
+1. Record candidate/backup cutoff and inspect `public.schema_migrations`, `app.orders`, `app.provider_operations`, `app.webhook_inbox`, `app.ledger_transactions`, `app.ledger_entries`, `app.outbox`, `app.reservations`, `app.capacity_buckets`, `app.request_budget_reservations`, `app.storage_assets` and `app.delivery_assets` read-only. Keep schema and file snapshot identities together.
+2. Follow [STAGING.md](../STAGING.md) for the isolated-target plan. `scripts/migrate.ts` / `pnpm db:migrate` exists; backup capture/restore, app artifact rollback and isolated external-effect replay commands are **NOT IMPLEMENTED** in this repository. Do not invent a runnable restore command before the target/provider tooling is chosen.
+3. On an existing app `/admin/flags` can stop new checkout/bid/payout creation with reasons. This preserves webhook/refund/reconciliation obligations; it does not isolate a restored clone from external side effects. Restore testing needs a separate isolated target and sinks, with jobs stopped.
+4. In a provisioned isolated target, compare bucket counters against reservation states, request held/committed budgets against reservations, per-currency ledger balance, file hashes/references, event/outbox IDs and audit history. Pre-0007 request counters have a known backfill gap; do not infer complete historical budget conservation.
+5. Match provider effects after backup cutoff before allowing replay. `/admin/operations` retries and `POST /api/dev/jobs` are effectful; **reconcile:dry-run and isolated replay are NOT IMPLEMENTED**. Do not run them as restore validation against live credentials.
+6. Review previous/candidate app compatibility against additive migrations; retain financial schema/writes. No compatible rollback rehearsal is recorded. After future implementation record measured RPO/RTO and unresolved cases before promotion. Proposed RPO ≤24h/RTO ≤4h are unmeasured targets.
 
-## Symptoms
+Verify no external money/email effects during rehearsal and no duplicate effects afterward. Do not overwrite a live database with an older snapshot or perform destructive down migrations. Documentation does not pass G4/G5 or OPS-02/03.
 
-Database corruption/loss, a failed deployment or incompatible schema requires recovery. OPS-02 restore and OPS-03 rollback are NOT_RUN; no staging environment exists.
-
-## How to detect (read-only)
-
-Record release/backup cutoff, `public.schema_migrations`, DB/storage identity and error window. Inventory `app.provider_operations`, `app.webhook_inbox`, `app.reconciliation_cases`, `app.reservations`, `app.outbox`, `app.ledger_transactions`/`app.ledger_entries` and `app.order_events`. Compare pre-incident counts and provider references; financial effects can exist after the latest backup.
-
-## Safe steps
-
-1. Follow [STAGING.md](../STAGING.md) OPS-02/03. Restore to an isolated DB/storage environment with live payments, outbound email and effectful jobs disabled. Record backup cutoff and start time.
-2. Verify schema/version, foreign keys, counts, asset references, integer ledger conservation per currency and reservation/capacity totals. Platform fee remains 0%.
-3. Inventory all provider effects from cutoff to present, including operations missing from the restored journal. TODO: reconciliation dry-run and isolated replay harness, admin queue UI and operator retry command. Do not use `POST /api/dev/jobs` as dry run: it executes all five effectful local jobs.
-4. Prefer app rollback to a recorded artifact compatible with the additive schema, or a reviewed forward fix. Keep financial schema/writes intact. Rehearse old/new application compatibility before promotion.
-5. Promote only after reviewed reconciliation proves no duplicated charge/payout/refund or notification and the operator authorizes target resumption. Measure RPO/RTO; proposed ≤24-hour RPO and ≤4-hour RTO are unverified targets, not commitments.
-
-## Expected result and invariant check
-
-Expected: isolated restore and compatible rollback with retained financial writes, all post-cutoff effects accounted for, and no external side effects during rehearsal. Attach measured timings, checks and unresolved cases before release; documentation alone does not pass OPS-02/03. Record actor, UTC time, original IDs, reason, outcome and next owner in restricted incident evidence; use the audited case workflow when available.
-
-## Forbidden actions
-
-Never force paid, never set balances, never retry with a new key. Never restore an old DB over live money without reconciliation, run production db push/reset, delete financial columns in a down migration or replay live email/money during a rehearsal.
+Never force paid/refunded/released state, write balances or capacity counters, delete audit evidence, or retry an uncertain financial effect with a new operation key. Record actor, UTC time, original identifiers, reason, observed result and next owner. No live payment, external email or deployment is authorized here.

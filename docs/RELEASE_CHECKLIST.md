@@ -1,19 +1,19 @@
 # Release checklist
 
-As of 2026-09-13. Scope: master §17.1, §21 and P1C-07. Documentation prepared; no deployment or live launch is approved by this checklist. Platform fee is always **0%**.
+As of 2026-09-14; baseline **3bddff9**. Platform fee always **0%**. No deployment/live launch is approved by this checklist.
 
-| Gate | Required result | Current status | Evidence and remaining work |
-|---|---|---|---|
-| G0 Reproducible | Clean clone installs, migrates, seeds and runs | PARTIAL | [Local evidence](evidence/claude-db-integration.md): migrations/seed and reruns, typecheck, webpack compile. Clean-clone/CI reproduction and complete environment validation remain. |
-| G1 Domain correct | Money, capacity, states and snapshots correct | PARTIAL | Same evidence: 83/83 local PostgreSQL + mock tests, including capacity/idempotency races. Full master coverage, immutable terms and later lifecycle/capacity work remain; this is not provider sandbox evidence. |
-| G2 Secure boundaries | Correct user/role/data isolation; no secret exposure | PARTIAL | Same evidence: negative authorization, origin, order/service/pool isolation and mock signature checks. Private storage, production auth, privileged audit/actions and full security coverage remain. |
-| G3 Usable | Desktop/mobile/keyboard journeys work | NOT_RUN | Playwright, 360/768/1440 screenshots and keyboard/manual evidence absent from the cited record. Compiled UI is not usability acceptance. |
-| G4 Recoverable | Retry, outage, reconciliation and restore succeed | PARTIAL | Local mock fault injection only: unknown outcomes, inbox replay, hold/release jobs, mutation checks and notification sink dedupe. Restore/rollback rehearsals and real-provider outage recovery remain NOT_RUN. |
-| G5 Deployable | Staging, migrations, config and health pass | BLOCKED | No staging environment. [Staging plan](STAGING.md), OPS-02/03 and deployment smoke are NOT_RUN; keys, infrastructure and scheduler missing. |
-| G6 Live eligible | Accounts, rails, policies, operations and authority complete | BLOCKED | [Payment readiness](PAYMENT_READINESS.md) has open eligibility/policy checks; Stripe sandbox blocked without keys, live blocked. Operator tooling and authorized launch record missing. |
-| G7 Market evidence | Real buyer pays and creator completes delivery | BLOCKED | No redacted real transaction/completion evidence. Mock, sandbox, testnet, fixture users and test payments never count as market evidence. |
+| Gate | Status | Evidence / remaining work |
+|---|---|---|
+| G0 Reproducible | PARTIAL | Local blank/upgrade migrations, seed and checks pass; clean clone/frozen install/CI run absent. |
+| G1 Domain correct | PARTIAL | 184/184 with DB suites enabled at 3bddff9; full §18 races, finance edges and later phases remain. |
+| G2 Secure boundaries | PARTIAL | Local ownership, roles/audit and storage negatives pass; Supabase, full secret/SSRF/session matrix remain. |
+| G3 Usable | PARTIAL | W1-B/W3-R browser journeys, W2-S/C6 360px checks; 768/1440 and keyboard/full E2E remain. |
+| G4 Recoverable | PARTIAL | Mock journal/inbox/retry recovery passes; remote-success DB crash, restore and rollback rehearsal remain. |
+| G5 Deployable | BLOCKED | Staging environment/access absent; real adapters, deployed scheduler, smoke/restore/rollback not verified. |
+| G6 Live eligible | BLOCKED | Provider credentials/approval, entity/policies, fee payer/reserve, infrastructure and launch authority absent. |
+| G7 Market evidence | BLOCKED | No authorized real paid/completed transaction evidence; fixtures and mock payments do not count. |
 
-G0/G1 evidence ran in Claude's normal macOS shell, outside the restricted Codex runner. C2 did not rerun those tests. Skipped tests do not pass. P1C documentation does not establish operational acceptance; independent product work may continue while live gates are blocked.
+Evidence and per-ID limits: [acceptance ledger](ACCEPTANCE.md), [C6 review](evidence/claude-review-C6.md) and commit `3bddff9` (184/184, 17 files with DB suites enabled; tsc 0). Claude ran DB/browser checks; C3 performed documentation validation only. G0–G4 remain PARTIAL; G5–G7 are BLOCKED. Documentation completion does not close staging/live gates.
 
 ## Operator decisions before live — all OPEN
 
