@@ -1,0 +1,36 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "marketplace-dev",
+      "runtimeExecutable": "/Users/dohoangphi/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin/node",
+      "runtimeArgs": [
+        "node_modules/next/dist/bin/next",
+        "dev",
+        "--webpack",
+        "--hostname",
+        "127.0.0.1",
+        "--port",
+        "3100"
+      ],
+      "port": 3100,
+      "url": "http://127.0.0.1:3100"
+    },
+    {
+      "name": "waitlist-dev",
+      "runtimeExecutable": "/Users/dohoangphi/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin/node",
+      "runtimeArgs": [
+        "../node_modules/next/dist/bin/next",
+        "dev",
+        "--webpack",
+        "--hostname",
+        "127.0.0.1",
+        "--port",
+        "3200"
+      ],
+      "cwd": "waitlist",
+      "port": 3200,
+      "url": "http://127.0.0.1:3200"
+    }
+  ]
+}

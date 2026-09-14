@@ -1,0 +1,7 @@
+.env*
+!.env.example
+.local
+.local-*
+.next
+node_modules
+supabase-setup.sql
