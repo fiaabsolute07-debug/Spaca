@@ -202,6 +202,7 @@ export async function cancelOpenFunding(tx: Tx, orderId: string): Promise<void> 
 export async function requestProviderRefund(tx: Tx, order: Row, reason: RefundReason): Promise<ProviderCallResult> {
   const orderId = String(order.id);
   if (order.payment_rail === 'CRYPTO') throw new PaymentFlowError('Crypto refunds need the chain settlement adapter, which is not implemented yet', 'UNAVAILABLE');
+  if (order.payment_rail === 'POOL') return returnPoolFunding(tx, order);
   const [funding] = await tx<Row[]>`select provider_reference from app.provider_operations
     where order_id=${orderId} and kind='funding.create' and outcome->>'fundingStatus'='SUCCEEDED' order by created_at desc limit 1`;
   if (!funding) throw new PaymentFlowError('No provider-confirmed funding exists for this order', 'INVALID_STATE');
@@ -246,6 +247,7 @@ export async function requestCreatorRelease(tx: Tx, order: Row): Promise<Provide
   const orderId = String(order.id);
   if (!(await isFlagEnabled(tx, 'PAYOUT_CREATION_ENABLED'))) throw new PaymentFlowError('New payouts are paused by the payout kill switch', 'UNAVAILABLE');
   if (order.payment_rail === 'CRYPTO') throw new PaymentFlowError('Crypto payouts need the chain settlement adapter, which is not implemented yet', 'UNAVAILABLE');
+  if (order.payment_rail === 'POOL') return settlePoolFunding(tx, order);
   const [funding] = await tx<Row[]>`select provider_reference from app.provider_operations
     where order_id=${orderId} and kind='funding.create' and outcome->>'fundingStatus'='SUCCEEDED' order by created_at desc limit 1`;
   if (!funding) throw new PaymentFlowError('No provider-confirmed funding exists for this order', 'INVALID_STATE');
@@ -517,6 +519,70 @@ async function applyFundingEvent(tx: Tx, event: VerifiedEvent): Promise<string> 
     return updated.length ? 'PAYMENT_FAILED' : 'NO_REGRESSION';
   }
   return 'IGNORED';
+}
+
+/**
+ * Pool rail (W5-C2): the order is funded from campaign pool allocations made in the same transaction; no charge,
+ * checkout or provider call happens. Ledger principal moves from the pool clearing account for the CASH value.
+ */
+export async function applyPoolFunding(tx: Tx, input: { orderId: string; poolId: string; cashMinor: bigint; templateVersion: number }): Promise<'FUNDED'> {
+  const { orderId } = input;
+  const [order] = await tx<Row[]>`select * from app.orders where id=${orderId} for update`;
+  const [reservation] = await tx<Row[]>`select state from app.reservations where order_id=${orderId} for update`;
+  if (!order || order.status !== 'AWAITING_PAYMENT' || reservation?.state !== 'HELD') throw new PaymentFlowError('Pool funding needs a new order with a held slot', 'INVALID_STATE');
+  if (input.cashMinor !== BigInt(String(order.amount_minor))) throw new PaymentFlowError('Pool CASH reward differs from the order price', 'INVALID_STATE');
+  await tx`update app.orders set status='FUNDED',payment_status='SUCCEEDED',payment_rail='POOL',provider_fee_minor=0,funded_at=now(),version=version+1,updated_at=now() where id=${orderId}`;
+  await recomputeWorkClock(tx, orderId);
+  await commitOrderReservation(tx, orderId);
+  await orderEvent(tx, orderId, 'PAYMENT_CONFIRMED', { rail: 'POOL', pool_id: input.poolId, template_version: input.templateVersion, platform_fee_minor: '0', provider_fee_minor: '0' });
+  await ledger(tx, orderId, 'FUNDING_CAPTURED', `funding:pool:${orderId}`, [[`pool_clearing:${input.poolId}`, input.cashMinor], [`order_principal:${orderId}`, -input.cashMinor]], 'USD');
+  await outbox(tx, orderId, `notify:order.new:${orderId}`, {
+    templateId: 'order.new', recipientId: String(order.creator_id), params: { orderRef: orderId, serviceTitle: String(order.title).slice(0, 120) },
+  });
+  return 'FUNDED';
+}
+
+async function returnPoolFunding(tx: Tx, order: Row): Promise<ProviderCallResult> {
+  const orderId = String(order.id);
+  if (order.cancellation_refund_minor !== null && order.cancellation_refund_minor !== undefined && BigInt(String(order.cancellation_refund_minor)) < BigInt(String(order.amount_minor))) {
+    throw new PaymentFlowError('Partial refunds of pool-funded hires are not supported; an operator must split the rewards', 'UNAVAILABLE');
+  }
+  const { returnPoolAllocations } = await import('@/modules/pools/service');
+  await returnPoolAllocations(tx, orderId);
+  const [poolRow] = await tx<Row[]>`select pool_id from app.pool_allocations where order_id=${orderId} limit 1`;
+  const amount = BigInt(String(order.amount_minor));
+  const [current] = await tx<Row[]>`select status from app.orders where id=${orderId} for update`;
+  if (current?.status === 'CANCELLED') {
+    await tx`update app.orders set status='REFUNDED',payment_status='REFUNDED',version=version+1,updated_at=now() where id=${orderId}`;
+  }
+  await orderEvent(tx, orderId, 'REFUND_SUCCEEDED', { rail: 'POOL', pool_id: poolRow?.pool_id ?? null, amount_minor: amount.toString() });
+  if (poolRow) await ledger(tx, orderId, 'REFUND_SUCCEEDED', `refund:pool:${orderId}`, [[`order_principal:${orderId}`, amount], [`pool_clearing:${poolRow.pool_id}`, -amount]], 'USD');
+  return { state: 'READY', operationId: `pool-return:${orderId}`, reference: 'pool' };
+}
+
+/** CRY-08: COMPLETED only when every required allocation is released; failed assets retry alone via the settlement job. */
+async function settlePoolFunding(tx: Tx, order: Row): Promise<ProviderCallResult> {
+  const orderId = String(order.id);
+  const { settlePoolAllocations } = await import('@/modules/pools/service');
+  const result = await settlePoolAllocations(tx, order);
+  if (result.requiredOutstanding > 0) {
+    await tx`update app.orders set settlement_status='PENDING',updated_at=now() where id=${orderId}`;
+    return { state: 'RETRY', operationId: `pool-release:${orderId}`, code: `PARTIAL_${result.failed.map((f) => f.code).join('_') || 'PENDING'}` };
+  }
+  const [poolRow] = await tx<Row[]>`select pool_id from app.pool_allocations where order_id=${orderId} limit 1`;
+  const amount = BigInt(String(order.amount_minor));
+  if (order.status === 'APPROVED') {
+    await tx`update app.orders set settlement_status='RELEASED',status='COMPLETED',completed_at=now(),version=version+1,updated_at=now() where id=${orderId}`;
+    await outbox(tx, orderId, `notify:order.completed:${orderId}`, { templateId: 'order.completed', recipientId: String(order.buyer_id), params: { orderRef: orderId } });
+  } else {
+    await tx`update app.orders set settlement_status='RELEASED',updated_at=now() where id=${orderId}`;
+  }
+  await orderEvent(tx, orderId, 'SETTLEMENT_RELEASED', { rail: 'POOL', pool_id: poolRow?.pool_id ?? null, released: result.released, optional_failed: result.failed.map((f) => f.key), platform_fee_minor: '0' });
+  await ledger(tx, orderId, 'SETTLEMENT_RELEASED', `release:pool:${orderId}`, [[`order_principal:${orderId}`, amount], [`pool_clearing:${poolRow!.pool_id}`, -amount]], 'USD');
+  await outbox(tx, orderId, `notify:payout.succeeded:${orderId}`, {
+    templateId: 'payout.succeeded', recipientId: String(order.creator_id), params: { orderRef: orderId, amount: amount.toString(), currency: 'USD' },
+  });
+  return { state: 'READY', operationId: `pool-release:${orderId}`, reference: 'pool' };
 }
 
 export type ChainFundingFact = {

@@ -165,3 +165,48 @@ API routes:
 
 Dev only:
 - POST /api/dev/local-chain/pay {intent_id} → {tx_hash}. Simulates the wallet on LOCAL networks; 404 in production.
+
+## W5-C2 additions (2026-09-14): campaign pools (local devnet)
+
+A request can be backed by a funded campaign pool:
+- Applicants quote exactly the pool CASH value.
+- `accept_offer` allocates the rewards and returns the order already FUNDED, with `payment_rail` POOL and no checkout.
+- The creator needs a verified wallet on the pool network.
+
+Read model: `getPoolData(actor|null, requestId)` in `src/modules/pools/service.ts`
+- `pool`: `{ id, status FUNDING|ACTIVE|CLOSED, chain_id, network_name, network_mode, template_version, rewards_per_hire[items], fully_funded, missing_required[{asset_id, symbol, missing}] }`.
+- Owner only:
+  - `assets`: `[asset_id, symbol, decimals, kind, required, target, confirmed_deposit, unallocated, allocated_active, pending_outflow, released, refunded]` as decimal strings.
+  - `funding_intents`: `[id, amount_atomic, reference, recipient, status, status_reason]`.
+  - `allocations`: `[order_id, item_key, kind, required, amount_atomic, state ACTIVE|RELEASE_PENDING|RELEASED|CANCELLED, attempts, last_error, release_tx, template_version]`.
+  - `refunds`.
+  - `entitlements`: `[id, order_id, item_key, kind PERK|NFT, perk_type, description, fulfillment_method, required, deadline_at, status PENDING|FULFILLED|CLAIMED|CANCELLED]`.
+- Rewards never show a USD value for TOKEN or PERK items.
+
+Template items (JSON array, 1–10):
+- `{key, kind:'CASH', required:true, asset_id, amount}`: exactly one, on a USD-pegged asset; it sets the per-hire price.
+- `{key, kind:'TOKEN', required, asset_id, amount}`: needs `TOKEN_REWARDS_ENABLED`.
+- `{key, kind:'PERK', required, perk_type WHITELIST|ACCESS|COMMUNITY_ROLE|NFT, description, fulfillment_method, deadline_days}`: NFT needs `NFT_REWARDS_ENABLED`.
+
+Commands (buyer = request owner):
+- `create_campaign_pool`: `request_id`, `chain_id`, `items`.
+  - Only before any application.
+  - Needs `REQUESTS_ENABLED` and `CRYPTO_CHECKOUT_ENABLED`.
+- `update_pool_template`: `pool_id`, `items`.
+  - Creates a new version for future hires only.
+  - Stale applications get 409 at select.
+- `create_pool_funding`: `pool_id`, `asset_id`, `amount` (decimal).
+  - Returns an intent id; send exactly that amount with its reference.
+  - Verify through `POST /api/crypto/deposits` with that `intent_id`, or let the indexer pick it up.
+- `refund_pool_unused`: `pool_id`, `asset_id`, `amount` (optional; defaults to all unallocated).
+  - Needs the buyer's verified wallet.
+  - 422 when above the unallocated balance.
+- `close_campaign_pool`: `pool_id`. Returns 409 while allocations are active or balance remains.
+- `fulfill_entitlement` (buyer): `entitlement_id`, `proof` (10+ chars); NFT also needs `nft_contract` and `nft_token_id` owned by the creator's wallet.
+- `claim_entitlement` (creator): `entitlement_id`. A second claim gets 409.
+- `create_pool`: retired; returns 422 pointing to `create_campaign_pool`.
+
+Settlement:
+- An approved pool order releases each allocation on chain.
+- If a required asset fails, the order stays APPROVED with `settlement_status` PENDING and the job retries only the failed items.
+- The order becomes COMPLETED once every required reward is released.

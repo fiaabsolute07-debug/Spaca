@@ -76,7 +76,11 @@ async function processEvent(network: Row, event: SettlementEvent, head: bigint, 
     }
     const asset = await assetForToken(tx, chainId, event.token);
     if (!asset || !asset.allowlisted) return recordRejection(tx, network, event, intent, asset, 'UNSUPPORTED_ASSET');
-    if (!intent) return recordRejection(tx, network, event, undefined, asset, 'UNKNOWN_REFERENCE');
+    if (!intent) {
+      const [poolRef] = await tx<Row[]>`select id from app.pool_funding_intents where reference=${event.reference}`;
+      if (poolRef) return processPoolDeposit(tx, network, event, head, reader, String(poolRef.id), asset, existing);
+      return recordRejection(tx, network, event, undefined, asset, 'UNKNOWN_REFERENCE');
+    }
     const [expected] = await tx<Row[]>`select * from app.chain_assets where id=${String(intent.asset_id)}`;
     if (Number(intent.chain_id) !== chainId) return recordRejection(tx, network, event, intent, asset, 'WRONG_CHAIN');
     // Interfaces of one balance share balance_key and decimals; anything else is the wrong asset. One credit per intent.
@@ -122,6 +126,54 @@ async function processEvent(network: Row, event: SettlementEvent, head: bigint, 
     await tx`update app.crypto_payment_intents set status=${funding === 'FUNDED' ? 'CONFIRMED' : 'EXCEPTION'},status_reason=${funding === 'FUNDED' ? null : funding},updated_at=now() where id=${String(intent.id)}`;
     return { status: 'CREDITED', log_index: event.log.logIndex, order_id: String(intent.order_id), funding, reason: `${formatAtomic(event.amount, Number(asset.decimals))} ${asset.symbol}` };
   });
+}
+
+/** Campaign pool funding (W5-C2): exact asset and amount, finality, then one DEPOSIT movement into the pool buckets. */
+async function processPoolDeposit(tx: Tx, network: Row, event: SettlementEvent, head: bigint, reader: ChainReader, poolIntentId: string, asset: Row, existing: Row | undefined): Promise<DepositResult> {
+  const chainId = Number(network.chain_id);
+  const txHash = event.log.transactionHash.toLowerCase();
+  const [intent] = await tx<Row[]>`select i.*,pa.asset_id,pa.pool_id from app.pool_funding_intents i join app.pool_assets pa on pa.id=i.pool_asset_id where i.id=${poolIntentId} for update of i`;
+  const reject = async (reason: string): Promise<DepositResult> => {
+    await tx`insert into app.chain_deposits (chain_id,tx_hash,log_index,block_number,block_hash,emitter,token_address,asset_id,payer,amount_atomic,reference,pool_intent_id,status,reason)
+      values (${chainId},${txHash},${event.log.logIndex},${event.log.blockNumber.toString()},${event.log.blockHash.toLowerCase()},${event.log.address.toLowerCase()},
+        ${event.token},${String(asset.id)},${event.payer},${event.amount.toString()},${event.reference},${poolIntentId},'REJECTED',${reason})
+      on conflict (chain_id,tx_hash,log_index) do nothing`;
+    if (['AWAITING_DEPOSIT', 'PENDING_FINALITY'].includes(String(intent!.status))) {
+      await tx`update app.pool_funding_intents set status='EXCEPTION',status_reason=${reason},updated_at=now() where id=${poolIntentId}`;
+    }
+    await openCase(tx, null, null, 'POOL_DEPOSIT_EXCEPTION', 'HIGH', `${reason}: pool ${intent!.pool_id} tx ${event.log.transactionHash} log ${event.log.logIndex}; refund the payer if owed`);
+    return { status: 'REJECTED', reason, log_index: event.log.logIndex };
+  };
+  if (Number(intent!.chain_id) !== chainId) return reject('WRONG_CHAIN');
+  if (String(intent!.asset_id) !== String(asset.id)) return reject('WRONG_ASSET');
+  const wanted = BigInt(String(intent!.amount_atomic));
+  if (event.amount < wanted) return reject('UNDERPAID');
+  if (event.amount > wanted) return reject('OVERPAID');
+  const [credited] = await tx<Row[]>`select id from app.chain_deposits where pool_intent_id=${poolIntentId} and status='CREDITED'`;
+  if (credited) return reject('DUPLICATE_PAYMENT');
+  const confirmations = head - event.log.blockNumber + 1n;
+  const canonical = (await reader.getBlockHash(event.log.blockNumber))?.toLowerCase() === event.log.blockHash.toLowerCase();
+  if (!canonical || confirmations < BigInt(network.finality_confirmations)) {
+    if (!existing) {
+      await tx`insert into app.chain_deposits (chain_id,tx_hash,log_index,block_number,block_hash,emitter,token_address,asset_id,payer,amount_atomic,reference,pool_intent_id,status)
+        values (${chainId},${txHash},${event.log.logIndex},${event.log.blockNumber.toString()},${event.log.blockHash.toLowerCase()},${event.log.address.toLowerCase()},
+          ${event.token},${String(asset.id)},${event.payer},${event.amount.toString()},${event.reference},${poolIntentId},'PENDING_FINALITY')`;
+    }
+    if (intent!.status === 'AWAITING_DEPOSIT') await tx`update app.pool_funding_intents set status='PENDING_FINALITY',updated_at=now() where id=${poolIntentId}`;
+    return { status: 'PENDING_FINALITY', reason: `${confirmations < 0n ? 0n : confirmations}/${network.finality_confirmations} confirmations`, log_index: event.log.logIndex };
+  }
+  const { moveBalance, refreshPoolStatus } = await import('@/modules/pools/balances');
+  await moveBalance(tx, String(intent!.pool_asset_id), 'DEPOSIT', event.amount, `deposit:${chainId}:${txHash}:${event.log.logIndex}`);
+  if (existing) {
+    await tx`update app.chain_deposits set status='CREDITED',credited_at=now(),pool_intent_id=${poolIntentId},asset_id=${String(asset.id)},updated_at=now() where id=${String(existing.id)}`;
+  } else {
+    await tx`insert into app.chain_deposits (chain_id,tx_hash,log_index,block_number,block_hash,emitter,token_address,asset_id,payer,amount_atomic,reference,pool_intent_id,status,credited_at)
+      values (${chainId},${txHash},${event.log.logIndex},${event.log.blockNumber.toString()},${event.log.blockHash.toLowerCase()},${event.log.address.toLowerCase()},
+        ${event.token},${String(asset.id)},${event.payer},${event.amount.toString()},${event.reference},${poolIntentId},'CREDITED',now())`;
+  }
+  await tx`update app.pool_funding_intents set status='CONFIRMED',status_reason=null,updated_at=now() where id=${poolIntentId}`;
+  const poolStatus = await refreshPoolStatus(tx, String(intent!.pool_id));
+  return { status: 'CREDITED', log_index: event.log.logIndex, funding: `POOL_${poolStatus}`, reason: `${formatAtomic(event.amount, Number(asset.decimals))} ${asset.symbol}` };
 }
 
 async function networkRow(chainId: number): Promise<Row> {
@@ -203,10 +255,14 @@ export async function recheckPendingDeposits(chainId: number): Promise<IndexerRe
       if (!receipt) {
         await sql.begin(async (tx) => {
           const [row] = await tx<Row[]>`update app.chain_deposits set status='REORGED',reason='Transaction no longer on the canonical chain',updated_at=now()
-            where id=${String(deposit.id)} and status='PENDING_FINALITY' returning intent_id`;
+            where id=${String(deposit.id)} and status='PENDING_FINALITY' returning intent_id,pool_intent_id`;
           if (row?.intent_id) {
             await tx`update app.crypto_payment_intents set status='AWAITING_DEPOSIT',status_reason='Previous deposit was reorganized away',updated_at=now()
               where id=${String(row.intent_id)} and status='PENDING_FINALITY'`;
+          }
+          if (row?.pool_intent_id) {
+            await tx`update app.pool_funding_intents set status='AWAITING_DEPOSIT',status_reason='Previous deposit was reorganized away',updated_at=now()
+              where id=${String(row.pool_intent_id)} and status='PENDING_FINALITY'`;
           }
         });
         report.outcomes.REORGED = (report.outcomes.REORGED ?? 0) + 1;

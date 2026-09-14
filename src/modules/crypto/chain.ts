@@ -26,13 +26,32 @@ export class ChainUnavailableError extends Error {
 
 type Block = { number: bigint; hash: Hex; receipts: ChainReceipt[] };
 
+export class PayoutRejectedError extends Error {
+  constructor(readonly code: string) {
+    super(code);
+    this.name = 'PayoutRejectedError';
+  }
+}
+
+/** Settlement payouts (releases and pool refunds) executed with a server release authorization. */
+export interface ChainPayoutAdapter {
+  executeRelease(signed: import('./authorization').SignedRelease): Promise<{ txHash: Hex }>;
+  getNftOwner?(contract: Hex, tokenId: bigint): Promise<Hex | null>;
+}
+
 /** In-memory devnet. Every deposit is mined in its own block; `mine` adds empty blocks for confirmations. */
-export class LocalDevChain implements ChainReader {
+export class LocalDevChain implements ChainReader, ChainPayoutAdapter {
   private blocks: Block[] = [];
   private offline = false;
   private salt = 0;
+  private readonly usedNonces = new Set<string>();
+  private readonly releasedPayouts = new Map<string, Hex>();
+  private readonly failingTokens = new Set<string>();
+  private readonly nftOwners = new Map<string, Hex>();
+  readonly transfers: { payoutRef: Hex; recipient: Hex; token: Hex; amount: bigint; txHash: Hex }[] = [];
 
-  constructor(readonly chainId: number) {
+  /** `settlement` is the simulated contract's own address; releases signed for any other contract are refused. */
+  constructor(readonly chainId: number, public settlement: Hex | null = null) {
     this.blocks.push({ number: 0n, hash: this.nextHash('genesis'), receipts: [] });
   }
 
@@ -82,6 +101,46 @@ export class LocalDevChain implements ChainReader {
     const number = this.head + 1n;
     const blockHash = this.nextHash('block');
     this.blocks.push({ number, hash: blockHash, receipts: [{ ...receipt, blockNumber: number, blockHash, logs: receipt.logs.map((log) => ({ ...log, blockNumber: number, blockHash })) }] });
+  }
+
+  /** Simulated token failure (paused/blocked token contract) for CRY-08 retries. */
+  failTransfersOf(token: Hex, failing = true) {
+    if (failing) this.failingTokens.add(token.toLowerCase());
+    else this.failingTokens.delete(token.toLowerCase());
+  }
+
+  setNftOwner(contract: Hex, tokenId: bigint, owner: Hex) {
+    this.nftOwners.set(`${contract.toLowerCase()}:${tokenId}`, owner.toLowerCase() as Hex);
+  }
+
+  async getNftOwner(contract: Hex, tokenId: bigint) {
+    this.guard();
+    return this.nftOwners.get(`${contract.toLowerCase()}:${tokenId}`) ?? null;
+  }
+
+  /**
+   * Simulated settlement contract `release`: signer, chain, contract and expiry checks, single-use nonce, and one
+   * successful payout per payout reference (a second one reports ALREADY_RELEASED with the original transaction).
+   */
+  async executeRelease(signed: import('./authorization').SignedRelease): Promise<{ txHash: Hex }> {
+    this.guard();
+    const { getReleaseSigner, verifyReleaseSignature } = await import('./authorization');
+    if (!this.settlement) throw new PayoutRejectedError('CONTRACT_NOT_DEPLOYED');
+    try {
+      await verifyReleaseSignature(signed, { chainId: this.chainId, contract: this.settlement, signer: getReleaseSigner().address, now: BigInt(Math.floor(Date.now() / 1000)) });
+    } catch (error) {
+      throw new PayoutRejectedError(error instanceof Error ? error.message : 'BAD_SIGNATURE');
+    }
+    if (this.usedNonces.has(signed.message.nonce)) throw new PayoutRejectedError('NONCE_USED');
+    const previous = this.releasedPayouts.get(signed.message.payoutRef);
+    if (previous) throw new PayoutRejectedError(`ALREADY_RELEASED:${previous}`);
+    this.usedNonces.add(signed.message.nonce);
+    if (this.failingTokens.has(signed.message.token.toLowerCase())) throw new PayoutRejectedError('TOKEN_TRANSFER_FAILED');
+    const txHash = this.nextHash('release');
+    this.releasedPayouts.set(signed.message.payoutRef, txHash);
+    this.transfers.push({ payoutRef: signed.message.payoutRef, recipient: signed.message.recipient, token: signed.message.token, amount: signed.message.amount, txHash });
+    this.mine(1);
+    return { txHash };
   }
 
   async getBlockNumber() {
@@ -153,16 +212,27 @@ export function getChainReader(network: Record<string, unknown>): ChainReader {
   if (override) return override;
   if (String(network.mode) === 'LOCAL') {
     if (!localChainsEnabled()) throw new ChainUnavailableError('Local devnet is disabled in this environment');
-    if (!localChains.has(chainId)) localChains.set(chainId, new LocalDevChain(chainId));
-    return localChains.get(chainId)!;
+    const settlement = network.settlement_address ? (String(network.settlement_address).toLowerCase() as Hex) : null;
+    if (!localChains.has(chainId)) localChains.set(chainId, new LocalDevChain(chainId, settlement));
+    const local = localChains.get(chainId)!;
+    // A chain first created without the network row (dev wallet simulator) learns its contract address later.
+    if (!local.settlement && settlement) local.settlement = settlement;
+    return local;
   }
   const rpcUrl = process.env[`CHAIN_RPC_URL_${chainId}`];
   if (String(network.mode) === 'TESTNET' && rpcUrl) return createRpcChainReader(chainId, rpcUrl);
   throw new ChainUnavailableError('No verified RPC is configured for this network');
 }
 
-export function getLocalDevChain(chainId: number): LocalDevChain | null {
-  const reader = overrides.get(chainId) ?? (localChainsEnabled() ? getChainReader({ chain_id: chainId, mode: 'LOCAL' }) : null);
+/** Payout execution needs custody; only the local devnet simulator can execute releases in this repository. */
+export function getPayoutAdapter(network: Record<string, unknown>): ChainPayoutAdapter {
+  const reader = getChainReader(network);
+  if ('executeRelease' in reader) return reader as unknown as ChainPayoutAdapter;
+  throw new ChainUnavailableError('No custody/payout adapter is configured for this network');
+}
+
+export function getLocalDevChain(chainId: number, settlementAddress?: string): LocalDevChain | null {
+  const reader = overrides.get(chainId) ?? (localChainsEnabled() ? getChainReader({ chain_id: chainId, mode: 'LOCAL', settlement_address: settlementAddress }) : null);
   // Structural check: a class copy from another bundle is still the simulator.
   return reader && 'submitDeposit' in reader && 'mine' in reader ? (reader as LocalDevChain) : null;
 }

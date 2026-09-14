@@ -11,6 +11,8 @@ import { insertReservation, lockAvailableBucket } from '@/modules/capacity';
 import { CHECKOUT_HOLD_MINUTES } from '@/modules/catalog/commands';
 import { assertFlags } from '@/modules/admin/policy';
 import { enqueueNotification } from '@/modules/notifications/enqueue';
+import { applyPoolFunding } from '@/modules/payments/funding';
+import { allocateHire, poolTermsFor } from '@/modules/pools/service';
 
 const TAXONOMIES = ['CREATE', 'PUBLISH', 'ACCESS', 'DIGITAL'];
 export const HIRE_OFFER_HOURS = 24;
@@ -140,6 +142,9 @@ const apply: CommandHandler = async ({ tx, actor, form }) => {
   if (String(request.buyer_id) === actor.id) throw new CommandError('You cannot apply to your own request', 'FORBIDDEN');
   const ceiling = request.per_creator_cap_minor != null ? BigInt(request.per_creator_cap_minor) : BigInt(request.budget_minor);
   if (quote > ceiling) throw new CommandError('Quote exceeds the per-creator cap for this request', 'BUDGET_EXCEEDED');
+  // Pool-backed requests pay the published reward bundle; the quote must equal its CASH value (W5-C2).
+  const pool = await poolTermsFor(tx, requestId);
+  if (pool && quote !== pool.cashMinor) throw new CommandError(`This request pays a fixed pool reward; quote exactly $${(Number(pool.cashMinor) / 100).toFixed(2)}`, 'DOMAIN_RULE');
   if (Date.now() + turnaround * 3600_000 > new Date(request.deadline).getTime()) {
     throw new CommandError('That turnaround would finish after the request deadline', 'DOMAIN_RULE');
   }
@@ -195,6 +200,8 @@ const selectApplication: CommandHandler = async ({ tx, actor, form }) => {
   if (application!.status !== 'SUBMITTED') throw new CommandError('This application already has an offer or is no longer active', 'ORDER_STATE_CONFLICT');
   if (new Date(application!.valid_until) <= new Date()) throw new CommandError('This quote has expired. Ask the creator to renew it.', 'QUOTE_EXPIRED');
   const amount = BigInt(application!.quote_minor);
+  const pool = await poolTermsFor(tx, String(request.id));
+  if (pool && pool.cashMinor !== amount) throw new CommandError('The pool reward changed since this application; the creator must re-apply', 'QUOTE_CHANGED');
   if (request.per_creator_cap_minor != null && amount > BigInt(request.per_creator_cap_minor)) {
     throw new CommandError('This quote is above the current per-creator cap', 'BUDGET_EXCEEDED');
   }
@@ -256,14 +263,16 @@ const acceptOffer: CommandHandler = async ({ tx, actor, form }) => {
   if (actor.status !== 'ACTIVE') throw new CommandError('Suspended accounts cannot accept new work', 'ACCOUNT_SUSPENDED');
   await assertFlags(tx, ['REQUESTS_ENABLED', 'CHECKOUT_CREATION_ENABLED']);
   const poolId = uuid(form, 'pool_id');
-  const [pool] = await tx<Row[]>`select id from app.capacity_pools where id=${poolId} and creator_id=${actor.id}`;
-  if (!pool) throw new CommandError('Choose one of your own capacity pools for this work', 'FORBIDDEN');
+  const [capacityPool] = await tx<Row[]>`select id from app.capacity_pools where id=${poolId} and creator_id=${actor.id}`;
+  if (!capacityPool) throw new CommandError('Choose one of your own capacity pools for this work', 'FORBIDDEN');
   const terms = offer.terms_snapshot as Record<string, unknown>;
   const turnaround = Number(terms.turnaround_hours);
   const bucketId = text(form, 'bucket_id', false) || null;
   const bucket = await lockAvailableBucket(tx, poolId, turnaround, bucketId);
   const capacityPlan = { pool_id: poolId, bucket_id: String(bucket.id), units: 1, week_starts_at: new Date(bucket.starts_at).toISOString(), week_ends_at: new Date(bucket.ends_at).toISOString() };
-  const orderTerms = { ...terms, offer_id: String(offer.id), capacity: capacityPlan };
+  const campaignPool = await poolTermsFor(tx, String(request.id));
+  const orderTerms = { ...terms, offer_id: String(offer.id), capacity: capacityPlan,
+    ...(campaignPool ? { pool: { pool_id: campaignPool.poolId, template_version: campaignPool.templateVersion, rewards: campaignPool.items } } : {}) };
   const [order] = await tx<Row[]>`insert into app.orders (buyer_id,creator_id,service_id,pool_id,source,source_ref,title,status,amount_minor,platform_fee_minor,currency,brief,brief_ready_at,terms,delivery_due_at)
     values (${String(offer.buyer_id)},${actor.id},${null},${poolId},'REQUEST',${String(request.id)},${String(terms.title)},'AWAITING_PAYMENT',${String(offer.amount_minor)},0,'USD',
       ${String(terms.scope)},now(),${JSON.stringify(orderTerms)}::jsonb,null) returning id`;
@@ -273,6 +282,13 @@ const acceptOffer: CommandHandler = async ({ tx, actor, form }) => {
   await tx`update app.request_budget_reservations set order_id=${orderId},updated_at=now() where offer_id=${String(offer.id)} and state='HELD'`;
   await tx`update app.applications set status='ACCEPTED',updated_at=now() where id=${String(offer.application_id)}`;
   await orderEvent(tx, orderId, actor.id, 'ORDER_CREATED', { source: 'REQUEST', request_id: String(request.id), offer_id: String(offer.id), platform_fee_minor: '0' });
+  // Pool-backed request: allocate every required reward atomically and fund the order from it (no buyer checkout).
+  const allocation = await allocateHire(tx, { requestId: String(request.id), orderId, offerAmountMinor: BigInt(String(offer.amount_minor)), creatorId: actor.id });
+  if (allocation) {
+    await applyPoolFunding(tx, { orderId, poolId: allocation.poolId, cashMinor: allocation.cashMinor, templateVersion: allocation.templateVersion });
+    const skipped = allocation.skippedOptional.length ? ` Optional rewards not available: ${allocation.skippedOptional.join(', ')}.` : '';
+    return { path: `/orders/${orderId}`, message: `Offer accepted and funded from the campaign pool.${skipped}`, id: orderId };
+  }
   return { path: `/orders/${orderId}`, message: 'Offer accepted. The buyer can now fund this hire.', id: orderId };
 };
 

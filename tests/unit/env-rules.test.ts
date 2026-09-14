@@ -37,6 +37,14 @@ describe('env:check — fail closed per environment (§19.2)', () => {
     expect(row(report, 'DATABASE_URL')?.host).toBe('loopback');
   });
 
+  it('production refuses a raw release signer key and the local devnet', () => {
+    const report = checkEnvironment({ ...productionEnv, RELEASE_SIGNER_PRIVATE_KEY: `0x${'1'.repeat(64)}`, LOCAL_CHAIN: 'on' }, 'production');
+    expect(report.ok).toBe(false);
+    for (const name of ['RELEASE_SIGNER_PRIVATE_KEY', 'LOCAL_CHAIN']) expect(row(report, name)?.status).toBe('INVALID');
+    expect(checkEnvironment({ RELEASE_SIGNER_PRIVATE_KEY: `0x${'1'.repeat(64)}`, LOCAL_CHAIN: 'on' }, 'local').ok).toBe(true);
+    expect(JSON.stringify(report)).not.toContain('1111111111');
+  });
+
   it('production refuses the local storage adapter and its signing/dir settings', () => {
     const report = checkEnvironment({ ...productionEnv, STORAGE_PROVIDER: 'local', STORAGE_SIGNING_SECRET: 'local_dev_only_storage_signing_fixture', LOCAL_STORAGE_DIR: '.local/storage' }, 'production');
     expect(report.ok).toBe(false);

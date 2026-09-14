@@ -1,6 +1,6 @@
 # Acceptance ledger
 
-As of 2026-09-14, verified baseline **90004fd**, crypto rows from W5-C1 **94792af**. One row per master §18 ID, including unstarted work. Platform fee is always **0%**. P3 is done-local from W4-A; P4 is in progress by Claude. Counts: **53 PASS, 58 PARTIAL, 29 NOT_RUN, 2 BLOCKED (142 total)**.
+As of 2026-09-14, verified baseline **90004fd**, crypto rows from W5-C1/W5-C2. One row per master §18 ID, including unstarted work. Platform fee is always **0%**. P3 is done-local from W4-A; P4 is in progress by Claude. Counts: **58 PASS, 59 PARTIAL, 23 NOT_RUN, 2 BLOCKED (142 total)**.
 
 | Gate | Status | Evidence / remaining work |
 |---|---|---|
@@ -32,11 +32,11 @@ Sources: [P0](evidence/p0-foundation.md), [provider report](CLAUDE_REPORT.md), [
 | BNK | 0 | 0 | 3 | 0 |
 | REQ | 8 | 3 | 0 | 0 |
 | AUC | 12 | 2 | 0 | 0 |
-| CRY | 4 | 3 | 7 | 0 |
+| CRY | 9 | 4 | 1 | 0 |
 | DSC | 0 | 3 | 3 | 0 |
 | XPL | 0 | 0 | 6 | 0 |
 | OPS | 1 | 6 | 1 | 0 |
-| **Total** | 53 | 58 | 29 | 2 |
+| **Total** | 58 | 59 | 23 | 2 |
 
 | ID | Summary (≤12 words) | Status | Environment | Evidence (file + test name or commit) | Gap/next task |
 |---|---|---|---|---|---|
@@ -153,13 +153,13 @@ Sources: [P0](evidence/p0-foundation.md), [provider report](CLAUDE_REPORT.md), [
 | CRY-03 | Deduplicate chain deposits by chain, transaction and log index | PASS | local-db+mock | [W5-C1](evidence/claude-W5-C1.md): simulated local devnet, `tests/integration/crypto.db.test.ts`: verify replay DUPLICATE, indexer rescan, one ledger transaction, DUPLICATE_PAYMENT | Testnet re-run BLOCKED. |
 | CRY-04 | Preserve native and token USDC precision without double counting | PASS | local-db+mock | [W5-C1](evidence/claude-W5-C1.md): simulated local devnet, `tests/integration/crypto.db.test.ts`; `tests/unit/crypto-units.test.ts`: 6/18-decimal exact conversion, one credit per intent | Real Arc native/token interface semantics unverified (BLOCKED). |
 | CRY-05 | Recover finality, RPC outages and replacements from safe checkpoints | PASS | local-db+mock | [W5-C1](evidence/claude-W5-C1.md): simulated local devnet, `tests/integration/crypto.db.test.ts`: pending finality holds RECONCILING, RPC outage keeps checkpoint, reorg REORGED and single re-credit | Real RPC/replacement behaviour on testnet BLOCKED. |
-| CRY-06 | Require every mandatory reward asset before marking funding complete | NOT_RUN | doc-only | — | P4 required-asset pool funding tests. |
-| CRY-07 | Conserve each pool asset under competing hire allocations | NOT_RUN | doc-only | — | P4 concurrent multiasset allocation/budget/capacity tests. |
-| CRY-08 | Retry failed reward components without paying successful components again | NOT_RUN | doc-only | — | P4 mixed-component settlement/completion tests. |
-| CRY-09 | Refund only confirmed unallocated pool balances | NOT_RUN | doc-only | — | P4 unused-refund versus active/disputed obligation tests. |
-| CRY-10 | Reject release signatures replayed across orders, chains or nonces | NOT_RUN | doc-only | — | P4 contract/server replay and payee/amount tests. |
+| CRY-06 | Require every mandatory reward asset before marking funding complete | PASS | local-db+mock | [W5-C2](evidence/claude-W5-C2.md): simulated local devnet, `tests/integration/pools.db.test.ts`: missing RWD keeps pool FUNDING, owner view lists it, accept refused without side effects | Testnet re-run BLOCKED. |
+| CRY-07 | Conserve each pool asset under competing hire allocations | PASS | local-db+mock | [W5-C2](evidence/claude-W5-C2.md): simulated local devnet, `tests/integration/pools.db.test.ts`: concurrent accepts [200,422], one allocation; conservation/non-negative CHECKs and cumulative trigger refuse direct writes | Contract-level conservation invariants NOT_RUN (no Solidity/Foundry). |
+| CRY-08 | Retry failed reward components without paying successful components again | PASS | local-db+mock | [W5-C2](evidence/claude-W5-C2.md): simulated local devnet, `tests/integration/pools.db.test.ts`: cash released, failing token retried alone, COMPLETED only after required rewards; optional failure non-blocking | Real token contract failure modes on testnet BLOCKED. |
+| CRY-09 | Refund only confirmed unallocated pool balances | PASS | local-db+mock | [W5-C2](evidence/claude-W5-C2.md): simulated local devnet, `tests/integration/pools.db.test.ts`: refund limited to unallocated confirmed balance, allocated funds untouched, wallet required | Disputed-hire interplay beyond cancel/return not separately exercised. |
+| CRY-10 | Reject release signatures replayed across orders, chains or nonces | PARTIAL | local-db+mock | [W5-C2](evidence/claude-W5-C2.md): simulated local devnet, `tests/integration/pools.db.test.ts`: EIP-712 authorization bound to chain/contract/payout/recipient/amount/nonce/expiry rejected on tamper, replay, expiry, forged signer in the simulated contract | No Solidity contract or Foundry fuzz/invariant tests; custody key management NOT IMPLEMENTED. |
 | CRY-11 | Reject malicious or unsupported token behavior without conservation breaches | PARTIAL | local-db+mock | [W5-C1](evidence/claude-W5-C1.md): simulated local devnet, `tests/integration/crypto.db.test.ts`: DB refuses allowlisting REBASING; FEE_ON_TRANSFER token rejected as UNSUPPORTED_ASSET | Contract reentrancy/malicious-token invariant tests NOT_RUN (no contract, no Foundry). |
-| CRY-12 | Issue unique evidenced NFT or perk entitlements without invented valuations | NOT_RUN | doc-only | — | P4/P6 duplicate claim and entitlement-proof tests. |
+| CRY-12 | Issue unique evidenced NFT or perk entitlements without invented valuations | PASS | local-db+mock | [W5-C2](evidence/claude-W5-C2.md): simulated local devnet, `tests/integration/pools.db.test.ts`: unique PERK/NFT entitlements, proof-based fulfilment, single claim, NFT ownership check and one-token-one-entitlement index, no USD value | Real NFT transfer verification on testnet BLOCKED. |
 | CRY-13 | Exercise privileged pause and recovery without arbitrary fund access | NOT_RUN | doc-only | — | P4 custody/role compromise/recovery simulations. |
 | CRY-14 | Keep mainnet blocked until availability and review gates pass | PARTIAL | local-db+mock | [W5-C1](evidence/claude-W5-C1.md): simulated local devnet, `tests/integration/crypto.db.test.ts`: DB refuses enabled MAINNET and unverified enabled TESTNET | No release-check mainnet row yet; actual mainnet eligibility BLOCKED. |
 | DSC-01 | Filter and paginate eligible listings deterministically | PARTIAL | local-db+mock | [DB](evidence/claude-db-integration.md): TEST_PLAN 1 public/approved/published catalogue isolation; `2e00eca` | P5 full taxonomy/price/time filters and stable pagination tests. |

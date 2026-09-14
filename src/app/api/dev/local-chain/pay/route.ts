@@ -16,12 +16,13 @@ export async function POST(request: Request) {
   const actor = await getActor();
   if (!actor) return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
   const input = (await request.json().catch(() => ({}))) as { intent_id?: string };
+  if (!/^[0-9a-f-]{36}$/i.test(String(input.intent_id ?? ''))) return NextResponse.json({ error: 'Not found' }, { status: 404 });
   const [intent] = await sql`select i.*,n.mode,n.finality_confirmations,a.kind,a.contract_address,w.address as wallet_address
     from app.crypto_payment_intents i join app.chain_networks n on n.chain_id=i.chain_id join app.chain_assets a on a.id=i.asset_id
     left join app.wallets w on w.id=i.payer_wallet_id
-    where i.id=${String(input.intent_id ?? '')}::uuid and i.buyer_id=${actor.id}`.catch(() => []);
+    where i.id=${String(input.intent_id)} and i.buyer_id=${actor.id}`;
   if (!intent || intent.mode !== 'LOCAL') return NextResponse.json({ error: 'Not found' }, { status: 404 });
-  const chain = getLocalDevChain(Number(intent.chain_id));
+  const chain = getLocalDevChain(Number(intent.chain_id), String(intent.recipient));
   if (!chain) return NextResponse.json({ error: 'Not found' }, { status: 404 });
   const txHash = chain.submitDeposit({
     emitter: intent.recipient, reference: intent.reference, payer: intent.wallet_address ?? '0x00000000000000000000000000000000000de7a1',

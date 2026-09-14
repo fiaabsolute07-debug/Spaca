@@ -92,6 +92,9 @@ export function checkEnvironment(env: Environment, target: EnvironmentTarget): E
   add('STORAGE_PROVIDER', deployed, deployed ? oneOf('supabase') : oneOf('local', 'supabase'));
   add('STORAGE_SIGNING_SECRET', false, (value) => !deployed && value.length >= 16);
   add('LOCAL_STORAGE_DIR', false, () => !deployed);
+  // Release signing needs managed custody (KMS/multisig), not implemented; a raw key in env is local-only (W5-C2).
+  add('RELEASE_SIGNER_PRIVATE_KEY', false, (value) => !deployed && /^0x[0-9a-fA-F]{64}$/.test(value));
+  add('LOCAL_CHAIN', false, (value) => deployed ? value === 'off' : ['on', 'off'].includes(value));
   for (const name of ['SUPABASE_SERVER_SECRET_KEY', 'STORAGE_PUBLIC_BUCKET', 'STORAGE_PRIVATE_BUCKETS',
     'SUPPORT_CONTACT', 'POLICY_VERSION', 'WALLET_PROVIDER_CONFIG']) add(name);
   const arc = env.PAYMENT_PROVIDER === 'arc_usdc';

@@ -198,7 +198,8 @@ export async function releaseReadySettlements(options: JobScope = {}): Promise<J
   const { result, tally } = report('release_ready_settlements');
   if (!mockPaymentsEnabled()) return result;
   // Approved orders, or mutually cancelled orders whose agreed refund left a creator remainder (ORD-15).
-  const readyCondition = sql`o.settlement_status='READY'
+  // Pool-funded hires stay PENDING after a partial payout and are retried here for the failed assets only (CRY-08).
+  const readyCondition = sql`(o.settlement_status='READY' or (o.payment_rail='POOL' and o.settlement_status='PENDING'))
     and ((o.status='APPROVED' and o.payment_status='SUCCEEDED')
       or (o.status='CANCELLED' and o.cancellation_refund_minor is not null and o.cancellation_refund_minor < o.amount_minor
           and o.payment_status in ('SUCCEEDED','REFUND_PENDING','PARTIALLY_REFUNDED')))
