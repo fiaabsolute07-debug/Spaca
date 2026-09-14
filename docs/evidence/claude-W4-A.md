@@ -74,7 +74,7 @@ Environment: **local only**.
 
 | ID | Test | Result |
 |---|---|---|
-| AUC-01 | Claim HELD. Bucket end ≥ ends_at + 24 h + 72 h turnaround. Terms snapshot stores prices and the winner window. Pool reserved = 1. A >7-day auction, Buy Now equal to the start price, and a start 1 h in the past each return 400. | PASS (local-mock) |
+| AUC-01 | Claim HELD. Bucket end ≥ ends_at + 24 h + 72 h turnaround. Terms snapshot stores prices and the winner window. Pool reserved = 1. A >7-day auction, Buy Now equal to the start price, and a start 1 h in the past each return 400. | PARTIAL (local-mock): payout readiness not checked |
 | AUC-02 | A $99 bid on a $100 start → 422. A first bid of $100 → 200. Two concurrent $110 bids → [200, 422], and the loser's message names $120. Sequences are 1 and 2. | PASS (local-mock) |
 | AUC-03 | SCHEDULED auction: bid and Buy Now → 422. After `ends_at`, with status still LIVE and no job run, a bid → 422 "ended" and `bid_count` is unchanged. | PASS (local-mock) |
 | AUC-04 | Seller bid → 403. Suspended bidder → 403. The highest bid is unchanged. | PASS (local-mock) |
@@ -86,7 +86,7 @@ Environment: **local only**.
 | AUC-10 | The winner's 24 h hold expires: provider intent CANCELED, order CANCELLED, auction WINNER_DEFAULTED, intent DEFAULTED. There is still only 1 order (no runner-up charge), and the pool is reserved 0. | PASS (local-mock) |
 | AUC-11 | The Buy Now hold is ≤15 min. On expiry the auction becomes WINNER_DEFAULTED and the intent EXPIRED. Bid and Buy Now → 422. Setting status back to LIVE → trigger error. | PASS (local-mock) |
 | AUC-12 | 3 rounds of concurrent cancel and first bid: exactly one outcome each round. When cancel loses, it returns 409. | PASS (local-mock) |
-| AUC-13 | The snapshot has `server_now`, and `version` increases after a bid. Standings go NONE → OUTBID/WINNING. Pseudonyms do not contain user ids. The GET route returns 200 with the viewer's standing, and 404 for an unknown id. | PASS (local-mock) |
+| AUC-13 | The snapshot has `server_now`, and `version` increases after a bid. Standings go NONE → OUTBID/WINNING. Pseudonyms do not contain user ids. The GET route returns 200 with the viewer's standing, and 404 for an unknown id. | PARTIAL (local-mock): reconnect/sleep not exercised |
 | AUC-14 | A signed funding success arriving after the default gives: order stays CANCELLED, auction stays WINNER_DEFAULTED, one LATE_FUNDING case, pool reserved stays 0. | PASS (local-mock) |
 
 **Browser check (dev DB, fixture personas, no passwords).**
@@ -102,3 +102,6 @@ Environment: **local only**.
 - **Metrics are not implemented** (P3-07 "≥3 bidders/uplift"). There is also no separate outbid email beyond the in-app outbox notification.
 - **No E2E for the multi-user browser race.** The DB suite covers races at the SQL level.
 - **No real-time transport.** Polling only, which is sufficient per §10.6.
+
+
+Correction (2026-09-14, Claude review of C3c): AUC-01 and AUC-13 were downgraded from PASS to PARTIAL for the gaps already listed under "Not done".

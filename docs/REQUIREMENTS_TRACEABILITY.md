@@ -1,10 +1,10 @@
 # Requirements traceability
 
-As of 2026-09-14; all **80** master §16 task IDs. Baseline **3bddff9**; platform fee always **0%**. Claude coordinates, runs DB/browser suites and commits; Codex is dispatched via `codex exec`.
+As of 2026-09-14; all **80** master §16 task IDs. Baseline **90004fd**; platform fee always **0%**. Claude coordinates, runs DB/browser suites and commits; Codex is dispatched via `codex exec`.
 
-Phase delivery: P0/P1A done-local; P1B done-local with mock provider (sandbox/live BLOCKED); P1C docs done (staging/live BLOCKED); P2 done-local with REQ-11 PARTIAL; P3 IN_PROGRESS; P4–P6 TODO. These phase labels do not imply every subtask or §18 row is complete.
+Phase delivery: P0/P1A done-local; P1B done-local with mock provider (sandbox/live BLOCKED); P1C docs done (staging/live BLOCKED); P2 done-local with REQ-11 PARTIAL; P3 done-local; P4 IN_PROGRESS (Claude); P5–P6 TODO. These phase labels do not imply every subtask or §18 row is complete.
 
-`DONE-local` means the listed local task scope is delivered and evidenced, not sandbox/live readiness or every linked acceptance ID passing. `PARTIAL` preserves a missing part of the master task; `TODO` is unaccepted phase work (P3 notes IN_PROGRESS); `BLOCKED` identifies missing external prerequisites. Paths are existing implementation or explicitly planned. Exact test provenance/status is in [ACCEPTANCE.md](ACCEPTANCE.md); only its approved evidence sources and git history support status. Latest full run: 184/184, 17 files with DB suites enabled, tsc 0; no C3 application test rerun.
+`DONE-local` means the listed local task scope is delivered and evidenced, not sandbox/live readiness or every linked acceptance ID passing. `PARTIAL` preserves a missing part of the master task; `TODO` is unaccepted phase work (P4 is in progress); `BLOCKED` identifies missing external prerequisites. Paths are existing implementation or explicitly planned. Exact test provenance/status is in [ACCEPTANCE.md](ACCEPTANCE.md); only its approved evidence sources and git history support status. Latest full run: 195/195, 18 files with DB suites enabled, tsc 0 at `90004fd` ([W4-A](evidence/claude-W4-A.md)); no C3c application test rerun.
 
 | Master task | Implementation path(s) | Acceptance IDs | Status | Gap / evidence scope |
 |---|---|---|---|---|
@@ -36,7 +36,7 @@ Phase delivery: P0/P1A done-local; P1B done-local with mock provider (sandbox/li
 | P1B-07 | src/modules/payments/funding.ts; src/modules/jobs/ | PAY-01–03, PAY-11, PAY-12, PAY-19, PAY-20 | PARTIAL | Mock release/cost/reconcile; real bank payout and external journal boundary missing. |
 | P1B-08 | src/modules/admin/commands.ts; src/modules/orders/commands.ts; src/modules/payments/funding.ts | PAY-13–16, CAP-05, ORD-13, ORD-15 | PARTIAL | W1-B/W2-B full/partial audited refunds; post-transfer deficits/late-cost gaps. |
 | P1B-09 | src/modules/orders/lifecycle.ts; src/modules/orders/commands.ts | REV-01–03, OPS-06 | PARTIAL | W1-B review eligibility/dedupe/on-time counts; repeat/weekly aggregates incomplete. |
-| P1B-10 | tests/integration/; tests/e2e/ (planned C5) | ORD-01, ORD-10, PAY-11, PAY-13, OPS-07 | PARTIAL | W1-B browser booking and DB races; C5 full E2E/mobile/keyboard TODO. |
+| P1B-10 | tests/integration/; tests/e2e/ (C5 authored; NOT_RUN) | ORD-01, ORD-10, PAY-11, PAY-13, OPS-07 | PARTIAL | W1-B browser booking and DB races; C5 E2E/mobile authored, execution NOT_RUN; keyboard coverage remains TODO. |
 | P1C-01 | docs/STAGING.md; docs/runbooks/10-restore-and-rollback.md | OPS-02, OPS-03 | PARTIAL | C2/C3 staging/restore/rollback docs done; rehearsal environment BLOCKED. |
 | P1C-02 | docs/PAYMENT_READINESS.md; docs/STAGING.md; src/modules/jobs/ | FND-06, PAY-12, PAY-19, OPS-01 | BLOCKED | Readiness docs exist; hosting/provider access and deployed jobs/alerts absent. |
 | P1C-03 | docs/PAYMENT_READINESS.md; docs/RELEASE_CHECKLIST.md; src/modules/payments/funding.ts | PAY-02–04, PAY-16, OPS-08 | PARTIAL | C2 policy/cost checklist; real entity, reserve and provider decisions missing. |
@@ -52,15 +52,15 @@ Phase delivery: P0/P1A done-local; P1B done-local with mock provider (sandbox/li
 | P2-05 | src/modules/requests/commands.ts; src/modules/payments/funding.ts | REQ-06, REQ-09, ORD-01, PAY-01 | DONE-local | W3-R one canonical order per accepted offer; mock funding browser pass. |
 | P2-06 | src/lib/read-model.ts; src/modules/requests/commands.ts | REQ-08, REQ-10 | DONE-local | W3-R campaign refund/lapse aggregates and close preserve existing hires. |
 | P2-07 | src/modules/jobs/index.ts; src/modules/notifications/; drizzle/0007_requests_v2.sql | REQ-07, REQ-08, CAP-10, OPS-06 | PARTIAL | Offer expiry/notifications/full-refund budget sync; hires/application analytics missing. |
-| P2-08 | tests/integration/requests.db.test.ts; tests/integration/commands.db.test.ts; tests/e2e/ (planned) | REQ-01–11, CAP-10 | PARTIAL | W3-R stale/double/concurrent DB tests; multi-hire E2E and timer races absent. |
-| P3-01 | src/modules/auctions/commands.ts; drizzle/0003_supply_capacity.sql | AUC-01, CAP-09 | TODO | IN_PROGRESS — Claude owns P3; existing paths are baseline/planned surfaces, no new results claimed. |
-| P3-02 | src/modules/auctions/commands.ts | AUC-02–04, AUC-09 | TODO | IN_PROGRESS — Claude owns P3; existing paths are baseline/planned surfaces, no new results claimed. |
-| P3-03 | src/lib/read-model.ts; src/app/ | AUC-03, AUC-13 | TODO | IN_PROGRESS — Claude owns P3; existing paths are baseline/planned surfaces, no new results claimed. |
-| P3-04 | src/modules/auctions/commands.ts; src/modules/jobs/ | AUC-05, AUC-06, AUC-10 | TODO | IN_PROGRESS — Claude owns P3; existing paths are baseline/planned surfaces, no new results claimed. |
-| P3-05 | src/modules/auctions/commands.ts; src/modules/capacity/ | AUC-07–09, AUC-11, AUC-12, CAP-09 | TODO | IN_PROGRESS — Claude owns P3; existing paths are baseline/planned surfaces, no new results claimed. |
-| P3-06 | src/modules/auctions/commands.ts; src/modules/payments/funding.ts | AUC-10, AUC-14, CAP-05 | TODO | IN_PROGRESS — Claude owns P3; existing paths are baseline/planned surfaces, no new results claimed. |
-| P3-07 | src/lib/read-model.ts; src/modules/notifications/; src/app/ | AUC-13, OPS-06 | TODO | IN_PROGRESS — Claude owns P3; existing paths are baseline/planned surfaces, no new results claimed. |
-| P3-08 | tests/integration/commands.db.test.ts; tests/integration/supply.db.test.ts | AUC-02–14, CAP-09 | TODO | IN_PROGRESS — Claude owns P3; existing paths are baseline/planned surfaces, no new results claimed. |
+| P2-08 | tests/integration/requests.db.test.ts; tests/integration/commands.db.test.ts; tests/e2e/ (C5 authored; NOT_RUN) | REQ-01–11, CAP-10 | PARTIAL | W3-R stale/double/concurrent DB tests; multi-hire E2E and timer races absent. |
+| P3-01 | src/modules/auctions/commands.ts; drizzle/0008_auctions_v2.sql; src/app/creator/auctions/new/ | AUC-01, CAP-09 | PARTIAL | W4-A AUC-01: exclusive capacity, scheduling and frozen terms tested; seller payout readiness check still missing. |
+| P3-02 | src/modules/auctions/commands.ts; drizzle/0008_auctions_v2.sql; src/lib/read-model.ts | AUC-02–04, AUC-09 | DONE-local | W4-A AUC-02–04/08/09: transactional minimum/sequence, time/actor guards, invalidation and pseudonymous accepted history. |
+| P3-03 | src/lib/read-model.ts; src/app/api/auctions/[id]/snapshot/; src/components/auctions/auction-live-panel.tsx | AUC-03, AUC-13 | DONE-local | W4-A AUC-13 snapshot/version/standing API and manual ≤6.5 s outbid polling; polling is the transport. C5 E2E authored, not run; reconnect/sleep journey remains. |
+| P3-04 | src/modules/auctions/commands.ts; src/modules/jobs/; drizzle/0008_auctions_v2.sql | AUC-05, AUC-06, AUC-10 | DONE-local | W4-A AUC-05/06/10: concurrent close_due_auctions and seller close produce one intent/order, 24 h winner hold, NO_BIDS/default release. |
+| P3-05 | src/modules/auctions/commands.ts; src/modules/capacity/; drizzle/0008_auctions_v2.sql | AUC-07–09, AUC-11, AUC-12, CAP-09 | DONE-local | W4-A AUC-07–09/11/12: first bid versus Buy Now/cancel, no re-enable after invalidation, 15 min Buy Now hold and no reopening. |
+| P3-06 | src/modules/auctions/commands.ts; src/modules/payments/funding.ts; drizzle/0008_auctions_v2.sql | AUC-10, AUC-14, CAP-05 | DONE-local | W4-A AUC-06/10/14: mock funding → SETTLED, unpaid → WINNER_DEFAULTED, late-funding case, no runner-up charge. Sandbox/live unverified. |
+| P3-07 | src/lib/read-model.ts; src/modules/notifications/; src/app/auctions/; src/app/dashboard/ | AUC-13, OPS-06 | PARTIAL | W4-A: My bids, seller auctions and in-app outbid notification delivered. Metrics (≥3 bidders/uplift) NOT IMPLEMENTED; no separate outbid email. |
+| P3-08 | tests/integration/auctions.db.test.ts; tests/integration/jobs.db.test.ts; tests/e2e/auction.spec.ts | AUC-02–14, CAP-09 | DONE-local | W4-A: 11 auction DB tests, AUC-01..14 table PASS local-mock; full run 195/195, 18 files at 90004fd. Multi-user E2E authored in C5, NOT_RUN; not covered by DB race evidence. |
 | P4-01 | Network/asset registry and custody ADR (planned) | CRY-01, CRY-04, CRY-14 | TODO | Planned phase work; existing baseline paths are not completion evidence. Testnet/live access separately BLOCKED. |
 | P4-02 | Wallet proof and crypto checkout guard (planned); src/modules/rewards/commands.ts baseline | CRY-02, CRY-10, FND-05 | TODO | Planned phase work; existing baseline paths are not completion evidence. Testnet/live access separately BLOCKED. |
 | P4-03 | Conditional settlement provider/contract security specification (planned) | CRY-06–11, CRY-13 | TODO | Planned phase work; existing baseline paths are not completion evidence. Testnet/live access separately BLOCKED. |
@@ -78,7 +78,7 @@ Phase delivery: P0/P1A done-local; P1B done-local with mock provider (sandbox/li
 | P5-05 | src/lib/read-model.ts (basic profiles); discovery ranking (planned) | DSC-01, DSC-04, SUP-02, REV-03 | TODO | Planned phase work; existing baseline paths are not completion evidence.  |
 | P5-06 | src/app/; public sitemap/canonical rules (planned) | DSC-01, SEC-01, SEC-11 | TODO | Planned phase work; existing baseline paths are not completion evidence.  |
 | P5-07 | Query benchmark/index/cache work (planned) | DSC-05, DSC-06 | TODO | Planned phase work; existing baseline paths are not completion evidence.  |
-| P5-08 | src/app/; tests/e2e/ (planned C5) | DSC-02, DSC-05, OPS-07 | TODO | Planned phase work; existing baseline paths are not completion evidence.  |
+| P5-08 | src/app/; tests/e2e/ (C5 authored; NOT_RUN) | DSC-02, DSC-05, OPS-07 | TODO | Planned phase work; existing baseline paths are not completion evidence.  |
 | P6-01 | src/modules/catalog/commands.ts (profile URL baseline); social account model (planned) | XPL-01, SUP-06 | TODO | Planned phase work; existing baseline paths are not completion evidence.  |
 | P6-02 | PUBLISH terms/delivery extension (planned); service_versions baseline | XPL-02, MOD-02 | TODO | Planned phase work; existing baseline paths are not completion evidence.  |
 | P6-03 | ACCESS appointments/policy extension (planned); src/modules/capacity/weeks.ts baseline | XPL-03, CAP-11 | TODO | Planned phase work; existing baseline paths are not completion evidence.  |

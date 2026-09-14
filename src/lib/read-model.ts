@@ -37,17 +37,21 @@ async function serviceRows(options: { ownerId?: string; publicCreatorId?: string
         left join app.profiles p on p.user_id=s.creator_id
         where s.status='PUBLISHED' and u.status='ACTIVE' and (${options.publicCreatorId ?? null}::uuid is null or s.creator_id=${options.publicCreatorId ?? null}::uuid)
         order by s.created_at desc`;
-  const samples = actorId
-    ? await sql`select id,creator_id,title,url,description,visibility,moderation_status,created_at from app.samples where creator_id=${actorId} order by created_at desc`
-    : await sql`select id,creator_id,title,url,description,visibility,moderation_status,created_at from app.samples where visibility='PUBLIC' and moderation_status='APPROVED' order by created_at desc`;
+  // Samples linked to each listed service (service_samples), newest first and capped, instead of every creator sample.
+  const serviceIds = asRows(services).map((service) => String(service.id));
+  const samples = serviceIds.length ? await sql`select service_id,id,creator_id,title,url,description,visibility,moderation_status,created_at from (
+      select ss.service_id,sm.*,row_number() over (partition by ss.service_id order by sm.created_at desc) as rank
+      from app.service_samples ss join app.samples sm on sm.id=ss.sample_id
+      where ss.service_id = any(${serviceIds}::uuid[]) and (${actorId ?? null}::uuid is not null or (sm.visibility='PUBLIC' and sm.moderation_status='APPROVED'))
+    ) ranked where rank <= 6` : [];
   const sampleMap = new Map<string, ReadRow[]>();
   for (const sample of asRows(samples)) {
-    const key = String(sample.creator_id);
+    const key = String(sample.service_id);
     const current = sampleMap.get(key) ?? [];
     current.push(sample);
     sampleMap.set(key, current);
   }
-  const rows = asRows(services).map((service): ReadRow => ({ ...service, samples: sampleMap.get(String(service.creator_id)) ?? [] }));
+  const rows = asRows(services).map((service): ReadRow => ({ ...service, samples: sampleMap.get(String(service.id)) ?? [] }));
   return withAvailability(rows);
 }
 
@@ -148,7 +152,9 @@ export async function getServiceData(id: string) {
     left join app.profiles p on p.user_id=s.creator_id where s.id=${id} and s.status='PUBLISHED' and u.status='ACTIVE'`);
   if (!rows[0]) return null;
   const [service] = await withAvailability(rows);
-  const samples = await sql`select id,creator_id,title,url,description,created_at from app.samples where creator_id=${String(service!.creator_id)} and visibility='PUBLIC' and moderation_status='APPROVED' order by created_at desc`;
+  // The service page shows the samples the creator linked to this service (service_samples), not their whole portfolio.
+  const samples = await sql`select sm.id,sm.creator_id,sm.title,sm.url,sm.description,sm.created_at from app.service_samples ss join app.samples sm on sm.id=ss.sample_id
+    where ss.service_id=${id} and sm.visibility='PUBLIC' and sm.moderation_status='APPROVED' order by sm.created_at desc limit 12`;
   return { service: service!, creator: { id: service!.creator_id, display_name: service!.creator_name, bio: service!.bio, niche: service!.niche, handle: service!.handle, avatar_color: service!.avatar_color }, samples: asRows(samples) };
 }
 
@@ -157,7 +163,7 @@ export async function getCreatorData(handle: string) {
   if (!creator) return null;
   const [services, samples] = await Promise.all([
     serviceRows({ publicCreatorId: String(creator.id) }),
-    sql`select id,creator_id,title,url,description,created_at from app.samples where creator_id=${String(creator.id)} and visibility='PUBLIC' and moderation_status='APPROVED' order by created_at desc`,
+    sql`select id,creator_id,title,url,description,created_at from app.samples where creator_id=${String(creator.id)} and visibility='PUBLIC' and moderation_status='APPROVED' order by created_at desc limit 24`,
   ]);
   return { creator, services, samples: asRows(samples) };
 }

@@ -1,6 +1,6 @@
 # Auto-accept, dispute and mutual cancellation
 
-Status: local procedure documented; end-to-end incident rehearsal **NOT_RUN**. Baseline `3bddff9`; concurrent P3 changes are unaccepted. [Shared tools and limits](README.md) apply. Platform fee always **0%**.
+Status: local procedure documented; end-to-end incident rehearsal **NOT_RUN**. Procedure baseline `3bddff9`; P3 auction/job update verified at `90004fd` (see the index). Concurrent P4 changes are not verified here. [Shared tools and limits](README.md) apply. Platform fee always **0%**.
 
 Owner: finance/support + engineering; HIGH severity. W1-B implements these workflows; they are not pending scaffolds.
 

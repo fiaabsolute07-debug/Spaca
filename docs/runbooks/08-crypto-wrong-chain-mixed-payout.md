@@ -1,8 +1,8 @@
 # Crypto wrong chain or mixed payout
 
-Status: local procedure documented; end-to-end incident rehearsal **NOT_RUN**. Baseline `3bddff9`; concurrent P3 changes are unaccepted. [Shared tools and limits](README.md) apply. Platform fee always **0%**.
+Status: local procedure documented; end-to-end incident rehearsal **NOT_RUN**. Procedure baseline `3bddff9`; P3 auction/job update verified at `90004fd` (see the index). Concurrent P4 changes are not verified here. [Shared tools and limits](README.md) apply. Platform fee always **0%**.
 
-Owner: engineering and the future authorized custody operator. P4 is **TODO**; testnet/live provider access is **BLOCKED**. No crypto recovery has been executed.
+Owner: engineering and the future authorized custody operator. P4 is **IN_PROGRESS (Claude)**; testnet/live provider access is **BLOCKED**. No crypto recovery has been executed.
 
 1. An admin can inspect `/admin/flags` and keep `CRYPTO_CHECKOUT_ENABLED`, `TOKEN_REWARDS_ENABLED` and `NFT_REWARDS_ENABLED` disabled with an audited reason. The local fiat mock is not a chain verifier.
 2. Read existing `app.reward_pools`, `app.orders`, `app.provider_operations` and `app.reconciliation_cases` only as baseline records. If a case already exists, assign it on `/admin/cases`. There is no implemented chain receipt/finality inspection page, indexer, per-asset allocation ledger, mixed-component retry command or custody recovery tool.

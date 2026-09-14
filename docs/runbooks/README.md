@@ -1,6 +1,6 @@
 # Operational runbooks
 
-Updated 2026-09-14. Accepted baseline **3bddff9**; Claude is concurrently implementing P3. These are local operating instructions and unexecuted incident plans. Evidence: [W1-B](../evidence/claude-W1-B.md), [W2-B](../evidence/claude-W2-B.md), [W2-S](../evidence/claude-W2-S.md), [W3-R](../evidence/claude-W3-R.md), [C6 review](../evidence/claude-review-C6.md). Latest full suite: 184/184, 17 files with DB suites enabled, tsc 0; C3 did not run jobs or incident rehearsals. Platform fee **0%**.
+Updated 2026-09-14. Accepted local baseline **90004fd**; P3 done-local, P4 in progress (Claude). These are local operating instructions and unexecuted incident plans. Evidence: [W1-B](../evidence/claude-W1-B.md), [W2-B](../evidence/claude-W2-B.md), [W2-S](../evidence/claude-W2-S.md), [W3-R](../evidence/claude-W3-R.md), [W4-A](../evidence/claude-W4-A.md). Latest full suite: **195/195, 18 files with DB suites enabled, tsc 0 at 90004fd** (includes unit/provider tests). C3c did not run jobs or incident rehearsals. Platform fee **0%**.
 
 1. [Buyer charged; order not funded](01-buyer-charged-order-not-funded.md)
 2. [Creator approved; funds not arrived](02-creator-approved-funds-not-arrived.md)
@@ -23,9 +23,9 @@ For an isolated local mock fixture in the original Next process, the existing si
 curl --fail-with-body --request POST http://127.0.0.1:3000/api/dev/jobs
 ```
 
-Use the actual dev port. Existing `pnpm jobs:dev` polls loopback every 30 seconds by default; `JOBS_DEV_URL` selects the origin and `JOBS_DEV_INTERVAL_SECONDS` must be at least 5. Neither command ran in C3. The route accepts no job/order selector, is effectful, and refuses non-mock/production/enabled-live payment modes; supplied Origin must match. `APP_ENV` alone is not its runtime guard. Do not run the changing P3 tree until Claude integrates it.
+Use the actual dev port. Existing `pnpm jobs:dev` polls loopback every 30 seconds by default; `JOBS_DEV_URL` selects the origin and `JOBS_DEV_INTERVAL_SECONDS` must be at least 5. Neither command ran in C3c. The route accepts no job/order selector, is effectful, and refuses non-mock/production/enabled-live payment modes; supplied Origin must match. `APP_ENV` alone is not its runtime guard. Claude owns running the hook against the integrated local tree; it is not scoped to auctions.
 
-Read directly from `runJobsOnce` in `src/modules/jobs/index.ts` during C3 (ordered calls):
+Local inventory from `runJobsOnce` in `src/modules/jobs/index.ts`, with W4-A evidence for the auction addition (ordered calls):
 
 | Order | Function | Report name | Evidence scope |
 |---|---|---|---|
@@ -33,14 +33,14 @@ Read directly from `runJobsOnce` in `src/modules/jobs/index.ts` during C3 (order
 | 2 | reconcileProviderOperations | reconcile_provider_operations | DB/W2-B mock lookup/retry |
 | 3 | expireCheckoutHolds | expire_checkout_holds | DB baseline safe unpaid release |
 | 4 | expireHireOffers | expire_hire_offers | W3-R OFFERED expiry/budget release |
-| 5 | closeDueAuctions | close_due_auctions | **Concurrent P3 addition: NOT_RUN in allowed evidence** |
+| 5 | closeDueAuctions | close_due_auctions | **Verified local-db+mock: W4-A AUC-05/06 concurrent no-bid/winner close** |
 | 6 | autoAcceptDeliveries | auto_accept_deliveries | W1-B consent/view/window; W2-S file validity |
 | 7 | releaseReadySettlements | release_ready_settlements | DB/W1-B release then COMPLETED |
 | 8 | sendOrderReminders | order_reminders | W1-B due/review/overdue |
 | 9 | dispatchNotificationOutbox | dispatch_notification_outbox | DB dedupe, local sink, poison handling |
 | 10 | cleanupStorage | cleanup_storage | W2-S abandoned/unattached cleanup |
 
-The accepted baseline has **nine jobs**, excluding `closeDueAuctions`; the current working tree has ten after Claude's concurrent addition. This source inventory grants no P3 acceptance. Re-read this function after integration before updating the runbook; do not infer an auction job from an old list or a package dependency.
+The accepted local baseline has **ten jobs**. `close_due_auctions` starts due SCHEDULED auctions and closes due ones: no bids → NO_BIDS; a winner gets one pending order with a 24 h hold, funding → SETTLED, unpaid expiry → WINNER_DEFAULTED. See [runbook 05](05-auction-ended-no-winner.md) for `cancel_auction`, `admin_invalidate_bid` and `GET /api/auctions/{id}/snapshot`. Re-read the inventory after P4 integration; these results do not verify future jobs or deployed scheduling.
 
 Read each returned `reports` entry, `examined` and `outcomes`; HTTP success alone is insufficient. Batches/retry ages can leave pending work. Mock provider state is in memory: use the original process; Next restart loses provider history. `app.notifications` persists in-app delivery and EMAIL_SINK; it does not send email. `admin_retry_operation` takes the original operation ID but reconciles its associated order (potentially several operations), not a guaranteed single-row retry.
 
