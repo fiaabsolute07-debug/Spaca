@@ -33,7 +33,7 @@ export default async function OperatorOrderPage({ params, searchParams }: PagePr
           <dt>Buyer</dt><dd>{str(order.buyer_name)}<small>{str(order.buyer_id)}</small></dd>
           <dt>Creator</dt><dd>{str(order.creator_name)}<small>{str(order.creator_id)}</small></dd>
           <dt>Amount</dt><dd>{money(order.amount_minor)} {str(order.currency)}</dd>
-          <dt>Platform fee (0%)</dt><dd>{money(order.platform_fee_minor)}</dd>
+          <dt>Platform fee</dt><dd>{money(order.platform_fee_minor)}</dd>
           <dt>Provider fee</dt><dd>{money(order.provider_fee_minor)}</dd>
           <dt>Cancellation refund</dt><dd>{order.cancellation_refund_minor == null
             ? 'Not specified' : money(order.cancellation_refund_minor)}</dd>

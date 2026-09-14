@@ -20,7 +20,7 @@ const { trendingServices } = await import('../src/modules/discovery/trending');
 const { sql: poolSql } = await import('../src/lib/db');
 
 const TARGET_P95_MS: Record<string, number> = {
-  'services: full-text relevance': 250, 'services: taxonomy + price, price_asc': 250, 'services: available, availability sort': 300,
+  'services: full-text relevance': 250, 'services: taxonomy + price, price_asc': 250, 'services: available, newest': 300,
   'services: newest page 2 (cursor)': 250, 'creators: reputation': 400, 'auctions: ending soon 48h': 150, 'trending-v1': 400,
 };
 
@@ -49,22 +49,19 @@ try {
       select id,'bench'||n,'Independent creator focused on launches, video and newsletters #'||n,
         (array['launch writing','video editing','podcast production','newsletter','ux copy','illustration','community','tutorials','reviews','brand strategy'])[1 + (n % 10)]
       from bench_creators`;
-    await tx`insert into app.capacity_pools (creator_id,name,timezone,weekly_units) select id,'Bench pool '||n,'UTC',5 from bench_creators`;
-    await tx`create temp table bench_pools on commit drop as select p.id as pool_id, c.id as creator_id, c.n from app.capacity_pools p join bench_creators c on c.id=p.creator_id`;
-    await tx`insert into app.capacity_buckets (pool_id,starts_at,ends_at,local_week_start,timezone,total_units)
-      select pool_id, date_trunc('week', now()) + w * interval '1 week', date_trunc('week', now()) + (w + 1) * interval '1 week',
-        (date_trunc('week', now()) + w * interval '1 week')::date, 'UTC', 5
-      from bench_pools cross join generate_series(0, 7) w on conflict do nothing`;
+    // Every tenth creator is at their limit and every twentieth paused, so the availability filter has work to do.
+    await tx`insert into app.creator_workloads (creator_id,max_active_units,accepting_orders,active_units)
+      select id,5,(n % 20 <> 0),case when n % 10 = 0 then 5 else (n % 5) end from bench_creators`;
     await tx`create temp table bench_services on commit drop as
-      select gen_random_uuid() as id, p.creator_id, p.pool_id, g,
+      select gen_random_uuid() as id, p.id as creator_id, g,
         'Bench ' || (array['launch','story','video','podcast','thread','newsletter','review','tutorial','design','copy'])[1 + (g % 10)] || ' '
           || (array['package','sprint','series','audit','kit','plan','campaign','session','pack','draft'])[1 + ((g / 7) % 10)] || ' ' || g as title,
         (array['CREATE','PUBLISH','ACCESS','DIGITAL'])[1 + (g % 4)] as taxonomy, (5000 + (g * 37) % 200000)::bigint as price_minor, (12 + (g % 20) * 12) as turnaround_hours
-      from generate_series(1, 5000) g join bench_pools p on p.n = 1 + (g % 1000)`;
-    await tx`insert into app.services (id,creator_id,pool_id,title,description,taxonomy,price_minor,currency,turnaround_hours,status)
-      select id,creator_id,pool_id,title,'Scope for '||title||' including deliverables, revisions and usage notes.',taxonomy,price_minor,'USD',turnaround_hours,'DRAFT' from bench_services`;
-    await tx`insert into app.service_versions (service_id,version,title,description,taxonomy,price_minor,currency,turnaround_hours,revision_limit,pool_id,created_by,created_at)
-      select id,1,title,'Scope for '||title||' including deliverables, revisions and usage notes.',taxonomy,price_minor,'USD',turnaround_hours,1,pool_id,creator_id,now() - (g * interval '1 minute') from bench_services`;
+      from generate_series(1, 5000) g join bench_creators p on p.n = 1 + (g % 1000)`;
+    await tx`insert into app.services (id,creator_id,title,description,taxonomy,price_minor,currency,turnaround_hours,status)
+      select id,creator_id,title,'Scope for '||title||' including deliverables, revisions and usage notes.',taxonomy,price_minor,'USD',turnaround_hours,'DRAFT' from bench_services`;
+    await tx`insert into app.service_versions (service_id,version,title,description,taxonomy,price_minor,currency,turnaround_hours,revision_limit,created_by,created_at)
+      select id,1,title,'Scope for '||title||' including deliverables, revisions and usage notes.',taxonomy,price_minor,'USD',turnaround_hours,1,creator_id,now() - (g * interval '1 minute') from bench_services`;
     await tx`update app.services s set status='PUBLISHED',published_version_id=v.id from app.service_versions v where v.service_id=s.id and s.id in (select id from bench_services)`;
     await tx`create temp table bench_auctions on commit drop as
       select gen_random_uuid() as id, s.id as service_id, s.creator_id, s.title, series.n as g from generate_series(1, 500) as series(n) join bench_services s on s.g = series.n * 10`;
@@ -86,7 +83,7 @@ try {
     // Bulk inserts sit in the GIN pending lists until autovacuum flushes them; flush now so plans reflect steady state.
     await tx`select gin_clean_pending_list('app.service_versions_search_idx'::regclass), gin_clean_pending_list('app.profiles_search_idx'::regclass)`;
     await tx`analyze`;
-    for (const table of ['services', 'service_versions', 'auctions', 'bids', 'orders', 'reviews', 'service_views', 'capacity_buckets']) {
+    for (const table of ['services', 'service_versions', 'auctions', 'bids', 'orders', 'reviews', 'service_views', 'creator_workloads']) {
       counts[table] = Number((await tx.unsafe(`select count(*)::int as n from app.${table}`))[0]!.n);
     }
     console.log(`generated in ${Math.round(performance.now() - t0)} ms`, counts);
@@ -95,7 +92,7 @@ try {
     const cases: [string, () => Promise<{ items: unknown[] }>][] = [
       ['services: full-text relevance', () => searchServices(parseServiceSearch(new URLSearchParams('q=launch package')), tx)],
       ['services: taxonomy + price, price_asc', () => searchServices(parseServiceSearch(new URLSearchParams('taxonomy=CREATE,PUBLISH&price_min=100&price_max=900&sort=price_asc')), tx)],
-      ['services: available, availability sort', () => searchServices(parseServiceSearch(new URLSearchParams('available=true&sort=availability')), tx)],
+      ['services: available, newest', () => searchServices(parseServiceSearch(new URLSearchParams('available=true&sort=newest')), tx)],
       ['services: newest page 2 (cursor)', () => searchServices(parseServiceSearch(new URLSearchParams(`limit=24&cursor=${nextCursor}`)), tx)],
       ['creators: reputation', () => searchCreators(parseCreatorSearch(new URLSearchParams('sort=reputation')), tx)],
       ['auctions: ending soon 48h', () => endingSoonAuctions(parseEndingSoon(new URLSearchParams('within_hours=48')), tx)],
@@ -125,7 +122,8 @@ try {
       ['selective full-text match uses the GIN index', `select v.id from app.service_versions v where v.search_document @@ to_tsquery('simple','4242')`, (p) => p.includes('service_versions_search_idx')],
       ['highest valid bid uses the ranking index', `select id from app.bids where auction_id=(select id from app.auctions where status='LIVE' limit 1) and status='ACCEPTED' order by amount_minor desc, sequence asc limit 1`, (p) => p.includes('bids_ranking_idx')],
       ['ending soon uses the partial ends_at index', `select id from app.auctions where status in ('SCHEDULED','LIVE') and ends_at > now() and ends_at <= now() + interval '48 hours' order by ends_at, id limit 13`, (p) => p.includes('auctions_ending_idx') || p.includes('auctions_due_idx') || p.includes('auctions_public_idx')],
-      ['free bucket lookup uses a bucket index', `select starts_at from app.capacity_buckets b where b.pool_id=(select pool_id from app.capacity_pools limit 1) and b.reserved_units + b.committed_units < b.total_units order by starts_at limit 1`, (p) => /capacity_buckets_(free|pool_window)_idx|capacity_buckets_pool/.test(p)],
+      ['workload lookup uses the creator key', `select accepting_orders,held_units,active_units,max_active_units from app.creator_workloads where creator_id=(select creator_id from app.services where status='PUBLISHED' limit 1)`, (p) => p.includes('creator_workloads_pkey')],
+      ['open claims per creator use the claims index', `select count(*) from app.workload_claims where creator_id=(select id from app.users limit 1) and state in ('HELD','EXPIRY_RECONCILING')`, (p) => p.includes('workload_claims_creator_state_idx') && !seqScanOn(p, 'workload_claims')],
       ['recent views use a service_views index', `select service_id, count(*) from app.service_views where view_date > current_date - 7 and service_id=(select id from app.services where status='PUBLISHED' limit 1) group by service_id`, (p) => /service_views_(pkey|recent_idx)/.test(p) && !seqScanOn(p, 'service_views')],
       // Control: proves seqScanOn detects a seq scan, so the negative checks cannot pass vacuously.
       ['control: full bids count is detected as a seq scan', `select count(*) from app.bids where amount_minor + 0 >= 0`, (p) => seqScanOn(p, 'bids')],

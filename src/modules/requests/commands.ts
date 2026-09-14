@@ -7,7 +7,7 @@
  */
 import { CommandError, expectedVersion, instant, integer, money, orderEvent, text, uuid, type CommandHandler, type Row, type Tx } from '@/lib/commands';
 import type { Actor } from '@/lib/auth';
-import { insertReservation, lockAvailableBucket } from '@/modules/capacity';
+import { claimWorkload } from '@/modules/capacity';
 import { CHECKOUT_HOLD_MINUTES } from '@/modules/catalog/commands';
 import { assertFlags } from '@/modules/admin/policy';
 import { enqueueNotification } from '@/modules/notifications/enqueue';
@@ -254,7 +254,7 @@ async function lockOffer(tx: Tx, form: FormData): Promise<{ offer: Row; request:
   return { offer: offer!, request: request! };
 }
 
-/** REQ-06/07: the creator confirms an explicit capacity pool; the order takes over the hold with its checkout TTL. */
+/** REQ-06/07: accepting holds one unit of the creator's active-order limit for the order's checkout TTL. */
 const acceptOffer: CommandHandler = async ({ tx, actor, form }) => {
   const { offer, request } = await lockOffer(tx, form);
   if (String(offer.creator_id) !== actor.id) throw new CommandError('Offer not found or not visible to this account', 'NOT_FOUND');
@@ -262,22 +262,16 @@ const acceptOffer: CommandHandler = async ({ tx, actor, form }) => {
   if (new Date(offer.expires_at) <= new Date()) throw new CommandError('This offer has expired', 'QUOTE_EXPIRED');
   if (actor.status !== 'ACTIVE') throw new CommandError('Suspended accounts cannot accept new work', 'ACCOUNT_SUSPENDED');
   await assertFlags(tx, ['REQUESTS_ENABLED', 'CHECKOUT_CREATION_ENABLED']);
-  const poolId = uuid(form, 'pool_id');
-  const [capacityPool] = await tx<Row[]>`select id from app.capacity_pools where id=${poolId} and creator_id=${actor.id}`;
-  if (!capacityPool) throw new CommandError('Choose one of your own capacity pools for this work', 'FORBIDDEN');
   const terms = offer.terms_snapshot as Record<string, unknown>;
-  const turnaround = Number(terms.turnaround_hours);
-  const bucketId = text(form, 'bucket_id', false) || null;
-  const bucket = await lockAvailableBucket(tx, poolId, turnaround, bucketId);
-  const capacityPlan = { pool_id: poolId, bucket_id: String(bucket.id), units: 1, week_starts_at: new Date(bucket.starts_at).toISOString(), week_ends_at: new Date(bucket.ends_at).toISOString() };
+  const capacityPlan = { model: 'ACTIVE_ORDER_LIMIT', units: 1 };
   const campaignPool = await poolTermsFor(tx, String(request.id));
   const orderTerms = { ...terms, offer_id: String(offer.id), capacity: capacityPlan,
     ...(campaignPool ? { pool: { pool_id: campaignPool.poolId, template_version: campaignPool.templateVersion, rewards: campaignPool.items } } : {}) };
-  const [order] = await tx<Row[]>`insert into app.orders (buyer_id,creator_id,service_id,pool_id,source,source_ref,title,status,amount_minor,platform_fee_minor,currency,brief,brief_ready_at,terms,delivery_due_at)
-    values (${String(offer.buyer_id)},${actor.id},${null},${poolId},'REQUEST',${String(request.id)},${String(terms.title)},'AWAITING_PAYMENT',${String(offer.amount_minor)},0,'USD',
+  const [order] = await tx<Row[]>`insert into app.orders (buyer_id,creator_id,service_id,source,source_ref,title,status,amount_minor,platform_fee_minor,currency,brief,brief_ready_at,terms,delivery_due_at)
+    values (${String(offer.buyer_id)},${actor.id},${null},'REQUEST',${String(request.id)},${String(terms.title)},'AWAITING_PAYMENT',${String(offer.amount_minor)},0,'USD',
       ${String(terms.scope)},now(),${JSON.stringify(orderTerms)}::jsonb,null) returning id`;
   const orderId = String(order!.id);
-  await insertReservation(tx, bucket, { orderId }, new Date(Date.now() + CHECKOUT_HOLD_MINUTES * 60_000));
+  await claimWorkload(tx, { creatorId: actor.id, units: capacityPlan.units, origin: 'OFFER', orderId, expiresAt: new Date(Date.now() + CHECKOUT_HOLD_MINUTES * 60_000) });
   await tx`update app.hire_offers set status='ACCEPTED',order_id=${orderId},capacity_plan_snapshot=${JSON.stringify(capacityPlan)}::jsonb,responded_at=now() where id=${String(offer.id)}`;
   await tx`update app.request_budget_reservations set order_id=${orderId},updated_at=now() where offer_id=${String(offer.id)} and state='HELD'`;
   await tx`update app.applications set status='ACCEPTED',updated_at=now() where id=${String(offer.application_id)}`;

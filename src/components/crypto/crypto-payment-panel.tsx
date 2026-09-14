@@ -28,7 +28,7 @@ export function CryptoPaymentPanel({ orderId, intent, options, route }: { orderI
       <CryptoDepositActions intentId={str(intent.id)} localDevnet={str(intent.network_mode) === 'LOCAL'} />
     </> : <>
       {intent && <p className="muted">Previous crypto attempt: {str(intent.status).replaceAll('_', ' ')}{intent.status_reason ? ` · ${str(intent.status_reason)}` : ''}</p>}
-      {rows(options).map((option) => <CommandForm key={`${str(option.chain_id)}-${str(option.asset_id)}`} command="create_crypto_payment"
+      {rows(options).map((option) => <CommandForm variant="secondary" key={`${str(option.chain_id)}-${str(option.asset_id)}`} command="create_crypto_payment"
         label={`Pay ${str(option.amount_display)} ${str(option.symbol)} (${str(option.kind) === 'NATIVE' ? 'native' : 'token'}) on ${str(option.network_name)}`}
         values={{ order_id: orderId, chain_id: str(option.chain_id), asset_id: str(option.asset_id) }} returnTo={route}>
         <NetworkBadge mode={option.mode} />

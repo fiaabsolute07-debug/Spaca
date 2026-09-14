@@ -1,6 +1,6 @@
 /**
  * Supply commands (master §5.2, §13.2, P1A): profile, samples, services with immutable versions,
- * weekly capacity pools, and Book Now with an exact terms snapshot.
+ * the creator's active-order limit, and Book Now with an exact terms snapshot.
  */
 import {
   CommandError,
@@ -16,7 +16,7 @@ import {
   type Tx,
 } from '@/lib/commands';
 import type { Actor } from '@/lib/auth';
-import { ensureBuckets, insertReservation, lockAvailableBucket, lockOwnedPool, setPoolTimezone, setWeeklyUnits } from '@/modules/capacity';
+import { MAX_ACTIVE_UNITS_LIMIT, claimWorkload, setAcceptingOrders, setMaxActiveUnits } from '@/modules/capacity';
 import { isValidTimeZone } from '@/modules/capacity/weeks';
 import { assertFlags } from '@/modules/admin/policy';
 import { lockSampleAsset } from '@/modules/storage/service';
@@ -44,12 +44,12 @@ async function snapshotVersion(tx: Tx, service: Row, actor: Actor): Promise<stri
     && latest.title === service.title && latest.description === service.description && latest.taxonomy === service.taxonomy
     && String(latest.price_minor) === String(service.price_minor) && latest.currency === service.currency
     && Number(latest.turnaround_hours) === Number(service.turnaround_hours) && Number(latest.revision_limit) === Number(service.revision_limit)
-    && String(latest.pool_id) === String(service.pool_id);
+    && Number(latest.units_per_order) === Number(service.units_per_order);
   if (unchanged) return String(latest.id);
   const [created] = await tx<Row[]>`insert into app.service_versions
-    (service_id,version,title,description,taxonomy,price_minor,currency,turnaround_hours,revision_limit,pool_id,created_by)
+    (service_id,version,title,description,taxonomy,price_minor,currency,turnaround_hours,revision_limit,units_per_order,created_by)
     values (${String(service.id)},${Number(latest?.version ?? 0) + 1},${service.title},${service.description},${service.taxonomy},${String(service.price_minor)},
-      ${service.currency},${Number(service.turnaround_hours)},${Number(service.revision_limit)},${String(service.pool_id)},${actor.id}) returning id`;
+      ${service.currency},${Number(service.turnaround_hours)},${Number(service.revision_limit)},${Number(service.units_per_order)},${actor.id}) returning id`;
   return String(created!.id);
 }
 
@@ -57,12 +57,10 @@ async function assertPublishable(tx: Tx, actor: Actor, service: Row) {
   const [counts] = await tx<Row[]>`select
       (select count(*)::int from app.samples where creator_id=${actor.id} and visibility='PUBLIC' and moderation_status='APPROVED') as public_samples,
       (select count(*)::int from app.service_samples ss join app.samples sm on sm.id=ss.sample_id
-        where ss.service_id=${String(service.id)} and sm.visibility='PUBLIC' and sm.moderation_status='APPROVED') as linked_samples,
-      (select weekly_units from app.capacity_pools where id=${String(service.pool_id)}) as weekly_units`;
+        where ss.service_id=${String(service.id)} and sm.visibility='PUBLIC' and sm.moderation_status='APPROVED') as linked_samples`;
   const errors: string[] = [];
   if (Number(counts!.public_samples) < MIN_PUBLIC_SAMPLES) errors.push(`Add at least ${MIN_PUBLIC_SAMPLES} approved public work samples before publishing`);
   if (Number(counts!.linked_samples) < 1) errors.push('Link at least one approved sample to this service');
-  if (Number(counts!.weekly_units) < 1) errors.push('Set at least one weekly capacity unit before publishing');
   if (errors.length) throw new CommandError(errors.join('. '), 'INVALID_INPUT');
 }
 
@@ -113,21 +111,11 @@ const createService: CommandHandler = async ({ tx, actor, form }) => {
   if (description.length < 20) throw new CommandError('Describe the scope in at least 20 characters');
   const price = money(text(form, 'price'), 'price');
   const turnaround = integer(text(form, 'turnaround_hours'), 'turnaround_hours', 1, 8760);
+  const units = unitsPerOrder(form);
 
-  // Shared pool (CAP-02): reuse an owned pool, or create one with this service's weekly capacity.
-  const poolIdInput = String(form.get('pool_id') ?? '').trim();
-  let poolId: string;
-  if (poolIdInput) {
-    poolId = String((await lockOwnedPool(tx, actor, poolIdInput)).id);
-  } else {
-    const weekly = integer(text(form, 'capacity'), 'capacity', 1, 100000);
-    const [pool] = await tx<Row[]>`insert into app.capacity_pools (creator_id,name,timezone,weekly_units)
-      values (${actor.id},${title.slice(0, 80)},${actor.timezone ?? 'UTC'},${weekly}) returning id`;
-    poolId = String(pool!.id);
-  }
-
-  const [service] = await tx<Row[]>`insert into app.services (creator_id,pool_id,title,description,taxonomy,price_minor,currency,turnaround_hours,revision_limit,status)
-    values (${actor.id},${poolId},${title},${description},${taxonomy},${price.toString()},'USD',${turnaround},1,'DRAFT') returning id`;
+  // Every service of this creator shares one active-order limit (CAP-02); the service only sizes its orders.
+  const [service] = await tx<Row[]>`insert into app.services (creator_id,title,description,taxonomy,price_minor,currency,turnaround_hours,revision_limit,units_per_order,status)
+    values (${actor.id},${title},${description},${taxonomy},${price.toString()},'USD',${turnaround},1,${units ?? 1},'DRAFT') returning id`;
   const serviceId = String(service!.id);
 
   for (let n = 1; n <= 3; n++) {
@@ -143,6 +131,12 @@ const createService: CommandHandler = async ({ tx, actor, form }) => {
   return { path: '/creator/services', message: 'Draft service created', id: serviceId };
 };
 
+/** Optional order weight: how many units of the creator's limit one order of this service uses (default 1). */
+function unitsPerOrder(form: FormData): number | null {
+  const value = String(form.get('units_per_order') ?? '').trim();
+  return value ? integer(value, 'units_per_order', 1, 10) : null;
+}
+
 const updateService: CommandHandler = async ({ tx, actor, form }) => {
   const service = await ownedService(tx, actor, uuid(form, 'service_id'));
   const expected = expectedVersion(form);
@@ -154,8 +148,9 @@ const updateService: CommandHandler = async ({ tx, actor, form }) => {
   const price = money(text(form, 'price'), 'price');
   const turnaround = integer(text(form, 'turnaround_hours'), 'turnaround_hours', 1, 8760);
   if (title.length < 3 || description.length < 20) throw new CommandError('Title needs 3+ characters and scope 20+ characters');
+  const units = unitsPerOrder(form);
   const [updated] = await tx<Row[]>`update app.services set title=${title},description=${description},price_minor=${price.toString()},turnaround_hours=${turnaround},
-    version=version+1,updated_at=now() where id=${String(service.id)} returning *`;
+    units_per_order=coalesce(${units}::int,units_per_order),version=version+1,updated_at=now() where id=${String(service.id)} returning *`;
   if (updated!.status === 'PUBLISHED' || updated!.status === 'PAUSED') {
     // Live terms change only through a new immutable version; sold orders keep theirs (SUP-03).
     const versionId = await snapshotVersion(tx, updated!, actor);
@@ -172,7 +167,6 @@ const publishService: CommandHandler = async ({ tx, actor, form }) => {
   await assertPublishable(tx, actor, service);
   const versionId = await snapshotVersion(tx, service, actor);
   await tx`update app.services set status='PUBLISHED',published_version_id=${versionId},version=version+1,updated_at=now() where id=${String(service.id)}`;
-  await ensureBuckets(tx, String(service.pool_id));
   return { path: '/creator/services', message: 'Service published' };
 };
 
@@ -186,16 +180,27 @@ const setListingStatus = (status: 'PAUSED' | 'ARCHIVED'): CommandHandler => asyn
   return { path: '/creator/services', message: status === 'PAUSED' ? 'Service paused' : 'Service archived' };
 };
 
-const setCapacity: CommandHandler = async ({ tx, actor, form }) => {
-  const poolId = text(form, 'pool_id');
-  const weekly = integer(String(form.get('weekly_units') ?? form.get('total_units') ?? ''), 'weekly_units', 0, 100000);
-  await setWeeklyUnits(tx, actor, poolId, weekly);
-  return { path: '/creator/services', message: 'Weekly capacity updated' };
+/** CAP-07: the limit covers every service; lowering it keeps accepted work and only blocks new orders. */
+const setWorkloadLimit: CommandHandler = async ({ tx, actor, form }) => {
+  if (!actor.roles.includes('creator')) throw new CommandError('Only creators have an order limit', 'FORBIDDEN');
+  const limit = integer(text(form, 'max_active_units'), 'max_active_units', 1, MAX_ACTIVE_UNITS_LIMIT);
+  const workload = await setMaxActiveUnits(tx, actor, limit);
+  const inFlight = Number(workload.held_units) + Number(workload.active_units);
+  return {
+    path: '/creator/services',
+    message: inFlight >= limit
+      ? `You take up to ${limit} orders at a time. You have ${inFlight} in progress, so new orders open again when one finishes.`
+      : `You take up to ${limit} orders at a time.`,
+  };
 };
 
-const setPoolTimezoneCommand: CommandHandler = async ({ tx, actor, form }) => {
-  const { removed } = await setPoolTimezone(tx, actor, text(form, 'pool_id'), text(form, 'timezone', true, 64));
-  return { path: '/creator/services', message: `Time zone updated; ${removed} empty future week(s) rebuilt. Weeks with bookings keep their dates.` };
+/** CAP-08: pause blocks new orders, hires and auctions at once; work in progress continues. */
+const setAcceptingOrdersCommand: CommandHandler = async ({ tx, actor, form }) => {
+  if (!actor.roles.includes('creator')) throw new CommandError('Only creators can pause new orders', 'FORBIDDEN');
+  const value = text(form, 'accepting');
+  if (!['true', 'false'].includes(value)) throw new CommandError('accepting must be true or false');
+  await setAcceptingOrders(tx, actor, value === 'true');
+  return { path: '/creator/services', message: value === 'true' ? 'You are accepting new orders again' : 'New orders paused. Orders in progress continue.' };
 };
 
 const book: CommandHandler = async ({ tx, actor, form }) => {
@@ -215,8 +220,7 @@ const book: CommandHandler = async ({ tx, actor, form }) => {
     throw new CommandError('The creator updated this service. Review the new price and scope before booking.', 'QUOTE_CHANGED');
   }
 
-  const preferredBucket = String(form.get('bucket_id') ?? '').trim() || null;
-  const bucket = await lockAvailableBucket(tx, String(version!.pool_id), Number(version!.turnaround_hours), preferredBucket);
+  const units = Number(version!.units_per_order);
   const terms = {
     schema_version: 1,
     source: 'BOOK',
@@ -233,14 +237,17 @@ const book: CommandHandler = async ({ tx, actor, form }) => {
     review_window_hours: Number(version!.review_window_hours),
     auto_accept_consent: form.get('accept_terms') === 'on' || form.get('accept_terms') === 'true',
     cancellation_policy_version: 'v1',
-    capacity: { pool_id: String(bucket.pool_id), bucket_id: String(bucket.id), week_starts_at: new Date(bucket.starts_at).toISOString(), week_ends_at: new Date(bucket.ends_at).toISOString() },
+    capacity: { model: 'ACTIVE_ORDER_LIMIT', units },
   };
+  // The claim locks the creator's workload and refuses the order when paused or at the limit; the transaction then rolls back.
+  const expiresAt = new Date(Date.now() + CHECKOUT_HOLD_MINUTES * 60_000);
+  const creatorId = String(service.creator_id);
   const [order] = await tx<Row[]>`insert into app.orders
-    (buyer_id,creator_id,service_id,service_version_id,pool_id,source,title,status,amount_minor,platform_fee_minor,currency,brief,brief_ready_at,terms,delivery_due_at)
-    values (${actor.id},${String(service.creator_id)},${String(service.id)},${String(version!.id)},${String(bucket.pool_id)},'BOOK',${version!.title},'AWAITING_PAYMENT',
+    (buyer_id,creator_id,service_id,service_version_id,source,title,status,amount_minor,platform_fee_minor,currency,brief,brief_ready_at,terms,delivery_due_at)
+    values (${actor.id},${creatorId},${String(service.id)},${String(version!.id)},'BOOK',${version!.title},'AWAITING_PAYMENT',
       ${String(version!.price_minor)},0,${version!.currency},${brief},now(),${JSON.stringify(terms)}::jsonb,null) returning id`;
   const orderId = String(order!.id);
-  await insertReservation(tx, bucket, { orderId }, new Date(Date.now() + CHECKOUT_HOLD_MINUTES * 60_000));
+  await claimWorkload(tx, { creatorId, units, origin: 'BOOK', orderId, expiresAt });
   await orderEvent(tx, orderId, actor.id, 'ORDER_CREATED', { source: 'BOOK', service_version: Number(version!.version), platform_fee_minor: '0' });
   return { path: `/orders/${orderId}`, message: 'Capacity reserved. Fund the order to start work.', id: orderId };
 };
@@ -253,7 +260,7 @@ export const catalogCommands: Record<string, CommandHandler> = {
   publish_service: publishService,
   pause_service: setListingStatus('PAUSED'),
   archive_service: setListingStatus('ARCHIVED'),
-  set_capacity: setCapacity,
-  set_pool_timezone: setPoolTimezoneCommand,
+  set_workload_limit: setWorkloadLimit,
+  set_accepting_orders: setAcceptingOrdersCommand,
   book,
 };

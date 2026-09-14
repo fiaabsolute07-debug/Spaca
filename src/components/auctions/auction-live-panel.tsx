@@ -86,7 +86,7 @@ export function AuctionLivePanel({ auctionId, initial }: { auctionId: string; in
       {a.payment_due_at && <li><span>Winner payment due</span><strong>{new Date(a.payment_due_at).toUTCString()}</strong></li>}
       {snapshot.viewer && snapshot.viewer.standing !== 'NONE' && <li><span>You</span><strong>{STANDING[snapshot.viewer.standing] ?? snapshot.viewer.standing}{snapshot.viewer.my_highest_minor ? ` · your best ${usd(snapshot.viewer.my_highest_minor)}` : ''}</strong></li>}
     </ul>
-    {snapshot.viewer?.order_id && <a className="text-link" href={`/orders/${snapshot.viewer.order_id}`}>Open your order →</a>}
+    {snapshot.viewer?.order_id && <a className="text-link" href={`/orders/${snapshot.viewer.order_id}`}>Open your order ›</a>}
     <p className="muted">{stale ? 'Connection lost. Showing the last server snapshot; retrying.' : `Updated from the server every 5 seconds · version ${a.version}`}</p>
   </div>;
 }

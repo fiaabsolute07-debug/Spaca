@@ -44,15 +44,16 @@ async function creatorWithProfile(label: string, niche = NICHE): Promise<TestUse
 async function publish(creator: TestUser, input: { title: string; taxonomy?: string; price: string; turnaround: string; capacity?: string }) {
   const created = await command(creator, {
     command: 'create_service', idempotency_key: key('svc'), title: input.title, description: `Scope for ${input.title} with deliverables and exclusions.`,
-    taxonomy: input.taxonomy ?? 'CREATE', price: input.price, capacity: input.capacity ?? '3', turnaround_hours: input.turnaround,
+    taxonomy: input.taxonomy ?? 'CREATE', price: input.price, turnaround_hours: input.turnaround,
     sample_url_1: 'https://example.com/1', sample_title_1: 'Sample one', sample_url_2: 'https://example.com/2', sample_title_2: 'Sample two',
     sample_url_3: 'https://example.com/3', sample_title_3: 'Sample three',
   });
   expect(created.status, JSON.stringify(created.body)).toBe(200);
   const serviceId = String(created.body.id);
   expect((await command(creator, { command: 'publish_service', idempotency_key: key('pub'), service_id: serviceId })).status).toBe(200);
-  const [row] = await sql`select pool_id from app.services where id=${serviceId}`;
-  return { serviceId, poolId: String(row!.pool_id) };
+  // `capacity` sets the creator's active-order limit, shared by all of their services.
+  if (input.capacity) expect((await command(creator, { command: 'set_workload_limit', idempotency_key: key('limit'), max_active_units: input.capacity })).status).toBe(200);
+  return { serviceId };
 }
 
 async function allPages(query: string, limit: number): Promise<string[]> {
@@ -83,7 +84,7 @@ describe.skipIf(!RUN_DB)('DSC-01/02/05 — service search, filters, pagination a
     await command(creator, { command: 'pause_service', idempotency_key: key('p'), service_id: paused.serviceId });
     const archived = await publish(creator, { title: `${TOKEN} archived thing`, price: '80', turnaround: '12' });
     await command(creator, { command: 'archive_service', idempotency_key: key('a'), service_id: archived.serviceId });
-    await command(creator, { command: 'create_service', idempotency_key: key('draft'), title: `${TOKEN} draft only`, description: 'Draft scope that is never published anywhere.', taxonomy: 'CREATE', price: '90', capacity: '1', turnaround_hours: '10' });
+    await command(creator, { command: 'create_service', idempotency_key: key('draft'), title: `${TOKEN} draft only`, description: 'Draft scope that is never published anywhere.', taxonomy: 'CREATE', price: '90', turnaround_hours: '10' });
     await publish(suspended, { title: `${TOKEN} suspended creator`, price: '120', turnaround: '24' });
     await sql`update app.users set status='SUSPENDED' where id=${suspended.id}`;
 
@@ -101,8 +102,9 @@ describe.skipIf(!RUN_DB)('DSC-01/02/05 — service search, filters, pagination a
     expect(ids(relevance.body)[0]).toBe(story.serviceId);
     expect(relevance.body.ranking).toMatch(/ts_rank_cd/);
     const first = (await services(base)).body.items.find((item) => item.id === video.serviceId)!;
-    expect(first).toMatchObject({ taxonomy: 'CREATE', price_minor: '10000', turnaround_hours: 24, available_units: 3 });
+    expect(first).toMatchObject({ taxonomy: 'CREATE', price_minor: '10000', turnaround_hours: 24, availability_status: 'ACCEPTING' });
     expect(first).not.toHaveProperty('search_document');
+    expect(first).not.toHaveProperty('held_units');
 
     for (const sort of ['price_asc', 'price_desc', 'turnaround', 'newest']) {
       expect(await allPages(`${base}&sort=${sort}`, 1)).toEqual(ids((await services(`${base}&sort=${sort}`)).body));
@@ -118,7 +120,7 @@ describe.skipIf(!RUN_DB)('DSC-01/02/05 — service search, filters, pagination a
     expect((await services(`q=${encodeURIComponent("' or 1=1 --")}`)).status).toBe(200);
   });
 
-  it('DSC-02/05: empty results and outages are explicit; paused and sold-out listings update at once and stay server-safe', async () => {
+  it('DSC-02/05: empty results and outages are explicit; paused, at-capacity and paused-creator listings update at once and stay server-safe', async () => {
     expect((await services(`q=nothing${runId.replace(/-/g, '')}`)).body).toMatchObject({ items: [], next_cursor: null });
     const outage = await discoveryRoute(async () => { throw new Error('connection terminated'); });
     expect(outage.status).toBe(503);
@@ -133,12 +135,16 @@ describe.skipIf(!RUN_DB)('DSC-01/02/05 — service search, filters, pagination a
 
     await command(creator, { command: 'pause_service', idempotency_key: key('p'), service_id: pausing.serviceId });
     expect(ids((await services(`q=${token}`)).body)).toEqual([soldOut.serviceId]);
-    expect((await command(creator, { command: 'set_capacity', idempotency_key: key('c'), pool_id: soldOut.poolId, weekly_units: '0' })).status).toBe(200);
+    // One booking fills the creator's single place: the card turns AT_CAPACITY without exposing counts.
+    expect((await command(buyer, { command: 'book', idempotency_key: key('b'), service_id: soldOut.serviceId, brief: 'First booking takes the creator\'s only place.' })).status).toBe(200);
     expect(ids((await services(`q=${token}&available=true`)).body)).toEqual([]);
-    expect((await services(`q=${token}`)).body.items[0]).toMatchObject({ id: soldOut.serviceId, available_units: 0, next_available_starts_at: null });
-    const stale = await command(buyer, { command: 'book', idempotency_key: key('b'), service_id: soldOut.serviceId, brief: 'Booking from a stale listing card should be refused.' });
+    expect((await services(`q=${token}`)).body.items[0]).toMatchObject({ id: soldOut.serviceId, availability_status: 'AT_CAPACITY' });
+    const stale = await command(await createUser('dsc05-late'), { command: 'book', idempotency_key: key('b'), service_id: soldOut.serviceId, brief: 'Booking from a stale listing card should be refused.' });
     expect(stale.status).toBe(409);
-    expect((await services(`q=${token}&available_before=2000-01-01`)).body.items).toEqual([]);
+    expect((await command(creator, { command: 'set_accepting_orders', idempotency_key: key('pause'), accepting: 'false' })).status).toBe(200);
+    expect((await services(`q=${token}`)).body.items[0]).toMatchObject({ id: soldOut.serviceId, availability_status: 'PAUSED' });
+    expect((await services(`q=${token}&available_before=2000-01-01`)).status).toBe(400);
+    expect((await services(`q=${token}&sort=availability`)).status).toBe(400);
   });
 });
 
@@ -271,7 +277,9 @@ describe.skipIf(!RUN_DB)('P5-05/06 — creator discovery and public SEO surfaces
     expect(byNiche.body.items[1]).toMatchObject({ reputation_label: 'NEW', avg_rating: null });
     expect(ids((await search(`niche=${encodeURIComponent(niche)}&taxonomy=PUBLISH`)).body)).toEqual([rated.id]);
     expect(ids((await search(`q=${encodeURIComponent(niche.split(' ')[1]!)}&niche=${encodeURIComponent(niche)}`)).body).sort()).toEqual([rated.id, fresh.id].sort());
-    expect(ids((await search(`niche=${encodeURIComponent(niche)}&available=true&sort=availability`)).body)).toHaveLength(2);
+    expect(ids((await search(`niche=${encodeURIComponent(niche)}&available=true`)).body)).toHaveLength(2);
+    expect((await search(`niche=${encodeURIComponent(niche)}`)).body.items[0]).toMatchObject({ availability_status: 'ACCEPTING' });
+    expect((await search('sort=availability')).status).toBe(400);
     const page = await search(`niche=${encodeURIComponent(niche)}&sort=reputation&limit=1`);
     expect(ids((await search(`niche=${encodeURIComponent(niche)}&sort=reputation&limit=1&cursor=${page.body.next_cursor}`)).body)).toEqual([fresh.id]);
     expect((await search('sort=followers')).status).toBe(400);

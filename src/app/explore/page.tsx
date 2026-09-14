@@ -22,15 +22,15 @@ export default async function ExplorePage({
     {notices}
     <>
       <PageHeading
-        eyebrow="The marketplace"
-        title="Find your kind of creative."
-        description="Explore clear scopes, work samples, and creators with room for your project."
+        eyebrow="Explore"
+        title="Find creators for your launch."
+        description="Crypto-native researchers, writers and analysts on X, with clear scopes and real work samples."
       />
       <form method="get" className="filters">
         <input
           aria-label="Search services"
           name="q"
-          placeholder="Try launch writing, video, design…"
+          placeholder="Try explainer thread, research, launch copy…"
           defaultValue={str(query.q)}
         />
         <select aria-label="Category" name="category" defaultValue={str(query.category)}>
@@ -39,13 +39,13 @@ export default async function ExplorePage({
             {c}
           </option>)}
         </select>
-        <button className="button button-dark">Search ↗</button>
+        <button className="button">Search</button>
       </form>
       <p className="muted">
         {services.length}
         {" service"}
         {services.length !== 1 ? 's' : ''}
-        {" found · all with 0% platform fees"}
+        {" found"}
       </p>
       {services.length ? <div className="service-grid">
         {services.map((s, i) => <ServiceCard key={str(s.id)} service={s} index={i} />)}

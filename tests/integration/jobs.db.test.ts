@@ -1,6 +1,6 @@
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MockPaymentProvider, type MockPaymentProviderOptions } from '@/modules/payments/providers';
-import { poolCounters, RUN_DB, ORIGIN, callRoute, createPublishedService, createUser, key, sessionState, type TestUser } from './harness';
+import { workloadCounters, RUN_DB, ORIGIN, callRoute, createPublishedService, createUser, key, sessionState, type TestUser } from './harness';
 
 vi.mock('next/headers', () => ({
   cookies: async () => {
@@ -32,14 +32,14 @@ const payeeOf = (creator: TestUser) => `acct_mock_${creator.id.replaceAll('-', '
 async function bookedOrder(label: string, creator?: TestUser) {
   const seller = creator ?? (await createUser(`${label}-creator`));
   const buyer = await createUser(`${label}-buyer`);
-  const { serviceId, poolId } = await createPublishedService(command, seller, { capacity: 1 });
+  const { serviceId, creatorId } = await createPublishedService(command, seller, { capacity: 1 });
   const booked = await command(buyer, { command: 'book', idempotency_key: key('book'), service_id: serviceId, brief: 'Jobs integration brief with enough detail to start.' });
   if (booked.status !== 200) throw new Error(JSON.stringify(booked.body));
-  return { creator: seller, buyer, serviceId, poolId, orderId: String(booked.body.id) };
+  return { creator: seller, buyer, serviceId, creatorId, orderId: String(booked.body.id) };
 }
 
 async function expireHold(orderId: string) {
-  await sql`update app.reservations set expires_at=now() - interval '1 minute' where order_id=${orderId}`;
+  await sql`update app.workload_claims set expires_at=now() - interval '1 minute' where order_id=${orderId}`;
 }
 
 async function completedOrder(label: string, creator?: TestUser) {
@@ -81,9 +81,9 @@ describe.skipIf(!RUN_DB)('expire_checkout_holds', () => {
     expect((await jobs.expireCheckoutHolds({ orderId: expired.orderId })).examined).toBe(0);
 
     expect(await orderRow(expired.orderId)).toMatchObject({ status: 'CANCELLED', payment_status: 'PENDING' });
-    const [reservation] = await sql`select state from app.reservations where order_id=${expired.orderId}`;
+    const [reservation] = await sql`select state from app.workload_claims where order_id=${expired.orderId}`;
     expect(reservation!.state).toBe('RELEASED');
-    expect((await poolCounters(expired.poolId)).reserved_units).toBe(0);
+    expect((await workloadCounters(expired.creatorId)).held_units).toBe(0);
     expect(await count(sql`select count(*)::int as count from app.order_events where order_id=${expired.orderId} and kind='HOLD_EXPIRED'`)).toBe(1);
     expect((await orderRow(fresh.orderId)).status).toBe('AWAITING_PAYMENT');
   });
@@ -98,8 +98,8 @@ describe.skipIf(!RUN_DB)('expire_checkout_holds', () => {
     expect((await pay(buyer, orderId)).status).toBe(400);
   });
 
-  it('keeps capacity in RECONCILING when the provider already captured, then the late webhook funds the order', async () => {
-    const { buyer, poolId, orderId } = await bookedOrder('expire-captured');
+  it('keeps the claim in EXPIRY_RECONCILING when the provider already captured, then the late webhook funds the order', async () => {
+    const { buyer, creatorId, orderId } = await bookedOrder('expire-captured');
     const intent = await sql.begin((tx) => funding.ensureFundingIntent(tx, buyer.id, orderId));
     if (intent.state !== 'READY') throw new Error('intent not ready');
     await provider.simulateFundingOutcome(intent.reference, { status: 'SUCCEEDED' });
@@ -109,14 +109,14 @@ describe.skipIf(!RUN_DB)('expire_checkout_holds', () => {
     expect((await jobs.expireCheckoutHolds({ orderId })).outcomes).toEqual({ RECONCILING: 1 });
     expect((await jobs.expireCheckoutHolds({ orderId })).outcomes).toEqual({ RECONCILING: 1 });
     expect(await count(sql`select count(*)::int as count from app.reconciliation_cases where order_id=${orderId} and kind='HOLD_EXPIRED_PAYMENT_UNRESOLVED' and status='OPEN'`)).toBe(1);
-    const [reservation] = await sql`select state from app.reservations where order_id=${orderId}`;
-    expect(reservation!.state).toBe('RECONCILING');
+    const [claim] = await sql`select state from app.workload_claims where order_id=${orderId}`;
+    expect(claim!.state).toBe('EXPIRY_RECONCILING');
 
     const receipt = await funding.receivePaymentWebhook(withheld[0]!.rawBody, withheld[0]!.headers);
     expect(receipt.outcome).toBe('FUNDED');
     expect(await orderRow(orderId)).toMatchObject({ status: 'FUNDED', payment_status: 'SUCCEEDED' });
-    const pool = await poolCounters(poolId);
-    expect(pool).toMatchObject({ reserved_units: 0, committed_units: 1 });
+    const workload = await workloadCounters(creatorId);
+    expect(workload).toMatchObject({ held_units: 0, active_units: 1 });
     expect((await jobs.expireCheckoutHolds({ orderId })).examined).toBe(0);
   });
 
@@ -315,7 +315,7 @@ describe.skipIf(!RUN_DB)('local jobs route', () => {
     expect(ok.status).toBe(200);
     const body = (await ok.json()) as { reports: { job: string }[] };
     expect(body.reports.map((r) => r.job)).toEqual([
-      'reprocess_webhook_inbox', 'chain_indexer', 'reconcile_provider_operations', 'expire_checkout_holds', 'expire_hire_offers', 'close_due_auctions', 'auto_accept_deliveries', 'release_ready_settlements', 'order_reminders', 'dispatch_notification_outbox', 'cleanup_storage', 'extend_capacity_horizon',
+      'reprocess_webhook_inbox', 'chain_indexer', 'reconcile_provider_operations', 'expire_checkout_holds', 'expire_hire_offers', 'close_due_auctions', 'auto_accept_deliveries', 'release_ready_settlements', 'order_reminders', 'dispatch_notification_outbox', 'cleanup_storage', 'check_workload_counters',
     ]);
     const blocked = await jobsRoute.POST(new Request(`${ORIGIN}/api/dev/jobs`, { method: 'POST', headers: { origin: 'https://attacker.test' } }));
     expect(blocked.status).toBe(403);

@@ -2,7 +2,8 @@ import { expect, test } from '@playwright/test';
 import { createPublishedService, dateTimeLocal, login, orderPath, payOrder, submit, uniqueSuffix, visit } from './helpers';
 
 test('a cap-only two-hire request funds one creator after application, offer and capacity confirmation', async ({ page }) => {
-  const service = await createPublishedService(page, 'request-pool');
+  // Also raises creator_c's order limit so the accepted hire is not blocked by earlier runs.
+  await createPublishedService(page, 'request-hire');
   const title = `E2E two hires ${uniqueSuffix()}`;
   await login(page, 'buyer_a');
   await visit(page, '/buyer/requests/new');
@@ -31,11 +32,8 @@ test('a cap-only two-hire request funds one creator after application, offer and
   await expect(page.getByText(/Offer sent, waiting for the creator/)).toBeVisible();
   await login(page, 'creator_c');
   await visit(page, requestPath);
-  const pool = page.getByRole('option', { name: new RegExp(`^${service.title} ·`) });
-  const poolId = await pool.getAttribute('value');
-  expect(poolId).toBeTruthy();
-  await page.getByLabel('Schedule this work in').selectOption(poolId!);
-  await submit(page, page.getByRole('button', { name: 'Accept and schedule', exact: true }));
+  await expect(page.getByText('Accepting counts toward your active order limit.')).toBeVisible();
+  await submit(page, page.getByRole('button', { name: 'Accept offer', exact: true }));
   const path = orderPath(page);
   await login(page, 'buyer_a');
   await visit(page, path);

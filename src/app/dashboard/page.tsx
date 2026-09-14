@@ -24,6 +24,7 @@ export default async function DashboardPage({
   const d = row(await getDashboardData(actor));
   const notifications = await listInAppNotifications(actor.id, 8);
   const stats = row(d.stats);
+  const workload = row(d.workload);
   const orders = rows(d.orders);
   return <main className="container">
     <div className="workspace">
@@ -33,7 +34,7 @@ export default async function DashboardPage({
         <PageHeading
           eyebrow="Your workspace"
           title="Keep good work moving."
-          description="Track orders, publish capacity, and respond to opportunities from one place."
+          description="Track orders, manage your services, and respond to opportunities from one place."
         />
         <div className="stats">
           <div className="stat">
@@ -55,14 +56,12 @@ export default async function DashboardPage({
             </strong>
           </div>
           <div className="stat">
-            <span>Available capacity</span>
+            <span>Order limit in use</span>
             <strong>
-              {num(stats.available_minor)}
+              {num(workload.in_flight_units)}
+              {" of "}
+              {num(workload.max_active_units)}
             </strong>
-          </div>
-          <div className="stat">
-            <span>Platform fee</span>
-            <strong>$0.00</strong>
           </div>
         </div>
         <div className="section-heading">
@@ -83,10 +82,10 @@ export default async function DashboardPage({
         </div> : <p className="muted">No notifications yet.</p>}
         <div className="section-heading">
           <h2>Recent orders</h2>
-          <Link className="text-link" href="/buyer/orders">View all ↗</Link>
+          <Link className="text-link" href="/buyer/orders">View all ›</Link>
         </div>
         {orders.length ? <OrderList orders={orders.slice(0, 8)} /> : <Empty title="Your next collaboration starts here">
-          <Link href="/explore" className="text-link">Find a creator →</Link>
+          <Link href="/explore" className="text-link">Find a creator ›</Link>
         </Empty>}
         <div className="section-heading">
           <h2>Shortcuts</h2>

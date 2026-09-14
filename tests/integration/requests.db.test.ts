@@ -23,11 +23,11 @@ const asActor = (user: TestUser): Actor => ({ id: user.id, email: user.email, di
 const inDays = (days: number) => commandInstant(new Date(Date.now() + days * 86_400_000));
 const note = 'I have shipped launch threads for three developer tools.';
 
-type Creator = TestUser & { poolId: string };
+type Creator = TestUser;
 async function creator(label: string): Promise<Creator> {
   const user = await createUser(label);
-  const { poolId } = await createPublishedService(command, user, { capacity: 5 });
-  return { ...user, poolId };
+  await createPublishedService(command, user, { capacity: 5 });
+  return user;
 }
 
 async function createRequest(buyer: TestUser, fields: Record<string, string> = {}) {
@@ -54,7 +54,7 @@ async function hire(buyer: TestUser, requestId: string, user: Creator, quote: st
   expect((await applyTo(requestId, user, quote)).status).toBe(200);
   const offer = await select(buyer, await applicationOf(requestId, user));
   expect(offer.status, JSON.stringify(offer.body)).toBe(200);
-  const accepted = await command(user, { command: 'accept_offer', idempotency_key: key('acc'), offer_id: String(offer.body.id), pool_id: user.poolId });
+  const accepted = await command(user, { command: 'accept_offer', idempotency_key: key('acc'), offer_id: String(offer.body.id) });
   expect(accepted.status, JSON.stringify(accepted.body)).toBe(200);
   return { offerId: String(offer.body.id), orderId: String(accepted.body.id) };
 }
@@ -173,7 +173,7 @@ describe.skipIf(!RUN_DB)('REQ-04/05/09 — selection', () => {
     const selections = await Promise.all([select(buyer, app), select(buyer, app)]);
     expect(selections.map((r) => r.status).sort()).toEqual([200, 409]);
     const offerId = String(selections.find((r) => r.status === 200)!.body.id);
-    const accepts = await Promise.all([1, 2].map(() => command(maker, { command: 'accept_offer', idempotency_key: key('acc'), offer_id: offerId, pool_id: maker.poolId })));
+    const accepts = await Promise.all([1, 2].map(() => command(maker, { command: 'accept_offer', idempotency_key: key('acc'), offer_id: offerId })));
     expect(accepts.map((r) => r.status).sort()).toEqual([200, 409]);
     expect((await sql`select count(*)::int as n from app.orders where source='REQUEST' and source_ref=${requestId}`)[0]!.n).toBe(1);
     expect((await sql`select count(*)::int as n from app.request_budget_reservations where request_id=${requestId}`)[0]!.n).toBe(1);
@@ -181,7 +181,7 @@ describe.skipIf(!RUN_DB)('REQ-04/05/09 — selection', () => {
 });
 
 describe.skipIf(!RUN_DB)('REQ-06/07/08 — hire, payment and partial failure', () => {
-  it('REQ-06/07: the creator confirms an explicit pool; an accepted offer outlives its expiry and funding commits the hire', async () => {
+  it('REQ-06/07: accepting holds a place in the creator\'s order limit; an accepted offer outlives its expiry and funding commits the hire', async () => {
     const buyer = await createUser('req06-buyer');
     const maker = await creator('req06-creator');
     const other = await creator('req06-other');
@@ -189,16 +189,18 @@ describe.skipIf(!RUN_DB)('REQ-06/07/08 — hire, payment and partial failure', (
     await applyTo(requestId, maker, '200');
     const offer = await select(buyer, await applicationOf(requestId, maker));
     const offerId = String(offer.body.id);
-    expect((await command(other, { command: 'accept_offer', idempotency_key: key('a'), offer_id: offerId, pool_id: other.poolId })).status).toBe(404);
-    expect((await command(maker, { command: 'accept_offer', idempotency_key: key('a'), offer_id: offerId })).status).toBe(400);
-    expect((await command(maker, { command: 'accept_offer', idempotency_key: key('a'), offer_id: offerId, pool_id: other.poolId })).status).toBe(403);
-    const accepted = await command(maker, { command: 'accept_offer', idempotency_key: key('a'), offer_id: offerId, pool_id: maker.poolId });
+    expect((await command(other, { command: 'accept_offer', idempotency_key: key('a'), offer_id: offerId })).status).toBe(404);
+    // A paused creator cannot take the hire until they resume.
+    expect((await command(maker, { command: 'set_accepting_orders', idempotency_key: key('p'), accepting: 'false' })).status).toBe(200);
+    expect((await command(maker, { command: 'accept_offer', idempotency_key: key('a'), offer_id: offerId })).status).toBe(409);
+    expect((await command(maker, { command: 'set_accepting_orders', idempotency_key: key('p'), accepting: 'true' })).status).toBe(200);
+    const accepted = await command(maker, { command: 'accept_offer', idempotency_key: key('a'), offer_id: offerId });
     expect(accepted.status).toBe(200);
     const orderId = String(accepted.body.id);
-    const [order] = await sql`select service_id,pool_id,status,amount_minor,platform_fee_minor,terms from app.orders where id=${orderId}`;
-    expect(order).toMatchObject({ service_id: null, pool_id: maker.poolId, status: 'AWAITING_PAYMENT', amount_minor: '20000', platform_fee_minor: '0' });
-    expect((order!.terms as Record<string, unknown>).capacity).toMatchObject({ pool_id: maker.poolId, units: 1 });
-    expect((await sql`select state from app.reservations where order_id=${orderId}`)[0]!.state).toBe('HELD');
+    const [order] = await sql`select service_id,status,amount_minor,platform_fee_minor,terms from app.orders where id=${orderId}`;
+    expect(order).toMatchObject({ service_id: null, status: 'AWAITING_PAYMENT', amount_minor: '20000', platform_fee_minor: '0' });
+    expect((order!.terms as Record<string, unknown>).capacity).toMatchObject({ model: 'ACTIVE_ORDER_LIMIT', units: 1 });
+    expect((await sql`select state,origin,creator_id from app.workload_claims where order_id=${orderId}`)[0]).toMatchObject({ state: 'HELD', origin: 'OFFER', creator_id: maker.id });
     expect((await sql`select order_id,state from app.request_budget_reservations where offer_id=${offerId}`)[0]).toMatchObject({ order_id: orderId, state: 'HELD' });
 
     // The 24-hour offer timer passing after acceptance must not release the accepted hire.
@@ -226,7 +228,7 @@ describe.skipIf(!RUN_DB)('REQ-06/07/08 — hire, payment and partial failure', (
     expect((await command(buyer, { command: 'cancel', idempotency_key: key('c'), order_id: second.orderId })).status).toBe(200);
     expect((await sql`select status from app.orders where id=${second.orderId}`)[0]!.status).toBe('REFUNDED');
     // Third hire: never paid; the checkout hold expires → offer lapses, application can be offered again.
-    await sql`update app.reservations set expires_at=now() - interval '1 minute' where order_id=${third.orderId}`;
+    await sql`update app.workload_claims set expires_at=now() - interval '1 minute' where order_id=${third.orderId}`;
     expect((await jobs.expireCheckoutHolds({ orderId: third.orderId })).outcomes).toEqual({ RELEASED: 1 });
     expect((await sql`select status from app.hire_offers where id=${third.offerId}`)[0]!.status).toBe('LAPSED');
     expect((await applicationOf(requestId, c!)).status).toBe('SUBMITTED');
@@ -263,7 +265,7 @@ describe.skipIf(!RUN_DB)('REQ-06/07/08 — hire, payment and partial failure', (
     expect((await command(a!, { command: 'withdraw_offer', idempotency_key: key('w'), offer_id: offers[2]! })).status).toBe(404);
     expect((await command(buyer, { command: 'withdraw_offer', idempotency_key: key('w'), offer_id: offers[2]! })).status).toBe(200);
     await sql`update app.hire_offers set expires_at=now() - interval '1 minute' where id=${offers[0]!}`;
-    expect((await command(a!, { command: 'accept_offer', idempotency_key: key('a'), offer_id: offers[0]!, pool_id: a!.poolId })).status).toBe(422);
+    expect((await command(a!, { command: 'accept_offer', idempotency_key: key('a'), offer_id: offers[0]! })).status).toBe(422);
     expect((await jobs.expireHireOffers({ requestId })).outcomes).toEqual({ OFFER_EXPIRED: 1 });
 
     expect((await sql`select status from app.hire_offers where request_id=${requestId} order by amount_minor`).map((r) => r.status)).toEqual(['EXPIRED', 'DECLINED', 'WITHDRAWN']);

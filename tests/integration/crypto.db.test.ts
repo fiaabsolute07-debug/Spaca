@@ -49,10 +49,10 @@ const setFlag = (enabled: boolean) => command(admin, { command: 'admin_set_flag'
 async function awaitingOrder(label: string) {
   const creator = await createUser(`${label}-creator`);
   const buyer = await createUser(`${label}-buyer`);
-  const { serviceId, poolId } = await createPublishedService(command, creator, { capacity: 2, price: '650' });
+  const { serviceId, creatorId } = await createPublishedService(command, creator, { capacity: 2, price: '650' });
   const booked = await command(buyer, { command: 'book', idempotency_key: key('book'), service_id: serviceId, brief: 'Crypto checkout brief with enough detail to start.', accept_terms: 'on' });
   expect(booked.status).toBe(200);
-  return { creator, buyer, poolId, orderId: String(booked.body.id) };
+  return { creator, buyer, creatorId, orderId: String(booked.body.id) };
 }
 async function intentFor(buyer: TestUser, orderId: string, fields: Record<string, string> = {}) {
   const created = await command(buyer, { command: 'create_crypto_payment', idempotency_key: key('cp'), order_id: orderId, chain_id: String(CHAIN_A), asset_id: assets.native!, ...fields });
@@ -188,7 +188,7 @@ describe.skipIf(!RUN_DB)('CRY-02 — the chain decides, not the client', () => {
 
 describe.skipIf(!RUN_DB)('CRY-03/04/05 — exact credit once, finality, outages and reorgs', () => {
   it('CRY-03/04: a final deposit funds once in exact units; replays and the indexer never double count', async () => {
-    const { buyer, orderId, poolId } = await awaitingOrder('cry03');
+    const { buyer, orderId, creatorId } = await awaitingOrder('cry03');
     const intent = await intentFor(buyer, orderId, { asset_id: assets.erc6! });
     expect(intent.amount_atomic).toBe('650000000');
     const txHash = pay(devA, intent, { token: TOKEN6 });
@@ -196,7 +196,7 @@ describe.skipIf(!RUN_DB)('CRY-03/04/05 — exact credit once, finality, outages 
     const first = await verify(buyer, String(intent.id), txHash);
     expect(first.body.results).toEqual([expect.objectContaining({ status: 'CREDITED', funding: 'FUNDED', reason: '650.00 USDC' })]);
     expect(await orderRow(orderId)).toMatchObject({ status: 'FUNDED', payment_status: 'SUCCEEDED', payment_rail: 'CRYPTO', provider_fee_minor: '0' });
-    expect((await sql`select state from app.reservations where order_id=${orderId}`)[0]!.state).toBe('COMMITTED');
+    expect((await sql`select state from app.workload_claims where order_id=${orderId}`)[0]!.state).toBe('ACTIVE');
     expect((await verify(buyer, String(intent.id), txHash)).body.results).toEqual([expect.objectContaining({ status: 'DUPLICATE' })]);
     const scan = await deposits.scanChainDeposits(CHAIN_A);
     expect(scan.outcomes.CREDITED ?? 0).toBe(0);
@@ -209,7 +209,7 @@ describe.skipIf(!RUN_DB)('CRY-03/04/05 — exact credit once, finality, outages 
     devA.mine(3);
     expect((await deposits.verifyChainTransaction(CHAIN_A, again))[0]).toMatchObject({ status: 'REJECTED', reason: 'DUPLICATE_PAYMENT' });
     expect((await sql`select count(*)::int as n from app.chain_deposits where intent_id=${String(intent.id)} and status='CREDITED'`)[0]!.n).toBe(1);
-    expect(poolId).toBeTruthy();
+    expect(creatorId).toBeTruthy();
   });
 
   it('CRY-05: pending finality holds the slot through an outage, then credits exactly once', async () => {
@@ -219,7 +219,7 @@ describe.skipIf(!RUN_DB)('CRY-03/04/05 — exact credit once, finality, outages 
     expect((await deposits.verifyChainTransaction(CHAIN_A, txHash))[0]).toMatchObject({ status: 'PENDING_FINALITY', reason: '1/3 confirmations' });
     expect((await sql`select status from app.crypto_payment_intents where id=${String(intent.id)}`)[0]!.status).toBe('PENDING_FINALITY');
     // The checkout hold expires while the deposit is still confirming: capacity reconciles instead of being released.
-    await sql`update app.reservations set expires_at=now() - interval '1 minute' where order_id=${orderId}`;
+    await sql`update app.workload_claims set expires_at=now() - interval '1 minute' where order_id=${orderId}`;
     expect((await jobs.expireCheckoutHolds({ orderId })).outcomes).toEqual({ RECONCILING: 1 });
     expect((await command(buyer, { command: 'cancel', idempotency_key: key('c'), order_id: orderId })).status).toBe(400);
 
@@ -233,7 +233,7 @@ describe.skipIf(!RUN_DB)('CRY-03/04/05 — exact credit once, finality, outages 
     const indexed = await jobs.indexChainDeposits();
     expect(indexed.outcomes.CREDITED ?? 0).toBeGreaterThanOrEqual(1);
     expect(await orderRow(orderId)).toMatchObject({ status: 'FUNDED', payment_rail: 'CRYPTO' });
-    expect((await sql`select state from app.reservations where order_id=${orderId}`)[0]!.state).toBe('COMMITTED');
+    expect((await sql`select state from app.workload_claims where order_id=${orderId}`)[0]!.state).toBe('ACTIVE');
     await jobs.indexChainDeposits();
     expect((await sql`select count(*)::int as n from app.ledger_transactions where order_id=${orderId}`)[0]!.n).toBe(1);
   });

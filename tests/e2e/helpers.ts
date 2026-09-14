@@ -69,19 +69,28 @@ export function orderPath(page: Page) {
   return path;
 }
 
+/** The order eyebrow shows humanized labels, e.g. `Book order · Awaiting payment` for AWAITING_PAYMENT. */
 export async function expectOrderState(page: Page, state: string) {
-  await expect(page.getByText(new RegExp(`^(BOOK|REQUEST|AUCTION) order · ${state}$`))).toBeVisible();
+  const label = state.replaceAll('_', ' ').toLowerCase();
+  await expect(page.getByText(new RegExp(`^(Book|Request|Auction) order · ${label.charAt(0).toUpperCase()}${label.slice(1)}$`))).toBeVisible();
 }
 
-/** Each journey owns a newly published service and capacity pool, through the UI. */
+/**
+ * Each journey owns a newly published service, through the UI. creator_c's order limit is shared by every journey and
+ * persists in the dev DB, so it is raised first; orders left in progress by earlier runs would otherwise block booking.
+ */
 export async function createPublishedService(page: Page, purpose: string) {
   const title = `E2E ${purpose} ${uniqueSuffix()}`;
   await login(page, 'creator_c');
+  await visit(page, '/creator/services');
+  const limit = page.getByRole('region', { name: 'Order limit' });
+  await limit.getByLabel('Orders at a time').fill('100');
+  await submit(page, limit.getByRole('button', { name: 'Save limit', exact: true }));
+  await expect(page.getByText(/You take up to 100 orders at a time/)).toBeVisible();
   await visit(page, '/creator/services/new');
   await page.getByLabel('Service title', { exact: true }).fill(title);
   await page.getByLabel('What are you offering?').selectOption('CREATE');
   await page.getByLabel('Price (USD)', { exact: true }).fill('100');
-  await page.getByLabel('Available slots').fill('10');
   await page.getByLabel('Delivery time (hours)').fill('24');
   await page.getByLabel('Scope and deliverables').fill(`A complete launch narrative with one revision for ${title}.`);
   for (let n = 1; n <= 3; n++) {
@@ -92,10 +101,10 @@ export async function createPublishedService(page: Page, purpose: string) {
   await submit(page, page.getByRole('button', { name: 'Save draft service', exact: true }));
   // Service panels have no semantic container role; scope by their unique h3.
   const card = page.locator('div.panel').filter({ has: page.getByRole('heading', { name: title, exact: true }) });
-  await expect(card.getByText('DRAFT', { exact: true })).toBeVisible();
+  await expect(card.getByText('Draft', { exact: true })).toBeVisible();
   await submit(page, card.getByRole('button', { name: 'Publish', exact: true }));
-  await expect(card.getByText('PUBLISHED', { exact: true })).toBeVisible();
-  const path = await card.getByRole('link', { name: 'Open public page ↗', exact: true }).getAttribute('href');
+  await expect(card.getByText('Published', { exact: true })).toBeVisible();
+  const path = await card.getByRole('link', { name: 'Open public page ›', exact: true }).getAttribute('href');
   expect(path).toMatch(/^\/services\/[0-9a-f-]{36}$/);
   return { title, path: path! };
 }
@@ -111,7 +120,7 @@ export async function bookFromExplore(page: Page, title: string) {
   await expect(first.getByRole('heading', { name: title, exact: true })).toBeVisible();
   await first.click();
   await expect(page.getByRole('heading', { level: 1, name: title, exact: true })).toBeVisible();
-  await expect(page.getByRole('link', { name: `By ${creatorName} ↗` })).toBeVisible();
+  await expect(page.getByRole('link', { name: `By ${creatorName} ›` })).toBeVisible();
   await page.getByLabel('Tell the creator about your project').fill(`Project brief ${uniqueSuffix()}: Write a launch narrative for a developer tool with a clear audience and CTA.`);
   await page.getByRole('checkbox', { name: /I agree that version/ }).check();
   await submit(page, page.getByRole('button', { name: 'Reserve this service', exact: true }));

@@ -45,7 +45,7 @@ export function OrderNextStepPanel({ order: o, buyer, creator, actorId, reviews,
     {status === 'AWAITING_PAYMENT' && buyer && mockPaymentsEnabled() && !['AWAITING_DEPOSIT', 'PENDING_FINALITY'].includes(str(cryptoPayment?.status)) && <form method="post" action="/api/dev/mock-checkout" className="command-form">
       <input type="hidden" name="order_id" value={orderId} />
       <p className="muted">Local test provider. The order is funded only after the provider&apos;s signed confirmation is verified. No real funds move.</p>
-      <button className="button" type="submit">Pay with local test provider<span aria-hidden>↗</span></button>
+      <button className="button" type="submit">Pay with local test provider</button>
     </form>}
 
     {status === 'AWAITING_PAYMENT' && buyer && <CryptoPaymentPanel orderId={orderId} intent={cryptoPayment} options={cryptoOptions} route={route} />}
@@ -61,17 +61,17 @@ export function OrderNextStepPanel({ order: o, buyer, creator, actorId, reviews,
         <p className="muted">Review by {date(o.review_due_at)}. Approval queues the creator payout; the order completes when the provider confirms.</p>
       </CommandForm>
       {revisionsLeft > 0
-        ? <CommandForm command="revision" label="Request included revision" values={onDelivery} returnTo={route}>
+        ? <CommandForm variant="secondary" command="revision" label="Request included revision" values={onDelivery} returnTo={route}>
             <Field name="body" label={`What should change? (${revisionsLeft} revision left)`} type="textarea" required />
           </CommandForm>
         : <p className="muted">The included revision has been used. You can approve, message the creator or open a dispute.</p>}
     </>}
 
-    {ACTIVE_WORK.includes(status) && (buyer || creator) && <CommandForm command="dispute" label="Open a dispute" values={base} returnTo={route}>
+    {ACTIVE_WORK.includes(status) && (buyer || creator) && <CommandForm variant="danger" command="dispute" label="Open a dispute" values={base} returnTo={route}>
       <Field name="body" label="What went wrong?" type="textarea" required />
     </CommandForm>}
 
-    {['AWAITING_PAYMENT', 'FUNDED'].includes(status) && (buyer || creator) && <CommandForm command="cancel" label="Cancel order" values={base} returnTo={route}>
+    {['AWAITING_PAYMENT', 'FUNDED'].includes(status) && (buyer || creator) && <CommandForm variant="danger" command="cancel" label="Cancel order" values={base} returnTo={route}>
       <p className="muted">{status === 'FUNDED' ? 'Work has not started, so the full amount is refunded through the provider.' : 'The reserved capacity is released.'}</p>
     </CommandForm>}
 
@@ -79,16 +79,16 @@ export function OrderNextStepPanel({ order: o, buyer, creator, actorId, reviews,
       <strong>Cancellation requested · refund {money(cancellation.refund_amount_minor)}</strong>
       <p className="prewrap">{str(cancellation.reason)}</p>
       {isRequester
-        ? <CommandForm command="respond_cancellation" label="Withdraw request" values={{ request_id: str(cancellation.id), decision: 'withdraw' }} returnTo={route} />
+        ? <CommandForm variant="secondary" command="respond_cancellation" label="Withdraw request" values={{ request_id: str(cancellation.id), decision: 'withdraw' }} returnTo={route} />
         : <>
             <CommandForm command="respond_cancellation" label="Accept cancellation" values={{ request_id: str(cancellation.id), decision: 'accept' }} returnTo={route}>
               <p className="muted">The agreed refund is requested from the provider; any remainder is released to the creator.</p>
             </CommandForm>
-            <CommandForm command="respond_cancellation" label="Decline" values={{ request_id: str(cancellation.id), decision: 'reject' }} returnTo={route} />
+            <CommandForm variant="secondary" command="respond_cancellation" label="Decline" values={{ request_id: str(cancellation.id), decision: 'reject' }} returnTo={route} />
           </>}
     </div>}
 
-    {!cancellation && ACTIVE_WORK.includes(status) && (buyer || creator) && <CommandForm command="request_cancellation" label="Request cancellation" values={base} returnTo={route}>
+    {!cancellation && ACTIVE_WORK.includes(status) && (buyer || creator) && <CommandForm variant="danger" command="request_cancellation" label="Request cancellation" values={base} returnTo={route}>
       <p className="muted">Work has started, so both sides must agree on the refund amount.</p>
       <Field name="refund_amount" label={`Refund amount (USD, up to ${money(o.amount_minor)})`} required placeholder="0.00" />
       <Field name="reason" label="Reason" type="textarea" required />
@@ -101,10 +101,10 @@ export function OrderNextStepPanel({ order: o, buyer, creator, actorId, reviews,
       <Field name="body" label="What stood out?" type="textarea" required />
     </CommandForm>}
 
-    {status === 'CANCELLED' && str(o.payment_status) === 'REFUND_PENDING' && buyer && <CommandForm command="refund" label="Check refund with provider" values={base} returnTo={route}>
+    {status === 'CANCELLED' && str(o.payment_status) === 'REFUND_PENDING' && buyer && <CommandForm variant="secondary" command="refund" label="Check refund with provider" values={base} returnTo={route}>
       <p className="muted">The refund shows as completed only after the provider confirms it.</p>
     </CommandForm>}
 
-    <div className="fee-note">All state changes are server-authorized and versioned. The platform fee is 0%; any provider cost is tracked separately.</div>
+    <div className="fee-note">All state changes are server-authorized and versioned. Fees are recorded on the order; any provider cost is tracked separately.</div>
   </div>;
 }

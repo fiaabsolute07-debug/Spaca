@@ -9,7 +9,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { getOrderData } from '@/lib/read-model';
 import { recordOrderPageView } from '@/modules/orders/views';
-import { Badge, money, row, rows, str } from '@/components/ui';
+import { Badge, money, row, rows, str, humanize } from '@/components/ui';
 import { Notices } from '@/components/notices';
 import { PageHeading } from '@/components/page-heading';
 import { requireActorOrLoginPrompt } from '@/components/require-actor';
@@ -56,9 +56,9 @@ export default async function OrderPage({
     </div>
     <div className="section-heading">
       <PageHeading
-        eyebrow={`${str(o.source, 'BOOK')} order · ${str(o.status)}`}
+        eyebrow={`${humanize(str(o.source, 'BOOK'))} order · ${humanize(str(o.status))}`}
         title={str(o.title)}
-        description={`${str(o.buyer_name)} and ${str(o.creator_name)} · ${money(o.amount_minor)} · Platform fee $0.00`}
+        description={`${str(o.buyer_name)} and ${str(o.creator_name)} · ${money(o.amount_minor)} · Platform fee ${money(o.platform_fee_minor)}`}
       />
       <div className="inline-actions">
         <Badge>

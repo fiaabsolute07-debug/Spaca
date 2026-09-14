@@ -148,8 +148,9 @@ describe.skipIf(!RUN_DB)('§7.2 dispute resolution outcomes', () => {
     expect(await orderRow(partial.orderId)).toMatchObject({ status: 'CANCELLED', payment_status: 'PARTIALLY_REFUNDED', cancellation_refund_minor: '15000', settlement_status: 'READY' });
     expect((await jobs.releaseReadySettlements({ orderId: partial.orderId })).outcomes).toEqual({ RELEASE_REQUESTED: 1 });
     expect((await orderRow(partial.orderId)).settlement_status).toBe('RELEASED');
-    const [reservation] = await sql`select state from app.reservations where order_id=${partial.orderId}`;
-    expect(reservation!.state).toBe('CONSUMED');
+    // No work remains after the resolution, so the creator's place is freed (§6.1 rule 8, CAP-12).
+    const [claim] = await sql`select state from app.workload_claims where order_id=${partial.orderId}`;
+    expect(claim!.state).toBe('RELEASED');
   });
 });
 
@@ -299,7 +300,7 @@ describe.skipIf(!RUN_DB)('OPS-05 / moderation / queues', () => {
 
     expect((await command(moderator, { command: 'admin_suspend_user', idempotency_key: key('u'), user_id: moderator.id, reason })).status).toBe(403);
     expect((await command(moderator, { command: 'admin_suspend_user', idempotency_key: key('u'), user_id: creator.id, reason })).status).toBe(200);
-    expect((await command(creator, { command: 'create_service', idempotency_key: key('svc'), title: 'Blocked', description: 'Suspended accounts cannot create listings.', taxonomy: 'CREATE', price: '10', capacity: '1', turnaround_hours: '24' })).status).toBe(403);
+    expect((await command(creator, { command: 'create_service', idempotency_key: key('svc'), title: 'Blocked', description: 'Suspended accounts cannot create listings.', taxonomy: 'CREATE', price: '10', turnaround_hours: '24' })).status).toBe(403);
     expect((await command(moderator, { command: 'admin_reactivate_user', idempotency_key: key('u'), user_id: creator.id, reason })).status).toBe(200);
   });
 });

@@ -30,17 +30,19 @@ Local inventory from `runJobsOnce` in `src/modules/jobs/index.ts`, with W4-A evi
 | Order | Function | Report name | Evidence scope |
 |---|---|---|---|
 | 1 | reprocessWebhookInbox | reprocess_webhook_inbox | DB baseline replay |
-| 2 | reconcileProviderOperations | reconcile_provider_operations | DB/W2-B mock lookup/retry |
-| 3 | expireCheckoutHolds | expire_checkout_holds | DB baseline safe unpaid release |
-| 4 | expireHireOffers | expire_hire_offers | W3-R OFFERED expiry/budget release |
-| 5 | closeDueAuctions | close_due_auctions | **Verified local-db+mock: W4-A AUC-05/06 concurrent no-bid/winner close** |
-| 6 | autoAcceptDeliveries | auto_accept_deliveries | W1-B consent/view/window; W2-S file validity |
-| 7 | releaseReadySettlements | release_ready_settlements | DB/W1-B release then COMPLETED |
-| 8 | sendOrderReminders | order_reminders | W1-B due/review/overdue |
-| 9 | dispatchNotificationOutbox | dispatch_notification_outbox | DB dedupe, local sink, poison handling |
-| 10 | cleanupStorage | cleanup_storage | W2-S abandoned/unattached cleanup |
+| 2 | indexChainDeposits | chain_indexer | W5-C1 simulated devnet finality/reorg |
+| 3 | reconcileProviderOperations | reconcile_provider_operations | DB/W2-B mock lookup/retry |
+| 4 | expireCheckoutHolds | expire_checkout_holds | DB baseline safe unpaid release; W7-CAP workload claims |
+| 5 | expireHireOffers | expire_hire_offers | W3-R OFFERED expiry/budget release |
+| 6 | closeDueAuctions | close_due_auctions | **Verified local-db+mock: W4-A AUC-05/06 concurrent no-bid/winner close** |
+| 7 | autoAcceptDeliveries | auto_accept_deliveries | W1-B consent/view/window; W2-S file validity |
+| 8 | releaseReadySettlements | release_ready_settlements | DB/W1-B release then COMPLETED |
+| 9 | sendOrderReminders | order_reminders | W1-B due/review/overdue |
+| 10 | dispatchNotificationOutbox | dispatch_notification_outbox | DB dedupe, local sink, poison handling |
+| 11 | cleanupStorage | cleanup_storage | W2-S abandoned/unattached cleanup |
+| 12 | checkWorkloadCounters | check_workload_counters | W7-CAP: opens one HIGH case when `app.workload_counter_drift` has rows; never repairs |
 
-The accepted local baseline has **ten jobs**. `close_due_auctions` starts due SCHEDULED auctions and closes due ones: no bids → NO_BIDS; a winner gets one pending order with a 24 h hold, funding → SETTLED, unpaid expiry → WINNER_DEFAULTED. See [runbook 05](05-auction-ended-no-winner.md) for `cancel_auction`, `admin_invalidate_bid` and `GET /api/auctions/{id}/snapshot`. Re-read the inventory after P4 integration; these results do not verify future jobs or deployed scheduling.
+The local tree has **twelve jobs** (`extend_capacity_horizon` from W6-D was removed in W7-CAP). `close_due_auctions` starts due SCHEDULED auctions and closes due ones: no bids → NO_BIDS; a winner gets one pending order with a 24 h hold, funding → SETTLED, unpaid expiry → WINNER_DEFAULTED. See [runbook 05](05-auction-ended-no-winner.md) for `cancel_auction`, `admin_invalidate_bid` and `GET /api/auctions/{id}/snapshot`. Re-read the inventory after P4 integration; these results do not verify future jobs or deployed scheduling.
 
 Read each returned `reports` entry, `examined` and `outcomes`; HTTP success alone is insufficient. Batches/retry ages can leave pending work. Mock provider state is in memory: use the original process; Next restart loses provider history. `app.notifications` persists in-app delivery and EMAIL_SINK; it does not send email. `admin_retry_operation` takes the original operation ID but reconciles its associated order (potentially several operations), not a guaranteed single-row retry.
 

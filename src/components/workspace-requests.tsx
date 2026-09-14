@@ -24,12 +24,12 @@ export async function WorkspaceRequests({
         title="Open requests"
         description="Requests and applications stay scoped to the people involved."
       />
-      <Link className="button button-dark" href="/buyer/requests/new">Post a brief ↗</Link>
+      <Link className="button button-dark" href="/buyer/requests/new">Post a brief</Link>
     </div>
     {rows(d.requests).length ? <div className="cards">
       {rows(d.requests).map(r => <RequestCard key={str(r.id)} item={r} />)}
     </div> : <Empty title="No requests yet">
-      <Link href="/buyer/requests/new" className="text-link">Share a project brief →</Link>
+      <Link href="/buyer/requests/new" className="text-link">Share a project brief ›</Link>
     </Empty>}
   </main>;
 }

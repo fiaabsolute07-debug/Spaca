@@ -2,7 +2,7 @@ import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { randomUUID } from 'node:crypto';
 import type { Actor } from '@/lib/auth';
 import { MOCK_SIGNATURE_HEADER, MockPaymentProvider, signMockWebhook } from '@/modules/payments/providers';
-import { ORIGIN, RUN_DB, callRoute, commandInstant, createPublishedService, createUser, key, poolCounters, sessionState, type TestUser } from './harness';
+import { ORIGIN, RUN_DB, callRoute, commandInstant, createPublishedService, createUser, key, workloadCounters, sessionState, type TestUser } from './harness';
 
 vi.mock('next/headers', () => ({
   cookies: async () => {
@@ -30,10 +30,10 @@ const sleepUntil = async (date: Date) => new Promise((resolve) => setTimeout(res
 const auctionRow = async (id: string) => (await sql`select * from app.auctions where id=${id}`)[0]!;
 const reason = 'Moderator evidence recorded for the auction integration suite.';
 
-type Setup = { seller: TestUser; poolId: string; auctionId: string; endsAt: Date };
+type Setup = { seller: TestUser; creatorId: string; auctionId: string; endsAt: Date };
 async function auction(label: string, options: { endsInMs?: number; startsInMs?: number; buyNow?: string } = {}): Promise<Setup> {
   const seller = await createUser(`${label}-seller`);
-  const { serviceId, poolId } = await createPublishedService(command, seller, { capacity: 2 });
+  const { serviceId, creatorId } = await createPublishedService(command, seller, { capacity: 2 });
   // Whole seconds: the command parser drops sub-second precision.
   const endsAt = new Date(Math.ceil((Date.now() + (options.endsInMs ?? 3_600_000)) / 1000) * 1000);
   const created = await command(seller, {
@@ -42,7 +42,7 @@ async function auction(label: string, options: { endsInMs?: number; startsInMs?:
     starts_at: commandInstant(new Date(Date.now() + (options.startsInMs ?? -60_000))), ends_at: commandInstant(endsAt),
   });
   expect(created.status, JSON.stringify(created.body)).toBe(200);
-  return { seller, poolId, auctionId: String(created.body.id), endsAt };
+  return { seller, creatorId, auctionId: String(created.body.id), endsAt };
 }
 const bid = (actor: TestUser, auctionId: string, amount: string) => command(actor, { command: 'bid', idempotency_key: key('bid'), auction_id: auctionId, amount });
 const buyNow = (actor: TestUser, auctionId: string) => command(actor, { command: 'buy_now', idempotency_key: key('bn'), auction_id: auctionId });
@@ -67,16 +67,15 @@ afterAll(async () => {
 });
 
 describe.skipIf(!RUN_DB)('AUC-01..04/09 — schedule and bid', () => {
-  it('AUC-01: scheduling claims a week that still fits the work after the winner window, with a terms snapshot', async () => {
+  it('AUC-01: scheduling holds a place in the seller\'s order limit until the auction ends, with a terms snapshot', async () => {
     const setup = await auction('auc01', { buyNow: '300' });
-    const [claim] = await sql`select r.state,r.bucket_id,b.ends_at as bucket_ends_at from app.reservations r join app.capacity_buckets b on b.id=r.bucket_id where r.auction_id=${setup.auctionId}`;
-    expect(claim!.state).toBe('HELD');
+    const [claim] = await sql`select state,origin,units,expires_at from app.workload_claims where auction_id=${setup.auctionId}`;
+    expect(claim).toMatchObject({ state: 'HELD', origin: 'AUCTION', units: 1, expires_at: null });
     const row = await auctionRow(setup.auctionId);
     expect(row).toMatchObject({ status: 'LIVE', version: 1 });
     const terms = row.terms_snapshot as Record<string, unknown>;
     expect(terms).toMatchObject({ starting_price_minor: '10000', buy_now_price_minor: '30000', winner_payment_hours: 24, turnaround_hours: 72 });
-    expect(new Date(claim!.bucket_ends_at).getTime()).toBeGreaterThanOrEqual(setup.endsAt.getTime() + (24 + 72) * 3600_000);
-    expect((await poolCounters(setup.poolId)).reserved_units).toBe(1);
+    expect((await workloadCounters(setup.creatorId)).held_units).toBe(1);
 
     const { serviceId } = await createPublishedService(command, setup.seller, { capacity: 1 });
     const base = { command: 'create_auction', service_id: serviceId, starting_price: '100', minimum_increment: '10', starts_at: commandInstant(new Date(Date.now() - 60_000)) };
@@ -127,14 +126,14 @@ describe.skipIf(!RUN_DB)('AUC-01..04/09 — schedule and bid', () => {
 
 describe.skipIf(!RUN_DB)('AUC-05/06/10/14 — close, winner payment and default', () => {
   it('AUC-05: a no-bid auction closes once and releases its claim once', async () => {
-    const { auctionId, poolId } = await auction('auc05');
+    const { auctionId, creatorId } = await auction('auc05');
     await sql`update app.auctions set ends_at=now() - interval '1 second' where id=${auctionId}`;
     const reports = await Promise.all([jobs.closeDueAuctions({ auctionId }), jobs.closeDueAuctions({ auctionId })]);
     const outcomes = reports.flatMap((r) => Object.entries(r.outcomes));
     expect(outcomes.filter(([name]) => name === 'NO_BIDS').reduce((n, [, count]) => n + count, 0)).toBe(1);
     expect(await auctionRow(auctionId)).toMatchObject({ status: 'NO_BIDS' });
-    expect((await sql`select state from app.reservations where pool_id=${poolId}`).map((r) => r.state)).toEqual(['RELEASED']);
-    expect((await poolCounters(poolId)).reserved_units).toBe(0);
+    expect((await sql`select state from app.workload_claims where creator_id=${creatorId}`).map((r) => r.state)).toEqual(['RELEASED']);
+    expect((await workloadCounters(creatorId)).held_units).toBe(0);
     expect((await jobs.closeDueAuctions({ auctionId })).examined).toBe(0);
   });
 
@@ -161,7 +160,7 @@ describe.skipIf(!RUN_DB)('AUC-05/06/10/14 — close, winner payment and default'
     const dueIn = new Date(row.payment_due_at).getTime() - Date.now();
     expect(dueIn).toBeGreaterThan(23.9 * 3600_000);
     expect(dueIn).toBeLessThanOrEqual(24 * 3600_000);
-    expect((await sql`select expires_at from app.reservations where order_id=${String(orders[0]!.id)}`)[0]!.expires_at).toEqual(row.payment_due_at);
+    expect((await sql`select expires_at from app.workload_claims where order_id=${String(orders[0]!.id)}`)[0]!.expires_at).toEqual(row.payment_due_at);
 
     expect((await getAuctionData(asActor(high), setup.auctionId))!.viewer).toMatchObject({ standing: 'WON_PAY', order_id: String(orders[0]!.id) });
     expect((await getAuctionData(asActor(low), setup.auctionId))!.viewer).toMatchObject({ standing: 'LOST' });
@@ -183,13 +182,13 @@ describe.skipIf(!RUN_DB)('AUC-05/06/10/14 — close, winner payment and default'
     const intent = await sql.begin((tx) => funding.ensureFundingIntent(tx, winner.id, orderId));
     if (intent.state !== 'READY') throw new Error('intent not ready');
 
-    await sql`update app.reservations set expires_at=now() - interval '1 minute' where order_id=${orderId}`;
+    await sql`update app.workload_claims set expires_at=now() - interval '1 minute' where order_id=${orderId}`;
     expect((await jobs.expireCheckoutHolds({ orderId })).outcomes).toEqual({ RELEASED: 1 });
     expect((await provider.getFundingStatus(intent.reference)).status).toBe('CANCELED');
     expect(await auctionRow(setup.auctionId)).toMatchObject({ status: 'WINNER_DEFAULTED' });
     expect((await sql`select status from app.auction_purchase_intents where auction_id=${setup.auctionId}`).map((r) => r.status)).toEqual(['DEFAULTED']);
     expect((await sql`select count(*)::int as n from app.orders where source='AUCTION' and source_ref=${setup.auctionId}`)[0]!.n).toBe(1);
-    expect((await poolCounters(setup.poolId)).reserved_units).toBe(0);
+    expect((await workloadCounters(setup.creatorId)).held_units).toBe(0);
 
     const body = new TextEncoder().encode(JSON.stringify({ id: `evt_late_${key('e')}`, type: 'funding.succeeded', mode: 'test', account: 'acct_mock_local', created: new Date().toISOString(),
       data: { objectType: 'funding', reference: intent.reference, fundingReference: intent.reference, operationId: intent.operationId, orderId, status: 'SUCCEEDED', amount: '12000', currency: 'USD', providerFee: '0' } }));
@@ -198,7 +197,7 @@ describe.skipIf(!RUN_DB)('AUC-05/06/10/14 — close, winner payment and default'
     expect((await sql`select status from app.orders where id=${orderId}`)[0]!.status).toBe('CANCELLED');
     expect(await auctionRow(setup.auctionId)).toMatchObject({ status: 'WINNER_DEFAULTED' });
     expect((await sql`select count(*)::int as n from app.reconciliation_cases where order_id=${orderId} and kind='LATE_FUNDING'`)[0]!.n).toBe(1);
-    expect((await poolCounters(setup.poolId)).reserved_units).toBe(0);
+    expect((await workloadCounters(setup.creatorId)).held_units).toBe(0);
   }, 20_000);
 });
 
@@ -240,20 +239,20 @@ describe.skipIf(!RUN_DB)('AUC-07/08/11/12/13 — Buy Now, invalidation, cancel a
   });
 
   it('AUC-11: an expired Buy Now checkout ends the auction; it never silently reopens', async () => {
-    const { auctionId, poolId } = await auction('auc11', { buyNow: '300' });
+    const { auctionId, creatorId } = await auction('auc11', { buyNow: '300' });
     const [buyer, bidder] = await Promise.all([createUser('auc11-buyer'), createUser('auc11-bidder')]);
     const bought = await buyNow(buyer, auctionId);
     expect(bought.status).toBe(200);
     const orderId = String(bought.body.id);
-    const hold = (await sql`select expires_at from app.reservations where order_id=${orderId}`)[0]!.expires_at;
+    const hold = (await sql`select expires_at from app.workload_claims where order_id=${orderId}`)[0]!.expires_at;
     expect(new Date(hold).getTime() - Date.now()).toBeLessThanOrEqual(15 * 60_000 + 5_000);
-    await sql`update app.reservations set expires_at=now() - interval '1 minute' where order_id=${orderId}`;
+    await sql`update app.workload_claims set expires_at=now() - interval '1 minute' where order_id=${orderId}`;
     await jobs.expireCheckoutHolds({ orderId });
     expect(await auctionRow(auctionId)).toMatchObject({ status: 'WINNER_DEFAULTED' });
     expect((await sql`select kind,status from app.auction_purchase_intents where auction_id=${auctionId}`)[0]).toMatchObject({ kind: 'BUY_NOW', status: 'EXPIRED' });
     expect((await bid(bidder, auctionId, '100')).status).toBe(422);
     expect((await buyNow(bidder, auctionId)).status).toBe(422);
-    expect((await poolCounters(poolId)).reserved_units).toBe(0);
+    expect((await workloadCounters(creatorId)).held_units).toBe(0);
     await expect(sql`update app.auctions set status='LIVE' where id=${auctionId}`).rejects.toThrow(/cannot move/);
   });
 

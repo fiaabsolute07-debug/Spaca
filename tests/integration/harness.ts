@@ -48,11 +48,17 @@ export async function callRoute(
   return { status: response.status, body: text ? (JSON.parse(text) as Record<string, unknown>) : {} };
 }
 
-/** Capacity counters now live on weekly buckets (drizzle/0003); sum them per pool. */
-export async function poolCounters(poolId: string): Promise<{ reserved_units: number; committed_units: number }> {
-  const [row] = await sql<{ reserved_units: number; committed_units: number }[]>`select coalesce(sum(reserved_units),0)::int as reserved_units,
-    coalesce(sum(committed_units),0)::int as committed_units from app.capacity_buckets where pool_id=${poolId}`;
-  return row!;
+/** The creator's active-order counters (drizzle/0012); zeros before the creator's first claim. */
+export async function workloadCounters(creatorId: string): Promise<{ held_units: number; active_units: number; max_active_units: number; accepting_orders: boolean }> {
+  const [row] = await sql<{ held_units: number; active_units: number; max_active_units: number; accepting_orders: boolean }[]>`select held_units,active_units,max_active_units,accepting_orders
+    from app.creator_workloads where creator_id=${creatorId}`;
+  return row ?? { held_units: 0, active_units: 0, max_active_units: 3, accepting_orders: true };
+}
+
+/** Invariant after every scenario: counters equal the sum of claims for every creator. */
+export async function workloadDrift(): Promise<number> {
+  const [row] = await sql<{ n: number }[]>`select count(*)::int as n from app.workload_counter_drift`;
+  return row!.n;
 }
 
 export const key = (label: string) => `it-${runId}-${label}-${randomUUID().slice(0, 8)}`;
@@ -63,8 +69,8 @@ export const commandInstant = (date: Date) => date.toISOString().slice(0, 19);
 export async function createPublishedService(
   command: (actor: TestUser, fields: Record<string, string>) => Promise<JsonResult>,
   creator: TestUser,
-  options: { capacity?: number; price?: string; taxonomy?: string } = {},
-): Promise<{ serviceId: string; poolId: string }> {
+  options: { capacity?: number; price?: string; taxonomy?: string; unitsPerOrder?: number } = {},
+): Promise<{ serviceId: string; creatorId: string }> {
   const created = await command(creator, {
     command: 'create_service',
     idempotency_key: key('create-service'),
@@ -72,7 +78,7 @@ export async function createPublishedService(
     description: 'A complete integration-test scope with deliverables and exclusions.',
     taxonomy: options.taxonomy ?? 'CREATE',
     price: options.price ?? '650',
-    capacity: String(options.capacity ?? 1),
+    ...(options.unitsPerOrder ? { units_per_order: String(options.unitsPerOrder) } : {}),
     turnaround_hours: '72',
     sample_url_1: 'https://example.com/1',
     sample_title_1: 'Sample one',
@@ -85,6 +91,8 @@ export async function createPublishedService(
   const serviceId = String(created.body.id);
   const published = await command(creator, { command: 'publish_service', idempotency_key: key('publish'), service_id: serviceId });
   if (published.status !== 200) throw new Error(`publish_service failed: ${JSON.stringify(published.body)}`);
-  const [service] = await sql<{ pool_id: string }[]>`select pool_id from app.services where id=${serviceId}`;
-  return { serviceId, poolId: service!.pool_id };
+  // `capacity` is the creator's active-order limit, shared by all of their services.
+  const limited = await command(creator, { command: 'set_workload_limit', idempotency_key: key('limit'), max_active_units: String(options.capacity ?? 1) });
+  if (limited.status !== 200) throw new Error(`set_workload_limit failed: ${JSON.stringify(limited.body)}`);
+  return { serviceId, creatorId: creator.id };
 }

@@ -23,7 +23,7 @@ export async function requireActorOrLoginPrompt(route: string, query: Query): Pr
     prompt: <main className="container">
       {notices}
       <Empty title="Your workspace is one login away">
-        <Link className="button button-dark" href={`/sign-in?return_to=${encodeURIComponent(route)}`}>Log in to continue ↗</Link>
+        <Link className="button button-dark" href={`/sign-in?return_to=${encodeURIComponent(route)}`}>Log in to continue</Link>
       </Empty>
     </main>
   };

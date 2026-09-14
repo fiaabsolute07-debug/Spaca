@@ -23,7 +23,7 @@ export default async function NewServicePage({
     <PageHeading
       eyebrow="Creator setup"
       title="Offer a clear next step."
-      description="A service needs a real scope, price, samples, and capacity before it can be published."
+      description="A service needs a real scope, price, and samples before it can be published. Every service shares your active order limit."
     />
     <div className="panel">
       <CommandForm command="create_service" label="Save draft service" returnTo="/creator/services">
@@ -36,7 +36,6 @@ export default async function NewServicePage({
           />
           <CategoryField />
           <Field name="price" label="Price (USD)" type="number" required placeholder="500" />
-          <Field name="capacity" label="Available slots" type="number" value="3" required />
           <Field name="turnaround_hours" label="Delivery time (hours)" type="number" value="72" required />
           <Field name="niche" label="Niche or specialty" placeholder="Brand strategy, video, design…" />
         </div>

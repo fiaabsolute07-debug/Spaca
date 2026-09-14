@@ -38,7 +38,7 @@ export function OrderDeliveryPanel({
         {str(item.body)}
       </p>
       <FileList files={attachedTo(files, str(item.id))} />
-      {Boolean(item.url) && <a className="text-link" href={str(item.url)} target="_blank" rel="noreferrer">Open link ↗</a>}
+      {Boolean(item.url) && <a className="text-link" href={str(item.url)} target="_blank" rel="noreferrer">Open link ›</a>}
     </div>) : <p className="muted">The creator has not delivered work yet.</p>}
     {creator && ['IN_PROGRESS', 'REVISION_REQUESTED'].includes(str(o.status)) && <CommandForm
       command="deliver"

@@ -20,7 +20,7 @@ export function PolicyScreen({
           : route === '/privacy' ? 'Your project stays yours.'
           : route === '/refund-policy' ? 'Refunds & revisions'
           : route === '/reset-password' ? 'Account recovery'
-          : 'Working together on Capacity'
+          : 'Working together on spaca'
       }
     />
     <div className="panel">
@@ -31,7 +31,7 @@ export function PolicyScreen({
           Open your order workspace to send a message or raise a dispute. This local
           environment has no external support inbox and sends no email.
         </p>
-        <Link className="button button-dark" href="/dashboard">Open your workspace ↗</Link>
+        <Link className="button button-dark" href="/dashboard">Open your workspace</Link>
       </> : route === '/reset-password' ? <p>
         Email recovery requires a configured authentication email provider. It is not
         enabled in this local sandbox. Use a separate test account to continue local
@@ -41,10 +41,10 @@ export function PolicyScreen({
           This environment is for local product testing. These are product operating
           rules, not reviewed production legal terms.
         </p>
-        <h3>Clear scope and zero platform fees</h3>
+        <h3>Clear scope and disclosed fees</h3>
         <p>
           Review the service scope, delivery period, included revisions, and amount
-          before booking. The platform fee is always 0%. Third-party payment costs are
+          before booking. Any platform fee is shown before you pay. Third-party payment costs are
           separate and must be disclosed before any live transaction.
         </p>
         <h3>Delivery, review, and refunds</h3>

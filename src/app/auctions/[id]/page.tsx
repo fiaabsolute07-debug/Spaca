@@ -37,7 +37,7 @@ export default async function AuctionPage({ params, searchParams }: PageProps<{ 
             <li><span>Opens</span><strong>{date(a.starts_at)}</strong></li>
             <li><span>Winner has to fund within</span><strong>24 hours</strong></li>
           </ul>
-          <Link className="text-link" href={`/services/${str(a.service_id)}`}>Read the full service scope and samples ↗</Link>
+          <Link className="text-link" href={`/services/${str(a.service_id)}`}>Read the full service scope and samples ›</Link>
         </div>
         <div className="panel">
           <h2>Bid history</h2>
@@ -49,7 +49,7 @@ export default async function AuctionPage({ params, searchParams }: PageProps<{ 
       </div>
       <aside className="panel">
         <h2>{seller ? 'Your auction' : 'Make your offer'}</h2>
-        {!actor ? <Link className="button button-dark" href="/sign-in">Log in to bid ↗</Link> : seller ? <>
+        {!actor ? <Link className="button button-dark" href="/sign-in">Log in to bid</Link> : seller ? <>
           {['SCHEDULED', 'LIVE'].includes(str(a.status)) && !a.first_valid_bid_at && <CommandForm command="cancel_auction" label="Cancel before any bid" values={{ auction_id: str(a.id) }} returnTo={route}>
             <Field name="reason" label="Reason (optional)" />
           </CommandForm>}

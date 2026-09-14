@@ -1,4 +1,4 @@
-import { date, money, num, str, type Row } from '../ui';
+import { date, money, num, str, type Row, humanize } from '../ui';
 
 export function OrderBriefPanel({ order: o }: { order: Row }) {
   return <div className="panel">
@@ -11,7 +11,7 @@ export function OrderBriefPanel({ order: o }: { order: Row }) {
       <li><span>Review deadline</span><strong>{date(o.review_due_at)}</strong></li>
       <li><span>Included revisions</span><strong>{num(o.revision_count)} / {num(o.revision_limit)} used</strong></li>
       <li><span>Auto-accept after review window</span><strong>{o.auto_accept_consent ? 'Agreed at checkout' : 'Not agreed'}</strong></li>
-      <li><span>Settlement</span><strong>{str(o.settlement_status, 'NOT_READY')}</strong></li>
+      <li><span>Settlement</span><strong>{humanize(str(o.settlement_status, 'NOT_READY'))}</strong></li>
       {o.cancellation_refund_minor != null && <li><span>Agreed cancellation refund</span><strong>{money(o.cancellation_refund_minor)}</strong></li>}
     </ul>
   </div>;

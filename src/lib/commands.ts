@@ -25,7 +25,7 @@ export type CommandErrorCode =
   | 'VERSION_CONFLICT'
   | 'IDEMPOTENCY_CONFLICT'
   | 'CAPACITY_UNAVAILABLE'
-  | 'CAPACITY_REDUCTION_CONFLICT'
+  | 'NOT_ACCEPTING_ORDERS'
   | 'SLOT_EXPIRED'
   | 'BRIEF_INCOMPLETE'
   | 'ORDER_STATE_CONFLICT'
@@ -62,7 +62,7 @@ export function statusForCode(code: CommandErrorCode): number {
     case 'VERSION_CONFLICT':
     case 'IDEMPOTENCY_CONFLICT':
     case 'CAPACITY_UNAVAILABLE':
-    case 'CAPACITY_REDUCTION_CONFLICT':
+    case 'NOT_ACCEPTING_ORDERS':
     case 'ORDER_STATE_CONFLICT':
     case 'QUOTE_CHANGED':
     case 'BUY_NOW_UNAVAILABLE':

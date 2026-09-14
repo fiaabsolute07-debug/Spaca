@@ -10,7 +10,7 @@ export function Notices({
     {query.error && <div role="alert" className="notice error">
       {String(query.error)}
       {" "}
-      <Link href="/support">Get help →</Link>
+      <Link href="/support">Get help ›</Link>
     </div>}
     {query.message && <div role="status" className="notice success">
       {String(query.message)}

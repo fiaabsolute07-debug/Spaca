@@ -59,7 +59,7 @@ export default async function CreatorPage({
       {rows(d.samples).length ? rows(d.samples).map(s => <div className="record" key={str(s.url)}>
         <a className="text-link" href={str(s.url)} target="_blank" rel="noreferrer">
           {str(s.title)}
-          {" ↗"}
+          {" ›"}
         </a>
         <p>
           {str(s.description)}

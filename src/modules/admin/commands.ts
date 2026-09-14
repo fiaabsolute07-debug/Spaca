@@ -4,7 +4,6 @@
  * There is deliberately no "force paid", "set balance" or "edit order state" command.
  */
 import { CommandError, expectedVersion, money, orderEvent, text, uuid, type CommandHandler, type Row } from '@/lib/commands';
-import { consumeOrderReservation } from '@/modules/capacity';
 import { enqueueNotification } from '@/modules/notifications/enqueue';
 import { approveOrder } from '@/modules/orders/commands';
 import { latestDelivery, termsOf } from '@/modules/orders/lifecycle';
@@ -59,8 +58,7 @@ const resolveDispute: CommandHandler = async ({ tx, actor, form }) => {
     refund = outcome === 'REFUND_FULL' ? amount : money(text(form, 'refund_amount'), 'refund_amount');
     if (refund <= 0n || refund > amount) throw new CommandError('Refund must be greater than 0 and at most the amount paid');
     if (outcome === 'REFUND_PARTIAL' && refund === amount) throw new CommandError('Use REFUND_FULL for the full amount');
-    // Work was underway, so its capacity stays consumed (CAP-12).
-    await consumeOrderReservation(tx, orderId);
+    // CANCELLED frees the creator's unit through the order status trigger (§6.1 rule 8, CAP-12).
     await tx`update app.orders set status='CANCELLED',cancelled_at=now(),status_before_dispute=null,
       cancellation_refund_minor=${outcome === 'REFUND_PARTIAL' ? refund.toString() : null},payment_status='REFUND_PENDING',
       settlement_status=${outcome === 'REFUND_PARTIAL' ? 'READY' : 'NOT_READY'},version=version+1,updated_at=now() where id=${orderId}`;

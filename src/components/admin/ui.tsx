@@ -29,7 +29,7 @@ export function AdminPage({ actor, route, query, title, description, children }:
 }) {
   return <main className="container admin-console">
     <Link className="text-link" href="/dashboard">← Workspace</Link>
-    <PageHeading eyebrow="Operator console · 0% platform fee" title={title} description={description} />
+    <PageHeading eyebrow="Operator console" title={title} description={description} />
     <AdminNav actor={actor} route={route} />
     <Notices query={query} />
     {children}
@@ -66,7 +66,7 @@ export function SelectField({ name, label, options, value }: {
 
 export function OrderLink({ id }: { id: unknown }) {
   return id ? <Link className="text-link" href={`/admin/orders/${encodeURIComponent(str(id))}`}>
-    Order #{str(id).slice(0, 8)} ↗
+    Order #{str(id).slice(0, 8)} ›
   </Link> : <span className="muted">No linked order</span>;
 }
 

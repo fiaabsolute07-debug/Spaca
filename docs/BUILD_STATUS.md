@@ -5,7 +5,7 @@ Updated 2026-09-14. Verified baseline: **94792af** (W5-C1) plus the C5 E2E run. 
 | Phase | Official status | Scope / limits |
 |---|---|---|
 | P0 | done-local | Foundation, local auth/fixtures, PostgreSQL, contracts and operational scripts; clean-clone/frozen CI still unverified. |
-| P1A | done-local | Versioned supply, immutable sold terms, weekly shared capacity; remaining per-ID gaps in the ledger. |
+| P1A | done-local | Versioned supply, immutable sold terms, per-creator active-order limit with pause (W7-CAP); remaining per-ID gaps in the ledger. |
 | P1B | done-local with mock provider | Funding, lifecycle, delivery/revision, auto-accept, mutual cancellation, reviews and operator refunds; sandbox/live payments **BLOCKED**. |
 | P1C | docs done | Readiness, runbooks, staging/restore/rollback plans; staging/live **BLOCKED**. Local operator console implemented. |
 | P2 | done-local | Versioned private quotes, budget reservations, multi-hire and campaign view; **REQ-11 PARTIAL** (no comparison sort/filter). |
@@ -21,7 +21,7 @@ PostgreSQL runs and DB suites pass in **Claude's shell**. The Codex managed runn
 Implemented local system:
 
 - `MockPaymentProvider`: in-memory provider state with durable application journals/inbox/ledger; local funding through verified mock webhooks or provider-API reconciliation facts. `sandbox_pay` is rejected (403), never a usable funding command. Provider calls still occur inside DB transactions; split journal commit/remote effects before a real adapter. Restarting Next loses mock provider history.
-- Capacity counters live on `app.capacity_buckets`, derived by triggers from `app.reservations`: HELD/RECONCILING reserve; COMMITTED/CONSUMED commit. Pool → bucket → order is the capacity lock contract; Claude reviewed order-first worker consistency in [C3 review](evidence/claude-review-C3.md); dedicated funding/expiry race coverage remains. No manual counter repair.
+- Capacity counters live on `app.creator_workloads`, derived by triggers from `app.workload_claims`: HELD/EXPIRY_RECONCILING are held, ACTIVE is active; the claim insert trigger refuses claims above the limit or while paused, and the order status trigger frees units on APPROVED/COMPLETED/CANCELLED/REFUNDED. Lock contract: aggregate → workload → order ([W7-CAP](evidence/claude-W7-CAP.md)); dedicated funding/expiry race coverage remains. No manual counter repair; `app.workload_counter_drift` must be empty.
 - `LocalStorageProvider`: upload intent → signed PUT → finalize with size/signature/SHA-256 checks; invalid files quarantined, private downloads expire after five minutes. **No antivirus and no Supabase Storage adapter**; signature CLEAN does not mean malware-free.
 - In-process jobs run through `POST /api/dev/jobs`, optionally polled by `pnpm jobs:dev`; durable rows survive, the mock provider does not. Ten accepted local jobs, including W4-A `close_due_auctions` (AUC-05/06), are listed in [runbooks](runbooks/README.md). **Inngest integration and reconcile:dry-run are NOT IMPLEMENTED**. External email is sink-only.
 - Operator `/admin` pages use active `app.user_roles` grants, required reasons and append-only `app.audit_log`. Checkout/bid/payout creation kill switches preserve webhooks, refunds and reconciliation; enabling live also requires an environment gate and G6 readiness.

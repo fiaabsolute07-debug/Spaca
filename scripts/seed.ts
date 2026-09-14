@@ -12,7 +12,6 @@ const sql = postgres(url, { max: 1, connect_timeout: 10 });
 
 const creator = FIXTURE_PERSONAS.creator_c;
 const LOCAL_DEVNET = { chainId: 1337001, settlement: '0x5e7713e00000000000000000000000000000c0de', usdcToken: '0x05dc000000000000000000000000000000000006' };
-const poolId = '20000000-0000-4000-8000-000000000001';
 const serviceId = '30000000-0000-4000-8000-000000000001';
 
 // Password sign-in exists only for the two original local fixtures; every persona can use POST /api/dev/session.
@@ -41,14 +40,13 @@ try {
     }
     await tx`update app.profiles set bio='Brand stories, launch writing, and editorial systems for thoughtful teams.',niche='Launch writing',avatar_color='#e7bda6',social_url='https://example.com/ari'
       where user_id=${creator.id}`;
-    await tx`insert into app.capacity_pools (id,creator_id,name,timezone,weekly_units)
-      values (${poolId},${creator.id},'Launch writing weekly capacity','Asia/Ho_Chi_Minh',5) on conflict (id) do nothing`;
+    await tx`insert into app.creator_workloads (creator_id,max_active_units) values (${creator.id},5) on conflict (creator_id) do nothing`;
     const [existingService] = await tx<{ id: string }[]>`select id from app.services where id=${serviceId}`;
     if (!existingService) {
-      await tx`insert into app.services (id,creator_id,pool_id,title,description,taxonomy,price_minor,currency,turnaround_hours,revision_limit,status)
-        values (${serviceId},${creator.id},${poolId},'Launch story and landing page copy','A focused launch narrative, landing page structure, and conversion-minded copy for a product people should understand quickly.','CREATE',65000,'USD',72,1,'DRAFT')`;
-      const [version] = await tx<{ id: string }[]>`insert into app.service_versions (service_id,version,title,description,taxonomy,price_minor,currency,turnaround_hours,revision_limit,pool_id,created_by)
-        select id,1,title,description,taxonomy,price_minor,currency,turnaround_hours,revision_limit,pool_id,creator_id from app.services where id=${serviceId} returning id`;
+      await tx`insert into app.services (id,creator_id,title,description,taxonomy,price_minor,currency,turnaround_hours,revision_limit,status)
+        values (${serviceId},${creator.id},'Launch story and landing page copy','A focused launch narrative, landing page structure, and conversion-minded copy for a product people should understand quickly.','CREATE',65000,'USD',72,1,'DRAFT')`;
+      const [version] = await tx<{ id: string }[]>`insert into app.service_versions (service_id,version,title,description,taxonomy,price_minor,currency,turnaround_hours,revision_limit,units_per_order,created_by)
+        select id,1,title,description,taxonomy,price_minor,currency,turnaround_hours,revision_limit,units_per_order,creator_id from app.services where id=${serviceId} returning id`;
       await tx`update app.services set status='PUBLISHED',published_version_id=${version!.id} where id=${serviceId}`;
     }
     const [{ count }] = await tx<{ count: number }[]>`select count(*)::int as count from app.samples where creator_id=${creator.id}`;

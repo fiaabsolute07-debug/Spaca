@@ -29,7 +29,7 @@ export default async function RequestsPage({
           title="Bring your next project to life."
           description="Share what you need. Creators bring their approach, samples, and quote."
         />
-        <Link className="button button-dark" href="/buyer/requests/new">Post a brief ↗</Link>
+        <Link className="button button-dark" href="/buyer/requests/new">Post a brief</Link>
       </div>
       <div className="cards">
         {rows(data.requests).length ? (

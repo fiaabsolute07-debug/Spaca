@@ -10,11 +10,11 @@ export function RequestCard({
   return <Link className="panel" href={`/requests/${str(r.id)}`}>
     <div className="inline-actions">
       <Badge>
-        {str(r.taxonomy)}
+        {str(r.taxonomy).toLowerCase()}
       </Badge>
-      <span className="muted">
-        {str(r.status)}
-      </span>
+      <Badge>
+        {str(r.status).toLowerCase()}
+      </Badge>
     </div>
     <h3>
       {str(r.title)}

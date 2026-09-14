@@ -1,6 +1,6 @@
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MOCK_SIGNATURE_HEADER, MockPaymentProvider, signMockWebhook, type MockPaymentProviderOptions } from '@/modules/payments/providers';
-import { poolCounters, RUN_DB, ORIGIN, callRoute, createPublishedService, createUser, key, sessionState, type TestUser } from './harness';
+import { workloadCounters, RUN_DB, ORIGIN, callRoute, createPublishedService, createUser, key, sessionState, type TestUser } from './harness';
 
 vi.mock('next/headers', () => ({
   cookies: async () => {
@@ -34,10 +34,10 @@ async function postWebhook(rawBody: Uint8Array, headers: Headers) {
 async function bookedOrder(label: string, options: { capacity?: number } = {}) {
   const creator = await createUser(`${label}-creator`);
   const buyer = await createUser(`${label}-buyer`);
-  const { serviceId, poolId } = await createPublishedService(command, creator, { capacity: options.capacity ?? 1 });
+  const { serviceId, creatorId } = await createPublishedService(command, creator, { capacity: options.capacity ?? 1 });
   const booked = await command(buyer, { command: 'book', idempotency_key: key('book'), service_id: serviceId, brief: 'Payment integration brief with enough detail to start.' });
   if (booked.status !== 200) throw new Error(JSON.stringify(booked.body));
-  return { creator, buyer, serviceId, poolId, orderId: String(booked.body.id) };
+  return { creator, buyer, serviceId, creatorId, orderId: String(booked.body.id) };
 }
 
 const orderRow = async (orderId: string) => (await sql`select * from app.orders where id=${orderId}`)[0]!;
@@ -92,7 +92,7 @@ describe.skipIf(!RUN_DB)('TEST_PLAN 4 + PAY-02 — provider funding then full or
   it('funds through a verified webhook with zero platform fee, then walks the lifecycle', async () => {
     vi.stubEnv('MOCK_PROVIDER_FEE_BPS', '300');
     try {
-      const { creator, buyer, poolId, orderId } = await bookedOrder('life');
+      const { creator, buyer, creatorId, orderId } = await bookedOrder('life');
       expect((await command(creator, { command: 'start', idempotency_key: key('s'), order_id: orderId })).status).toBe(409); // ORD-02: payment pending
       expect((await command(buyer, { command: 'approve', idempotency_key: key('a'), order_id: orderId, delivery_version: '1' })).status).toBe(409);
 
@@ -100,10 +100,10 @@ describe.skipIf(!RUN_DB)('TEST_PLAN 4 + PAY-02 — provider funding then full or
       expect(paid.status).toBe(200);
       const order = await orderRow(orderId);
       expect(order).toMatchObject({ status: 'FUNDED', payment_status: 'SUCCEEDED', amount_minor: '65000', platform_fee_minor: '0', provider_fee_minor: '1950' });
-      const pool = await poolCounters(poolId);
-      expect(pool).toMatchObject({ reserved_units: 0, committed_units: 1 });
-      const [reservation] = await sql`select state from app.reservations where order_id=${orderId}`;
-      expect(reservation!.state).toBe('COMMITTED');
+      const workload = await workloadCounters(creatorId);
+      expect(workload).toMatchObject({ held_units: 0, active_units: 1 });
+      const [claim] = await sql`select state from app.workload_claims where order_id=${orderId}`;
+      expect(claim!.state).toBe('ACTIVE');
 
       expect(await ledgerBalance(orderId)).toEqual([{ currency: 'USD', total: '0', entries: 3 }]);
       const accounts = await sql`select e.account,e.amount_minor from app.ledger_entries e join app.ledger_transactions t on t.id=e.transaction_id where t.order_id=${orderId} order by e.account`;
@@ -263,14 +263,14 @@ describe.skipIf(!RUN_DB)('cancellation, late funding and refunds', () => {
   });
 
   it('cancels the open intent before releasing capacity; late funds open a case instead of funding', async () => {
-    const { buyer, poolId, orderId } = await bookedOrder('late');
+    const { buyer, creatorId, orderId } = await bookedOrder('late');
     const intent = await sql.begin((tx) => funding.ensureFundingIntent(tx, buyer.id, orderId));
     if (intent.state !== 'READY') throw new Error('intent not ready');
     expect((await command(buyer, { command: 'cancel', idempotency_key: key('c'), order_id: orderId })).status).toBe(200);
     expect((await provider.getFundingStatus(intent.reference)).status).toBe('CANCELED');
     expect(await orderRow(orderId)).toMatchObject({ status: 'CANCELLED' });
-    const pool = await poolCounters(poolId);
-    expect(pool!.reserved_units).toBe(0);
+    const workload = await workloadCounters(creatorId);
+    expect(workload.held_units).toBe(0);
 
     const late = forgeSignedEvent('funding.succeeded', {
       objectType: 'funding', reference: intent.reference, fundingReference: intent.reference, operationId: intent.operationId, orderId, status: 'SUCCEEDED', amount: '65000', currency: 'USD', providerFee: '0',
@@ -283,12 +283,12 @@ describe.skipIf(!RUN_DB)('cancellation, late funding and refunds', () => {
 
   it('full refund is REFUNDED only after the provider confirms, and applies once', async () => {
     useProvider({ refundSettlement: 'pending' });
-    const { buyer, poolId, orderId } = await bookedOrder('refund');
+    const { buyer, creatorId, orderId } = await bookedOrder('refund');
     expect((await pay(buyer, orderId)).status).toBe(200);
     expect((await command(buyer, { command: 'cancel', idempotency_key: key('c'), order_id: orderId })).status).toBe(200);
     expect(await orderRow(orderId)).toMatchObject({ status: 'CANCELLED', payment_status: 'REFUND_PENDING' });
-    const pool = await poolCounters(poolId);
-    expect(pool!.committed_units).toBe(0);
+    const workload = await workloadCounters(creatorId);
+    expect(workload.active_units).toBe(0);
 
     const requested = await command(buyer, { command: 'refund', idempotency_key: key('r'), order_id: orderId });
     expect(requested.status).toBe(200);

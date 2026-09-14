@@ -1,6 +1,5 @@
 import { afterAll, describe, expect, it, vi } from 'vitest';
 import {
-  poolCounters,
   RUN_DB,
   callRoute,
   commandInstant,
@@ -9,6 +8,7 @@ import {
   key,
   sessionState,
   type TestUser,
+  workloadCounters,
 } from './harness';
 
 vi.mock('next/headers', () => ({
@@ -43,12 +43,12 @@ describe.skipIf(!RUN_DB)('TEST_PLAN 1 — authorization and isolation', () => {
     expect(crossOrigin.status).toBe(403);
   });
 
-  it('keeps orders, services and pools scoped to their owners', async () => {
+  it('keeps orders, services and order limits scoped to their owners', async () => {
     const creator = await createUser('authz-creator');
     const otherCreator = await createUser('authz-creator2');
     const buyer = await createUser('authz-buyer');
     const otherBuyer = await createUser('authz-buyer2');
-    const { serviceId, poolId } = await createPublishedService(command, creator, { capacity: 2 });
+    const { serviceId } = await createPublishedService(command, creator, { capacity: 2 });
     const booked = await book(buyer, serviceId);
     expect(booked.status).toBe(200);
     const orderId = String(booked.body.id);
@@ -59,7 +59,9 @@ describe.skipIf(!RUN_DB)('TEST_PLAN 1 — authorization and isolation', () => {
     expect(await getOrderData({ id: buyer.id, email: buyer.email, display_name: 'x', roles: ['buyer'], is_test: true, status: 'ACTIVE', timezone: 'UTC' }, orderId)).not.toBeNull();
 
     expect((await command(otherCreator, { command: 'pause_service', idempotency_key: key('p'), service_id: serviceId })).status).toBe(403);
-    expect((await command(otherCreator, { command: 'set_capacity', idempotency_key: key('c'), pool_id: poolId, total_units: '99' })).status).toBe(403);
+    // The limit command only ever changes the caller's own workload.
+    expect((await command(otherCreator, { command: 'set_workload_limit', idempotency_key: key('c'), max_active_units: '99', creator_id: creator.id })).status).toBe(200);
+    expect((await workloadCounters(creator.id)).max_active_units).toBe(2);
     expect((await command(creator, { command: 'book', idempotency_key: key('self'), service_id: serviceId, brief })).status).toBe(400);
   });
 
@@ -72,7 +74,6 @@ describe.skipIf(!RUN_DB)('TEST_PLAN 1 — authorization and isolation', () => {
       description: 'This draft must never appear in the public catalogue.',
       taxonomy: 'CREATE',
       price: '10',
-      capacity: '1',
       turnaround_hours: '24',
       sample_url_1: 'https://example.com/a',
       sample_title_1: 'a',
@@ -98,48 +99,23 @@ describe.skipIf(!RUN_DB)('TEST_PLAN 1 — authorization and isolation', () => {
 });
 
 describe.skipIf(!RUN_DB)('TEST_PLAN 2 — capacity race', () => {
-  it('CAP-01: twenty concurrent buyers contend for the same week with one unit: exactly one claim', async () => {
+  // CAP-01/02/07/08 with real concurrent connections: tests/integration/supply.db.test.ts.
+  it('twenty concurrent buyers on a one-order creator: exactly one claim and a 409 for the rest', async () => {
     const creator = await createUser('race-creator');
-    const { serviceId, poolId } = await createPublishedService(command, creator, { capacity: 1 });
-    const [week] = await sql`select id from app.capacity_buckets where pool_id=${poolId} and ends_at - interval '72 hours' >= now() order by starts_at limit 1`;
+    const { serviceId } = await createPublishedService(command, creator, { capacity: 1 });
     const buyers = await Promise.all(Array.from({ length: 20 }, (_, i) => createUser(`race-buyer-${i}`)));
-
-    const results = await Promise.all(buyers.map((buyer) =>
-      command(buyer, { command: 'book', idempotency_key: key('book'), service_id: serviceId, brief, bucket_id: String(week!.id) })));
+    const results = await Promise.all(buyers.map((buyer) => book(buyer, serviceId)));
     const winners = results.filter((r) => r.status === 200);
     const losers = results.filter((r) => r.status !== 200);
     expect(winners).toHaveLength(1);
     expect(losers).toHaveLength(19);
     for (const loser of losers) {
       expect(loser.status).toBe(409);
-      expect(String(loser.body.error)).toMatch(/no available capacity/);
+      expect(String(loser.body.error)).toMatch(/at capacity/);
     }
-    const [bucket] = await sql`select total_units,reserved_units,committed_units from app.capacity_buckets where id=${String(week!.id)}`;
-    expect(bucket).toMatchObject({ total_units: 1, reserved_units: 1, committed_units: 0 });
-    const [{ count }] = await sql`select count(*)::int as count from app.reservations where pool_id=${poolId}`;
+    expect(await workloadCounters(creator.id)).toMatchObject({ held_units: 1, active_units: 0 });
+    const [{ count }] = await sql`select count(*)::int as count from app.workload_claims where creator_id=${creator.id}`;
     expect(count).toBe(1);
-  });
-
-  it('without a chosen week, concurrent buyers fill at most one unit per bookable week and never oversell', async () => {
-    const creator = await createUser('race-weeks-creator');
-    const { serviceId, poolId } = await createPublishedService(command, creator, { capacity: 1 });
-    const [{ bookable }] = await sql`select count(*)::int as bookable from app.capacity_buckets where pool_id=${poolId} and ends_at - interval '72 hours' >= now()`;
-    const buyers = await Promise.all(Array.from({ length: 12 }, (_, i) => createUser(`race-weeks-buyer-${i}`)));
-    const results = await Promise.all(buyers.map((buyer) => book(buyer, serviceId)));
-    expect(results.filter((r) => r.status === 200)).toHaveLength(Math.min(12, Number(bookable)));
-    const buckets = await sql`select total_units,reserved_units+committed_units as used from app.capacity_buckets where pool_id=${poolId}`;
-    for (const b of buckets) expect(Number(b.used)).toBeLessThanOrEqual(Number(b.total_units));
-    expect((await poolCounters(poolId)).reserved_units).toBe(Math.min(12, Number(bookable)));
-  });
-
-  it('capacity cannot be lowered below held units', async () => {
-    const creator = await createUser('cap-creator');
-    const buyer = await createUser('cap-buyer');
-    const { serviceId, poolId } = await createPublishedService(command, creator, { capacity: 2 });
-    expect((await book(buyer, serviceId)).status).toBe(200);
-    const lowered = await command(creator, { command: 'set_capacity', idempotency_key: key('lower'), pool_id: poolId, total_units: '0' });
-    expect(lowered.status).toBe(409); // CAPACITY_REDUCTION_CONFLICT (CAP-07)
-    expect((await command(creator, { command: 'set_capacity', idempotency_key: key('ok'), pool_id: poolId, total_units: '1' })).status).toBe(200);
   });
 });
 
@@ -147,7 +123,7 @@ describe.skipIf(!RUN_DB)('TEST_PLAN 3 — command idempotency', () => {
   it('replays the original result for the same key and body, and rejects a different body', async () => {
     const creator = await createUser('idem-creator');
     const buyer = await createUser('idem-buyer');
-    const { serviceId, poolId } = await createPublishedService(command, creator, { capacity: 5 });
+    const { serviceId } = await createPublishedService(command, creator, { capacity: 5 });
     const idempotencyKey = key('same');
 
     const first = await book(buyer, serviceId, idempotencyKey);
@@ -161,21 +137,19 @@ describe.skipIf(!RUN_DB)('TEST_PLAN 3 — command idempotency', () => {
 
     const [{ count }] = await sql`select count(*)::int as count from app.orders where buyer_id=${buyer.id}`;
     expect(count).toBe(1);
-    const pool = await poolCounters(poolId);
-    expect(pool!.reserved_units).toBe(1);
+    expect((await workloadCounters(creator.id)).held_units).toBe(1);
   });
 
   it('concurrent duplicate submits with one key apply once and all return the same result', async () => {
     const creator = await createUser('idem-conc-creator');
     const buyer = await createUser('idem-conc-buyer');
-    const { serviceId, poolId } = await createPublishedService(command, creator, { capacity: 5 });
+    const { serviceId } = await createPublishedService(command, creator, { capacity: 5 });
     const idempotencyKey = key('concurrent');
 
     const results = await Promise.all(Array.from({ length: 6 }, () => book(buyer, serviceId, idempotencyKey)));
     const [{ count }] = await sql`select count(*)::int as count from app.orders where buyer_id=${buyer.id}`;
     expect(count).toBe(1);
-    const pool = await poolCounters(poolId);
-    expect(pool!.reserved_units).toBe(1);
+    expect((await workloadCounters(creator.id)).held_units).toBe(1);
     expect(results.map((r) => r.status)).toEqual([200, 200, 200, 200, 200, 200]);
     expect(new Set(results.map((r) => String(r.body.id))).size).toBe(1);
   });
@@ -188,7 +162,7 @@ describe.skipIf(!RUN_DB)('TEST_PLAN 6 — requests and applications', () => {
     const otherBuyer = await createUser('req-buyer2');
     const creatorA = await createUser('req-creator-a');
     const creatorB = await createUser('req-creator-b');
-    const { poolId: poolA } = await createPublishedService(command, creatorA, { capacity: 2 });
+    await createPublishedService(command, creatorA, { capacity: 2 });
     await createPublishedService(command, creatorB, { capacity: 2 });
 
     const created = await command(buyer, {
@@ -217,8 +191,8 @@ describe.skipIf(!RUN_DB)('TEST_PLAN 6 — requests and applications', () => {
     expect(offer.status).toBe(200);
     const offerId = String(offer.body.id);
 
-    expect((await command(creatorB, { command: 'accept_offer', idempotency_key: key('acc'), offer_id: offerId, pool_id: poolA })).status).toBe(404);
-    const accepted = await command(creatorA, { command: 'accept_offer', idempotency_key: key('acc'), offer_id: offerId, pool_id: poolA });
+    expect((await command(creatorB, { command: 'accept_offer', idempotency_key: key('acc'), offer_id: offerId })).status).toBe(404);
+    const accepted = await command(creatorA, { command: 'accept_offer', idempotency_key: key('acc'), offer_id: offerId });
     expect(accepted.status).toBe(200);
     const [order] = await sql`select source,amount_minor,platform_fee_minor,buyer_id,creator_id,status from app.orders where id=${String(accepted.body.id)}`;
     expect(order).toMatchObject({ source: 'REQUEST', amount_minor: '25000', platform_fee_minor: '0', buyer_id: buyer.id, creator_id: creatorA.id, status: 'AWAITING_PAYMENT' });
@@ -240,7 +214,7 @@ describe.skipIf(!RUN_DB)('TEST_PLAN 7 — auctions', () => {
     const bidder1 = await createUser('auc-bidder1');
     const bidder2 = await createUser('auc-bidder2');
     const bidder3 = await createUser('auc-bidder3');
-    const { serviceId, poolId } = await createPublishedService(command, seller, { capacity: 1 });
+    const { serviceId } = await createPublishedService(command, seller, { capacity: 1 });
 
     const endsAt = new Date(Date.now() + 4000);
     const created = await command(seller, {
@@ -255,8 +229,7 @@ describe.skipIf(!RUN_DB)('TEST_PLAN 7 — auctions', () => {
     });
     expect(created.status).toBe(200);
     const auctionId = String(created.body.id);
-    const pool = await poolCounters(poolId);
-    expect(pool!.reserved_units).toBe(1);
+    expect((await workloadCounters(seller.id)).held_units).toBe(1);
 
     expect((await getAuctionData(null, auctionId))?.auction.id).toBe(auctionId);
 

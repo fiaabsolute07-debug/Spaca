@@ -27,7 +27,6 @@ import { isProviderError } from '@/modules/payments/providers';
 import { enqueueNotification } from '@/modules/notifications/enqueue';
 import { approveOrder } from '@/modules/orders/commands';
 import { closeAuction } from '@/modules/auctions/commands';
-import { ensureBuckets } from '@/modules/capacity';
 import { recheckPendingDeposits, scanChainDeposits } from '@/modules/crypto/deposits';
 import { latestDelivery, termsOf } from '@/modules/orders/lifecycle';
 import { FINALIZE_GRACE_SECONDS, type StorageBucket } from '@/modules/storage/policy';
@@ -55,30 +54,30 @@ const scoped = (column: ReturnType<typeof sql>, options: JobScope) => (options.o
 /** Releases expired checkout holds only after any open provider payment is cancelled (master §6.3). */
 export async function expireCheckoutHolds(options: JobScope = {}): Promise<JobReport> {
   const { result, tally } = report('expire_checkout_holds');
-  const candidates = await sql<Row[]>`select r.order_id from app.reservations r join app.orders o on o.id=r.order_id
-    where r.state in ('HELD','RECONCILING') and r.expires_at < now() and o.status='AWAITING_PAYMENT' and ${scoped(sql`o.id`, options)}
-    order by r.expires_at asc limit ${options.limit ?? 50}`;
+  const candidates = await sql<Row[]>`select c.order_id from app.workload_claims c join app.orders o on o.id=c.order_id
+    where c.state in ('HELD','EXPIRY_RECONCILING') and c.expires_at < now() and o.status='AWAITING_PAYMENT' and ${scoped(sql`o.id`, options)}
+    order by c.expires_at asc limit ${options.limit ?? 50}`;
   for (const candidate of candidates) {
     const orderId = String(candidate.order_id);
     try {
       tally(await sql.begin(async (tx) => {
         const [order] = await tx<Row[]>`select * from app.orders where id=${orderId} and status='AWAITING_PAYMENT' for update`;
-        const [reservation] = await tx<Row[]>`select * from app.reservations where order_id=${orderId} and state in ('HELD','RECONCILING') and expires_at < now() for update`;
-        if (!order || !reservation) return 'SKIPPED_STATE_CHANGED';
+        const [claim] = await tx<Row[]>`select * from app.workload_claims where order_id=${orderId} and state in ('HELD','EXPIRY_RECONCILING') and expires_at < now() for update`;
+        if (!order || !claim) return 'SKIPPED_STATE_CHANGED';
         try {
           if (mockPaymentsEnabled()) await cancelOpenFunding(tx, orderId);
         } catch (error) {
           if (!(error instanceof PaymentFlowError)) throw error;
-          if (reservation.state === 'HELD') {
-            await tx`update app.reservations set state='RECONCILING' where id=${String(reservation.id)}`;
+          if (claim.state === 'HELD') {
+            await tx`update app.workload_claims set state='EXPIRY_RECONCILING' where id=${String(claim.id)}`;
             await openCase(tx, orderId, null, 'HOLD_EXPIRED_PAYMENT_UNRESOLVED', 'MEDIUM', error.message);
             await tx`insert into app.order_events (order_id,actor_id,kind,payload) values (${orderId},${null},'HOLD_RECONCILING',${JSON.stringify({ reason: error.message })}::jsonb)`;
           }
           return 'RECONCILING';
         }
-        await tx`update app.reservations set state='RELEASED' where id=${String(reservation.id)}`; // counters via DB trigger
+        // CANCELLED releases the claim and its units through the order status trigger (drizzle/0012).
         await tx`update app.orders set status='CANCELLED',version=version+1,updated_at=now() where id=${orderId}`;
-        await tx`insert into app.order_events (order_id,actor_id,kind,payload) values (${orderId},${null},'HOLD_EXPIRED',${JSON.stringify({ released_units: 1 })}::jsonb)`;
+        await tx`insert into app.order_events (order_id,actor_id,kind,payload) values (${orderId},${null},'HOLD_EXPIRED',${JSON.stringify({ released_units: Number(claim.units) })}::jsonb)`;
         // Auction sales default through the order trigger (drizzle/0008); the auction never reopens.
         return 'RELEASED';
       }));
@@ -457,20 +456,20 @@ export async function indexChainDeposits(): Promise<JobReport> {
   return result;
 }
 
-/** Keeps weekly capacity buckets materialized across the booking horizon so availability search sees future weeks. */
-export async function extendCapacityHorizon(options: { limit?: number } = {}): Promise<JobReport> {
-  const { result, tally } = report('extend_capacity_horizon');
-  const pools = await sql<Row[]>`select distinct v.pool_id from app.services s join app.service_versions v on v.id=s.published_version_id
-    where s.status='PUBLISHED' order by v.pool_id limit ${options.limit ?? 500}`;
-  for (const pool of pools) {
-    try {
-      await sql.begin((tx) => ensureBuckets(tx, String(pool.pool_id)));
-      tally('EXTENDED');
-    } catch (error) {
-      console.error('extend_capacity_horizon failed', pool.pool_id, error instanceof Error ? error.name : error);
-      tally('ERROR');
-    }
+/**
+ * Runbook §20.4: workload counters must equal the sum of claims. Drift never auto-corrects; it opens one HIGH case
+ * listing the creators so an operator pauses them and investigates before new orders resume.
+ */
+export async function checkWorkloadCounters(): Promise<JobReport> {
+  const { result, tally } = report('check_workload_counters');
+  const drift = await sql<Row[]>`select creator_id from app.workload_counter_drift order by creator_id limit 50`;
+  if (drift.length === 0) {
+    tally('MATCH');
+    return result;
   }
+  await sql.begin((tx) => openCase(tx, null, null, 'WORKLOAD_COUNTER_DRIFT', 'HIGH',
+    `Workload counters differ from claims for creator(s) ${drift.map((row) => String(row.creator_id)).join(', ')}; pause them and reconcile (runbook 20.4)`));
+  for (const _ of drift) tally('DRIFT');
   return result;
 }
 
@@ -487,6 +486,6 @@ export async function runJobsOnce(): Promise<JobReport[]> {
     await sendOrderReminders(),
     await dispatchNotificationOutbox(),
     await cleanupStorage(),
-    await extendCapacityHorizon(),
+    await checkWorkloadCounters(),
   ];
 }

@@ -26,7 +26,7 @@ export function AuctionCard({
       </strong>
       <span>
         {num(a.bid_count)}
-        {" bids · View auction ↗"}
+        {" bids · View auction ›"}
       </span>
     </div>
   </Link>;

@@ -1,38 +1,31 @@
 import { sql } from './db';
 import { formatAtomic, usdMinorToAtomic } from '@/modules/crypto/registry';
 import type { Actor } from './auth';
-import { poolAvailability } from '@/modules/capacity';
+import { availabilityOf, workloadsFor } from '@/modules/capacity';
 
 export type ReadRow = Record<string, unknown>;
 const asRows = (value: unknown): ReadRow[] => Array.isArray(value) ? value as ReadRow[] : [];
 
-const SERVICE_COLUMNS_OWNER = sql`s.id,s.title,s.description,s.taxonomy,s.price_minor,s.currency,s.turnaround_hours,s.revision_limit,s.status,s.version,s.creator_id,s.published_version_id as service_version_id`;
+const SERVICE_COLUMNS_OWNER = sql`s.id,s.title,s.description,s.taxonomy,s.price_minor,s.currency,s.turnaround_hours,s.revision_limit,s.units_per_order,s.status,s.version,s.creator_id,s.published_version_id as service_version_id`;
 // Public views always show the published immutable version's terms, never unpublished edits.
-const SERVICE_COLUMNS_PUBLIC = sql`s.id,v.title,v.description,v.taxonomy,v.price_minor,v.currency,v.turnaround_hours,v.revision_limit,s.status,s.version,s.creator_id,v.id as service_version_id,v.version as service_version`;
+const SERVICE_COLUMNS_PUBLIC = sql`s.id,v.title,v.description,v.taxonomy,v.price_minor,v.currency,v.turnaround_hours,v.revision_limit,v.units_per_order,s.status,s.version,s.creator_id,v.id as service_version_id,v.version as service_version`;
 
+/**
+ * Buyers see a status only, never the counts (§6.1 rule 10): ACCEPTING, AT_CAPACITY or PAUSED for one order of
+ * this service. The creator's own numbers come from getDashboardData().workload.
+ */
 async function withAvailability(rows: ReadRow[]): Promise<ReadRow[]> {
-  const availability = await poolAvailability(sql, rows.map((row) => ({ poolId: String(row.pool_id), turnaroundHours: Number(row.turnaround_hours) })));
-  return rows.map((row) => {
-    const a = availability.get(`${String(row.pool_id)}:${Number(row.turnaround_hours)}`);
-    return {
-      ...row,
-      total_units: a?.weeklyUnits ?? 0,
-      weekly_units: a?.weeklyUnits ?? 0,
-      available_units: a?.availableUnits ?? 0,
-      next_available_starts_at: a?.nextAvailableStartsAt ?? null,
-      next_available_ends_at: a?.nextAvailableEndsAt ?? null,
-      pool_timezone: a?.timezone ?? 'UTC',
-    };
-  });
+  const workloads = await workloadsFor(sql, rows.map((row) => String(row.creator_id)));
+  return rows.map((row) => ({ ...row, availability_status: availabilityOf(workloads.get(String(row.creator_id)), Number(row.units_per_order ?? 1)) }));
 }
 
 async function serviceRows(options: { ownerId?: string; publicCreatorId?: string } = {}) {
   const actorId = options.ownerId;
   const services = actorId
-    ? await sql`select ${SERVICE_COLUMNS_OWNER},u.display_name as creator_name,p.handle,p.niche,p.avatar_color,s.pool_id
+    ? await sql`select ${SERVICE_COLUMNS_OWNER},u.display_name as creator_name,p.handle,p.niche,p.avatar_color
         from app.services s join app.users u on u.id=s.creator_id left join app.profiles p on p.user_id=s.creator_id
         where s.creator_id=${actorId} order by s.created_at desc`
-    : await sql`select ${SERVICE_COLUMNS_PUBLIC},u.display_name as creator_name,p.handle,p.niche,p.avatar_color,v.pool_id
+    : await sql`select ${SERVICE_COLUMNS_PUBLIC},u.display_name as creator_name,p.handle,p.niche,p.avatar_color
         from app.services s join app.service_versions v on v.id=s.published_version_id join app.users u on u.id=s.creator_id
         left join app.profiles p on p.user_id=s.creator_id
         where s.status='PUBLISHED' and u.status='ACTIVE' and (${options.publicCreatorId ?? null}::uuid is null or s.creator_id=${options.publicCreatorId ?? null}::uuid)
@@ -88,8 +81,10 @@ export async function getDashboardData(actor: Actor) {
   const [profileRow] = asRows(profile);
   const [statsRow] = asRows(stats);
   const serviceList = asRows(services);
-  const available = serviceList.reduce((sum, service) => sum + Number(service.available_units ?? 0), 0);
-  return { orders: asRows(orders), services: serviceList, applications: asRows(applications), requests: asRows(requests), auctions: asRows(auctions), profile: profileRow ?? {}, stats: { ...(statsRow ?? {}), available_minor: available } };
+  const workload = (await workloadsFor(sql, [actor.id])).get(actor.id)!;
+  const inFlight = Number(workload.held_units) + Number(workload.active_units);
+  return { orders: asRows(orders), services: serviceList, applications: asRows(applications), requests: asRows(requests), auctions: asRows(auctions), profile: profileRow ?? {}, stats: statsRow ?? {},
+    workload: { ...workload, in_flight_units: inFlight, availability_status: availabilityOf(workload) } };
 }
 
 export async function getOrderData(actor: Actor, id: string) {
@@ -147,7 +142,7 @@ export async function getOrderData(actor: Actor, id: string) {
 }
 
 export async function getServiceData(id: string) {
-  const rows = asRows(await sql`select ${SERVICE_COLUMNS_PUBLIC},u.display_name as creator_name,p.handle,p.bio,p.niche,p.avatar_color,v.pool_id
+  const rows = asRows(await sql`select ${SERVICE_COLUMNS_PUBLIC},u.display_name as creator_name,p.handle,p.bio,p.niche,p.avatar_color
     from app.services s join app.service_versions v on v.id=s.published_version_id join app.users u on u.id=s.creator_id
     left join app.profiles p on p.user_id=s.creator_id where s.id=${id} and s.status='PUBLISHED' and u.status='ACTIVE'`);
   if (!rows[0]) return null;
@@ -270,9 +265,4 @@ export async function getMyBids(actor: Actor) {
       : row.intent_status ? 'DEFAULTED' : open ? (row.leading ? 'WINNING' : 'OUTBID') : row.status === 'CANCELLED' ? 'CANCELLED' : 'LOST';
     return { ...row, standing };
   });
-}
-
-/** The creator's own capacity pools, for choosing where accepted request work is scheduled (REQ-06). */
-export async function getCreatorPools(actor: Actor) {
-  return asRows(await sql`select id,name,weekly_units,timezone from app.capacity_pools where creator_id=${actor.id} order by created_at asc`);
 }

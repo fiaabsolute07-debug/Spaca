@@ -17,7 +17,6 @@ import {
   type Tx,
 } from '@/lib/commands';
 import type { Actor } from '@/lib/auth';
-import { consumeOrderReservation, releaseOrderReservation } from '@/modules/capacity';
 import { enqueueNotification } from '@/modules/notifications/enqueue';
 import { PaymentFlowError, cancelOpenFunding, openCase, refundReasonFor, requestProviderRefund } from '@/modules/payments/funding';
 import { attachDeliveryAssets, lockDeliveryAssets, parseAssetIds } from '@/modules/storage/service';
@@ -151,8 +150,8 @@ const revision = withOrder(async ({ tx, actor, form, order, orderId, status, isB
 /** Shared by buyer approval and the auto-accept job; caller holds the order lock and has validated state. */
 export async function approveOrder(tx: Tx, order: Row, actorId: string | null, deliveryVersion: number, kind: 'ORDER_APPROVED' | 'ORDER_AUTO_APPROVED') {
   const orderId = String(order.id);
+  // The order status trigger marks the workload claim DONE and frees the creator's unit (CAP-06).
   await tx`update app.orders set status='APPROVED',approved_at=now(),settlement_status='READY',version=version+1,updated_at=now() where id=${orderId}`;
-  await consumeOrderReservation(tx, orderId);
   await resolveReviewHold(tx, orderId, 'BUYER_ACTED');
   await expirePendingCancellation(tx, orderId);
   await orderEvent(tx, orderId, actorId, kind, { delivery_version: deliveryVersion, platform_fee_minor: '0', settlement_status: 'READY' });
@@ -188,7 +187,7 @@ const cancel = withOrder(async ({ tx, actor, order, orderId, status, isBuyer, is
     throw new CommandError('Work has started; request a cancellation with an agreed refund instead', 'ORDER_STATE_CONFLICT');
   }
   if (status === 'AWAITING_PAYMENT') await cancelOpenFunding(tx, orderId);
-  await releaseOrderReservation(tx, orderId);
+  // CANCELLED releases the hold or active claim through the order status trigger (drizzle/0012).
   await tx`update app.orders set status='CANCELLED',cancelled_at=now(),payment_status=case when payment_status='SUCCEEDED' then 'REFUND_PENDING' else payment_status end,
     version=version+1,updated_at=now() where id=${orderId}`;
   await orderEvent(tx, orderId, actor.id, 'ORDER_CANCELLED', { before_work: true });
@@ -267,8 +266,7 @@ const respondCancellation: CommandHandler = async ({ tx, actor, form }) => {
   const refund = BigInt(request.refund_amount_minor);
   const amount = BigInt(order.amount_minor);
   await tx`update app.cancellation_requests set status='ACCEPTED',responded_at=now() where id=${requestId}`;
-  // Work already consumed capacity; a refund never returns that quota (CAP-12).
-  await consumeOrderReservation(tx, orderId);
+  // No work remains, so CANCELLED frees the creator's unit through the order status trigger (§6.1 rule 8, CAP-12).
   await resolveReviewHold(tx, orderId, 'BUYER_ACTED');
   await tx`update app.orders set status='CANCELLED',cancelled_at=now(),cancellation_refund_minor=${refund.toString()},
     payment_status=${refund > 0n ? 'REFUND_PENDING' : String(order.payment_status)},

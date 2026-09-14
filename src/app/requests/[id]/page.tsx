@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { getActor } from '@/lib/auth';
-import { getCreatorPools, getRequestData } from '@/lib/read-model';
+import { getRequestData } from '@/lib/read-model';
 import { Badge, CommandForm, Empty, Field, date, money, num, row, rows, str, type Row } from '@/components/ui';
 import { Notices } from '@/components/notices';
 import { PageHeading } from '@/components/page-heading';
@@ -23,12 +23,12 @@ function Samples({ items }: { items: Row[] }) {
   return <ul className="facts">
     {items.map((sample) => <li key={str(sample.id)}>
       <span>{str(sample.title)}</span>
-      {sample.url ? <a className="text-link" href={str(sample.url)} target="_blank" rel="noreferrer">Open ↗</a> : <span className="muted">Uploaded file</span>}
+      {sample.url ? <a className="text-link" href={str(sample.url)} target="_blank" rel="noreferrer">Open ›</a> : <span className="muted">Uploaded file</span>}
     </li>)}
   </ul>;
 }
 
-function ApplicationCard({ application: a, owner, route, pools }: { application: Row; owner: boolean; route: string; pools: Row[] }) {
+function ApplicationCard({ application: a, owner, route }: { application: Row; owner: boolean; route: string }) {
   const offerStatus = str(a.offer_status);
   const liveOffer = offerStatus === 'OFFERED';
   return <div className="record">
@@ -44,7 +44,7 @@ function ApplicationCard({ application: a, owner, route, pools }: { application:
       {offerStatus && <li><span>Offer</span><strong>{OFFER_LABEL[offerStatus] ?? offerStatus}{liveOffer ? ` · until ${date(a.offer_expires_at)}` : ''}</strong></li>}
     </ul>
     <Samples items={rows(a.samples_snapshot)} />
-    {a.offer_order_id && offerStatus === 'ACCEPTED' ? <Link className="text-link" href={`/orders/${str(a.offer_order_id)}`}>Open the order →</Link> : null}
+    {a.offer_order_id && offerStatus === 'ACCEPTED' ? <Link className="text-link" href={`/orders/${str(a.offer_order_id)}`}>Open the order ›</Link> : null}
     {owner && str(a.status) === 'SUBMITTED' && <CommandForm
       command="select_application"
       label={`Offer ${money(a.quote_minor)} to this creator`}
@@ -53,12 +53,8 @@ function ApplicationCard({ application: a, owner, route, pools }: { application:
     />}
     {owner && liveOffer && <CommandForm command="withdraw_offer" label="Withdraw offer" values={{ offer_id: str(a.offer_id) }} returnTo={route} />}
     {!owner && liveOffer && <>
-      <CommandForm command="accept_offer" label="Accept and schedule" values={{ offer_id: str(a.offer_id) }}>
-        {pools.length ? <Field name="pool_id" label="Schedule this work in">
-          <select name="pool_id" required>
-            {pools.map((pool) => <option key={str(pool.id)} value={str(pool.id)}>{str(pool.name)} · {num(pool.weekly_units)} per week · {str(pool.timezone)}</option>)}
-          </select>
-        </Field> : <p className="muted">Create a service with weekly capacity before accepting request work.</p>}
+      <CommandForm command="accept_offer" label="Accept offer" values={{ offer_id: str(a.offer_id) }}>
+        <p className="muted">Accepting counts toward your active order limit.</p>
       </CommandForm>
       <CommandForm command="decline_offer" label="Decline offer" values={{ offer_id: str(a.offer_id) }} returnTo={route}>
         <Field name="reason" label="Reason (optional)" />
@@ -110,7 +106,6 @@ export default async function RequestPage({ params, searchParams }: PageProps<{ 
     open = str(r.status) === 'OPEN' && new Date(str(r.application_deadline)).getTime() > Date.now(),
     applications = rows(d.applications),
     mine = applications.find((a) => str(a.creator_id) === actor?.id);
-  const pools = actor && !owner ? await getCreatorPools(actor) : [];
   return <main className="container">
     <Notices query={query} />
     <Link href="/requests" className="breadcrumbs">← All open briefs</Link>
@@ -133,7 +128,7 @@ export default async function RequestPage({ params, searchParams }: PageProps<{ 
         <div className="panel">
           <h2>{owner ? 'Compare applications' : 'Your application'}</h2>
           {owner && <p className="muted">Quotes are private to you. Nothing is awarded automatically: each offer holds budget for 24 hours until the creator confirms capacity.</p>}
-          {applications.length ? applications.map((a) => <ApplicationCard key={str(a.id)} application={a} owner={owner} route={route} pools={pools} />) : (
+          {applications.length ? applications.map((a) => <ApplicationCard key={str(a.id)} application={a} owner={owner} route={route} />) : (
             <Empty title="No applications to show">Applications are visible to the buyer and their respective creators.</Empty>
           )}
         </div>
@@ -146,7 +141,7 @@ export default async function RequestPage({ params, searchParams }: PageProps<{ 
             <CommandForm command="close_request" label="Close to new applications" values={{ request_id: str(r.id) }} returnTo={route} />
             <CommandForm command="cancel_request" label="Cancel request" values={{ request_id: str(r.id) }} returnTo={route} />
           </>}
-        </> : !actor ? <Link className="button button-dark" href="/sign-in">Log in to apply ↗</Link> : open && (!mine || str(mine.status) === 'SUBMITTED' || ['DECLINED', 'WITHDRAWN'].includes(str(mine.status))) ? <CommandForm
+        </> : !actor ? <Link className="button button-dark" href="/sign-in">Log in to apply</Link> : open && (!mine || str(mine.status) === 'SUBMITTED' || ['DECLINED', 'WITHDRAWN'].includes(str(mine.status))) ? <CommandForm
           command="apply"
           label={mine ? 'Send updated quote' : 'Send application'}
           values={{ request_id: str(r.id) }}

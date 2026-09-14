@@ -26,9 +26,15 @@ export default async function OperationsPage({ searchParams }: PageProps) {
     ]} />
     <AdminTable id="reconciling-holds" title="Reconciling holds" items={queues.reconciling_holds} columns={[
       { label: 'Order', render: item => <OrderLink id={item.order_id} /> },
-      { label: 'Capacity bucket', render: item => str(item.bucket_id) },
-      { label: 'Status', render: () => <Badge>RECONCILING</Badge> },
+      { label: 'Creator', render: item => str(item.creator_name) },
+      { label: 'Units', render: item => str(item.units) },
+      { label: 'Status', render: () => <Badge>EXPIRY_RECONCILING</Badge> },
       { label: 'Expiry', render: item => date(item.expires_at) },
+    ]} />
+    <AdminTable id="workload-drift" title="Workload counter drift" items={queues.workload_drift} columns={[
+      { label: 'Creator', render: item => str(item.creator_name) },
+      { label: 'Held (counter / claims)', render: item => `${str(item.held_units)} / ${str(item.claimed_held_units)}` },
+      { label: 'Active (counter / claims)', render: item => `${str(item.active_units)} / ${str(item.claimed_active_units)}` },
     ]} />
     <ReviewHolds items={queues.review_holds} />
     <AdminTable id="overdue-orders" title="Overdue orders" items={queues.overdue_orders} columns={[

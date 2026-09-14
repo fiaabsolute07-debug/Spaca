@@ -44,7 +44,7 @@ test('finance resumes a newly disputed order into its recorded IN_PROGRESS state
   const id = path.split('/').at(-1)!;
   // Unnamed section: identify the case by its rendered order link, not queue position.
   const dispute = page.locator('section').filter({
-    has: page.getByRole('link', { name: `Order #${id.slice(0, 8)} ↗`, exact: true }),
+    has: page.getByRole('link', { name: `Order #${id.slice(0, 8)} ›`, exact: true }),
   });
   await expect(dispute).toHaveCount(1);
   await expect(dispute.getByRole('link')).toHaveAttribute('href', `/admin/orders/${id}`);

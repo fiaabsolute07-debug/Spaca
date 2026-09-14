@@ -55,11 +55,11 @@ async function linkWallet(user: TestUser): Promise<Hex> {
   return account.address.toLowerCase() as Hex;
 }
 
-type Creator = TestUser & { poolId: string; wallet: Hex };
+type Creator = TestUser & { wallet: Hex };
 async function creator(label: string, withWallet = true): Promise<Creator> {
   const user = await createUser(label);
-  const { poolId } = await createPublishedService(command, user, { capacity: 5 });
-  return { ...user, poolId, wallet: withWallet ? await linkWallet(user) : ('0x' as Hex) };
+  await createPublishedService(command, user, { capacity: 5 });
+  return { ...user, wallet: withWallet ? await linkWallet(user) : ('0x' as Hex) };
 }
 
 const cash = (amount: string, extra: Record<string, unknown> = {}) => ({ key: 'cash', kind: 'CASH', required: true, asset_id: assets.usdc, amount, ...extra });
@@ -94,7 +94,7 @@ async function offerTo(buyer: TestUser, requestId: string, maker: Creator, quote
   expect(offer.status, JSON.stringify(offer.body)).toBe(200);
   return String(offer.body.id);
 }
-const accept = (maker: Creator, offerId: string) => command(maker, { command: 'accept_offer', idempotency_key: key('acc'), offer_id: offerId, pool_id: maker.poolId });
+const accept = (maker: Creator, offerId: string) => command(maker, { command: 'accept_offer', idempotency_key: key('acc'), offer_id: offerId });
 
 async function deliverAndApprove(buyer: TestUser, maker: Creator, orderId: string) {
   expect((await command(maker, { command: 'start', idempotency_key: key('s'), order_id: orderId })).status).toBe(200);
@@ -159,7 +159,7 @@ describe.skipIf(!RUN_DB)('CRY-06/07 — funding every required asset and conserv
     expect(accepted.status, JSON.stringify(accepted.body)).toBe(200);
     const orderId = String(accepted.body.id);
     expect((await sql`select status,payment_status,payment_rail,amount_minor from app.orders where id=${orderId}`)[0]).toMatchObject({ status: 'FUNDED', payment_status: 'SUCCEEDED', payment_rail: 'POOL', amount_minor: '10000' });
-    expect((await sql`select state from app.reservations where order_id=${orderId}`)[0]!.state).toBe('COMMITTED');
+    expect((await sql`select state from app.workload_claims where order_id=${orderId}`)[0]!.state).toBe('ACTIVE');
     const balances = await poolAssets(poolId);
     expect(balances.USDC).toMatchObject({ confirmed_deposit: (200n * USDC).toString(), unallocated: (100n * USDC).toString(), allocated_active: (100n * USDC).toString() });
     expect(balances.RWD).toMatchObject({ unallocated: (50n * RWD).toString(), allocated_active: (50n * RWD).toString() });

@@ -5,8 +5,8 @@
 import { CommandError, UUID_PATTERN, money } from '@/lib/commands';
 
 export const TAXONOMIES = ['CREATE', 'PUBLISH', 'ACCESS', 'DIGITAL'] as const;
-export const SERVICE_SORTS = ['relevance', 'newest', 'price_asc', 'price_desc', 'turnaround', 'availability'] as const;
-export const CREATOR_SORTS = ['relevance', 'reputation', 'availability', 'newest'] as const;
+export const SERVICE_SORTS = ['relevance', 'newest', 'price_asc', 'price_desc', 'turnaround'] as const;
+export const CREATOR_SORTS = ['relevance', 'reputation', 'newest'] as const;
 export type ServiceSort = (typeof SERVICE_SORTS)[number];
 export type CreatorSort = (typeof CREATOR_SORTS)[number];
 
@@ -45,17 +45,14 @@ function limitOf(params: URLSearchParams, max: number, fallback: number): number
   return limit;
 }
 
-function dateOf(params: URLSearchParams, name: string): Date | null {
-  const value = params.get(name);
-  if (!value) return null;
-  const date = new Date(/^\d{4}-\d{2}-\d{2}$/.test(value) ? `${value}T23:59:59Z` : value);
-  if (Number.isNaN(date.getTime())) throw new CommandError(`${name} must be an ISO date`);
-  return date;
+/** Capacity is an active-order limit, so there is no "free from" date to filter by (§6.1 rule 10). */
+function rejectAvailableBefore(params: URLSearchParams) {
+  if (params.has('available_before')) throw new CommandError('available_before is not supported; use available=true for creators accepting orders now');
 }
 
 export type ServiceSearch = {
   q: string | null; tsquery: string | null; taxonomies: string[]; niche: string | null; priceMinMinor: bigint | null; priceMaxMinor: bigint | null;
-  turnaroundMaxHours: number | null; availableBefore: Date | null; availableOnly: boolean; creatorHandle: string | null; sort: ServiceSort; cursor: Cursor | null; limit: number;
+  turnaroundMaxHours: number | null; availableOnly: boolean; creatorHandle: string | null; sort: ServiceSort; cursor: Cursor | null; limit: number;
 };
 
 export function parseServiceSearch(params: URLSearchParams): ServiceSearch {
@@ -75,13 +72,13 @@ export function parseServiceSearch(params: URLSearchParams): ServiceSearch {
   const niche = params.get('niche')?.trim().slice(0, 80) || null;
   const creatorHandle = params.get('creator')?.trim().toLowerCase() || null;
   if (creatorHandle && !/^[a-z0-9][a-z0-9_-]{2,31}$/.test(creatorHandle)) throw new CommandError('creator must be a creator handle');
-  const availableBefore = dateOf(params, 'available_before');
-  const availableOnly = params.get('available') === 'true' || availableBefore !== null || sort === 'availability';
-  return { q, tsquery, taxonomies, niche, priceMinMinor: priceMin, priceMaxMinor: priceMax, turnaroundMaxHours, availableBefore, availableOnly, creatorHandle, sort,
+  rejectAvailableBefore(params);
+  const availableOnly = params.get('available') === 'true';
+  return { q, tsquery, taxonomies, niche, priceMinMinor: priceMin, priceMaxMinor: priceMax, turnaroundMaxHours, availableOnly, creatorHandle, sort,
     cursor: decodeCursor(params.get('cursor'), sort), limit: limitOf(params, 48, 24) };
 }
 
-export type CreatorSearch = { q: string | null; tsquery: string | null; niche: string | null; taxonomy: string | null; availableOnly: boolean; availableBefore: Date | null; sort: CreatorSort; cursor: Cursor | null; limit: number };
+export type CreatorSearch = { q: string | null; tsquery: string | null; niche: string | null; taxonomy: string | null; availableOnly: boolean; sort: CreatorSort; cursor: Cursor | null; limit: number };
 
 export function parseCreatorSearch(params: URLSearchParams): CreatorSearch {
   const q = params.get('q')?.trim().slice(0, 120) || null;
@@ -91,9 +88,9 @@ export function parseCreatorSearch(params: URLSearchParams): CreatorSearch {
   const sort = (params.get('sort') || (tsquery ? 'relevance' : 'reputation')) as CreatorSort;
   if (!(CREATOR_SORTS as readonly string[]).includes(sort)) throw new CommandError(`sort must be one of ${CREATOR_SORTS.join(', ')}`);
   if (sort === 'relevance' && !tsquery) throw new CommandError('Relevance sort needs a search query');
-  const availableBefore = dateOf(params, 'available_before');
-  return { q, tsquery, niche: params.get('niche')?.trim().slice(0, 80) || null, taxonomy, availableBefore,
-    availableOnly: params.get('available') === 'true' || availableBefore !== null || sort === 'availability', sort, cursor: decodeCursor(params.get('cursor'), sort), limit: limitOf(params, 48, 24) };
+  rejectAvailableBefore(params);
+  return { q, tsquery, niche: params.get('niche')?.trim().slice(0, 80) || null, taxonomy,
+    availableOnly: params.get('available') === 'true', sort, cursor: decodeCursor(params.get('cursor'), sort), limit: limitOf(params, 48, 24) };
 }
 
 export function parseEndingSoon(params: URLSearchParams) {

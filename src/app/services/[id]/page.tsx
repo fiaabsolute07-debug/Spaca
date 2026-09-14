@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { getActor } from '@/lib/auth';
 import { getServiceData } from '@/lib/read-model';
-import { Badge, CommandForm, Empty, Field, money, num, row, rows, str } from '@/components/ui';
+import { Badge, CommandForm, Empty, Field, availabilityLabel, money, num, row, rows, str } from '@/components/ui';
 import { Notices } from '@/components/notices';
 import type { PageProps } from '@/components/page-props';
 
@@ -26,6 +26,7 @@ export default async function ServicePage({
   const d = row(result),
     s = row(d.service),
     c = row(d.creator);
+  const availability = availabilityLabel(s.availability_status);
   return <main className="container">
     {notices}
     <div className="breadcrumbs">
@@ -50,7 +51,7 @@ export default async function ServicePage({
             </span>
             {"By "}
             {str(c.display_name ?? s.creator_name)}
-            {" ↗"}
+            {" ›"}
           </Link>
         </div>
         <div className="panel">
@@ -75,7 +76,7 @@ export default async function ServicePage({
           {rows(d.samples).length ? rows(d.samples).map(sample => <div className="record" key={str(sample.id ?? sample.url)}>
             <a href={str(sample.url)} target="_blank" rel="noreferrer" className="text-link">
               {str(sample.title, 'View sample')}
-              {" ↗"}
+              {" ›"}
             </a>
             <p>
               {str(sample.description)}
@@ -104,11 +105,9 @@ export default async function ServicePage({
               </strong>
             </li>
             <li>
-              <span>Available capacity</span>
-              <strong>
-                {num(s.available_units)}
-                {" / "}
-                {num(s.total_units)}
+              <span>Status</span>
+              <strong className={availability.className}>
+                {availability.label}
               </strong>
             </li>
             <li>
@@ -116,7 +115,7 @@ export default async function ServicePage({
               <strong>$0.00</strong>
             </li>
           </ul>
-          {actor ? num(s.available_units) > 0 ? <CommandForm
+          {actor ? availability.accepting ? <CommandForm
             command="book"
             label="Reserve this service"
             values={{
@@ -138,13 +137,16 @@ export default async function ServicePage({
               </span>
             </label>
           </CommandForm> : (
-            <Empty title="Fully booked">Check another creator or post an open brief.</Empty>
+            <Empty title={availability.label}>
+              {str(s.availability_status) === 'PAUSED' ? 'This creator paused new orders.' : 'This creator is working on as many orders as they take at once.'}
+              {' '}<Link className="text-link" href="/buyer/requests/new">Post a request ›</Link>
+            </Empty>
           ) : (
             <Link
               className="button button-dark"
               href={`/sign-in?return_to=${encodeURIComponent(route)}`}
             >
-              Log in to book ↗
+              Log in to book
             </Link>
           )}
           <div className="fee-note">

@@ -1,19 +1,19 @@
 # UI command/read contract
 All forms POST /api/commands; hidden command, return_to (relative path), idempotency_key optional (root creates fallback; UI should provide crypto.randomUUID per form render). Form input strings. Success redirect to return_to or relevant entity; errors ?error= safe message. Root will export all read functions discussed. Fields below exact:
 
-Public services rows: id,title,description,taxonomy,price_minor (string cents),currency,turnaround_hours,revision_limit,status,creator_id,creator_name,handle,niche,avatar_color,available_units,total_units,pool_id,samples (array optional).
+Public services rows: id,title,description,taxonomy,price_minor (string cents),currency,turnaround_hours,revision_limit,status,creator_id,creator_name,handle,niche,avatar_color,units_per_order,availability_status (see W7-CAP),samples (array optional).
 creators: id (user id),handle,display_name,bio,niche,avatar_color,completed_jobs,rating (null initially),services_count.
 requests: id,buyer_id,title,brief,taxonomy,budget_minor,per_creator_cap_minor,target_hires,deadline,status,buyer_name,application_count.
 auctions: id,service_id,seller_id,title,creator_name,starting_price_minor,current_price_minor,minimum_increment_minor,buy_now_price_minor,ends_at,starts_at,status,bid_count,winner_id.
 Orders: id,buyer_id,creator_id,service_id,source,title,status,amount_minor,platform_fee_minor,provider_fee_minor,currency,brief,delivery_due_at,review_due_at,revision_count,version,buyer_name,creator_name,settlement_status,payment_status.
 Deliveries: id,order_id,body,url,version,created_at. Events: id,kind,payload,created_at. Messages: id,body,display_name,created_at. Reviews: rating,body.
 ServiceData: {service,creator,samples}; samples title,url,description. null if notfound. getCreatorData(handle): {creator,services,samples}. getRequestData(actor|null,id): {request,applications}; applications only buyer/applicant visible; rows creator_name,quote_minor,note,status,id,creator_id. getAuctionData(actor|null,id): {auction,bids}; bids display_name (pseudonym),amount_minor,created_at.
-Dashboard: {orders,services,applications,requests,auctions,stats}; stats {completed_orders,active_orders,gross_minor,available_minor,platform_fee_minor:'0'}; applications id,request_title,quote_minor,status,creator_id,request_id,creator_name; services same public fields. getPublicData accepts optional {q?,category?}.
+Dashboard: {orders,services,applications,requests,auctions,stats}; stats {completed_orders,active_orders,gross_minor,platform_fee_minor:'0'}; workload (see W7-CAP); applications id,request_title,quote_minor,status,creator_id,request_id,creator_name; services same public fields. getPublicData accepts optional {q?,category?}.
 
 Commands:
-create_service: title,description,taxonomy CREATE/PUBLISH/ACCESS/DIGITAL,price (decimal USD),capacity integer,turnaround_hours,niche; three sample URLs sample_url_1/2/3 and sample_title_1/2/3 optional (or profile existing samples). creates draft then publish separately.
+create_service: title,description,taxonomy CREATE/PUBLISH/ACCESS/DIGITAL,price (decimal USD),turnaround_hours,niche,units_per_order optional; three sample URLs sample_url_1/2/3 and sample_title_1/2/3 optional (or profile existing samples). creates draft then publish separately.
 publish_service/pause_service: service_id
-set_capacity: pool_id,total_units
+set_workload_limit / set_accepting_orders: see W7-CAP
 update_profile: display_name,bio,niche,handle,social_url
 add_sample: title,url,description
 book: service_id,brief (min20 chars); successful redirect /orders/[id]
@@ -26,20 +26,18 @@ create_request: title,brief,taxonomy,budget (USD),per_creator_cap (USD optional)
 apply: request_id,quote (USD),note,turnaround_hours
 select_application: application_id
 accept_offer/decline_offer: application_id (target creator)
-create_auction: service_id,starting_price,minimum_increment,buy_now_price optional (USD),starts_at,ends_at datetime-local (local timezone applied browser), locks capacity
+create_auction: service_id,starting_price,minimum_increment,buy_now_price optional (USD),starts_at,ends_at datetime-local (local timezone applied browser), holds a place in the seller's order limit until the auction ends unsold or its order finishes
 bid: auction_id,amount (USD)
 buy_now/close_auction: auction_id (close only at deadline; service owner or system)
 create_pool: request_id,asset_symbol,amount (integer atomic string) LOCAL SIMULATION ONLY no testnet claim
 Only display sandbox actions under environment banner; no fake payment UI presented as live.
 
 ## W1-A additions (2026-09-13)
-Public service rows (getPublicData/getServiceData/getCreatorData) now come from the published immutable version and add: service_version_id, service_version, version, weekly_units (total_units kept = weekly units), available_units (next bookable week), next_available_starts_at, next_available_ends_at, pool_timezone. Owner rows (getDashboardData.services) show current fields + status + version + service_version_id (published) and never leak to public pages.
-book: service_id, brief (20+ chars), service_version_id (send the displayed version; 409 QUOTE_CHANGED if the creator updated terms), accept_terms ('on' records auto-accept consent in the order snapshot), bucket_id (optional week choice). Hold lasts CHECKOUT_HOLD_MINUTES (default 15).
-create_service: optional pool_id to share an existing weekly pool (then capacity is ignored); sample_url_n/sample_title_n optional pairs.
+Public service rows (getPublicData/getServiceData/getCreatorData) now come from the published immutable version and add: service_version_id, service_version, version. (Weekly capacity fields were removed in W7-CAP.) Owner rows (getDashboardData.services) show current fields + status + version + service_version_id (published) and never leak to public pages.
+book: service_id, brief (20+ chars), service_version_id (send the displayed version; 409 QUOTE_CHANGED if the creator updated terms), accept_terms ('on' records auto-accept consent in the order snapshot). 409 CAPACITY_UNAVAILABLE / NOT_ACCEPTING_ORDERS when the creator is at their limit or paused. Hold lasts CHECKOUT_HOLD_MINUTES (default 15).
+create_service: sample_url_n/sample_title_n optional pairs.
 update_service: service_id, expected_version (required), title, description, price, turnaround_hours. Live services get a new version; existing orders keep theirs.
 publish_service / pause_service / archive_service: service_id, expected_version optional. Archived services cannot be republished (422).
-set_capacity: pool_id, weekly_units (total_units accepted as alias). 409 CAPACITY_REDUCTION_CONFLICT if any current/future week already holds more.
-set_pool_timezone: pool_id, timezone (IANA). Booked weeks keep their dates.
 update_profile: + timezone (IANA). Handles are unique.
 add_sample: title, url, description, visibility, optional service_id link; starts PENDING moderation.
 Suspended accounts: 403 ACCOUNT_SUSPENDED for new activity; existing order commands still work.
@@ -102,8 +100,6 @@ getRequestData(actor|null, id) returns { request, applications, campaign }.
   - totals: { budget_minor, offered_minor, awaiting_payment_minor, funded_minor, completed_minor, refunded_minor, reserved_*, committed_*, target_hires }.
   - hires[{offer_id, offer_status, amount_minor, expires_at, order_id, creator_name, order_status, payment_status, settlement_status, delivery_due_at, budget_state}].
 
-getCreatorPools(actor) returns [{id, name, weekly_units, timezone}].
-
 getDashboardData.applications adds: version, valid_until, offer_id, offer_status, offer_expires_at, offer_amount_minor, offer_order_id.
 
 Commands:
@@ -115,7 +111,7 @@ Commands:
 - withdraw_application: application_id. SUBMITTED only.
 - select_application: application_id, application_version (the version shown). Errors: 409 QUOTE_CHANGED, 422 QUOTE_EXPIRED, 422 BUDGET_EXCEEDED, 409 if an offer is already active.
 - withdraw_offer: offer_id (buyer). decline_offer: offer_id, reason optional (creator).
-- accept_offer: offer_id, pool_id (the creator's own), bucket_id optional. Redirects to /orders/{id} in AWAITING_PAYMENT. Errors: 422 QUOTE_EXPIRED, 409 capacity or state.
+- accept_offer: offer_id. Holds one place in the creator's order limit. Redirects to /orders/{id} in AWAITING_PAYMENT. Errors: 422 QUOTE_EXPIRED, 409 CAPACITY_UNAVAILABLE / NOT_ACCEPTING_ORDERS or state.
 
 Operator command redirects: `admin_*` form posts return to their `return_to` (not the entity path); `message`/`error` are appended with `?` or `&` so query-bearing return paths work.
 
@@ -226,20 +222,20 @@ All discovery endpoints are public `GET`, return `cache-control: no-store` and `
 Params (all optional):
 - `q` (≤120 chars; letters/digits become AND-ed prefix terms), `taxonomy` (comma list of `CREATE,PUBLISH,ACCESS,DIGITAL`), `niche` (exact, case-insensitive), `creator` (handle).
 - `price_min`, `price_max` (decimal USD, e.g. `150` or `149.99`), `turnaround_max` (hours 1–8760).
-- `available=true` (has a free capacity slot that still fits turnaround), `available_before` (ISO date or datetime; implies available).
-- `sort`: `relevance` (needs `q`; default when `q` is set) | `newest` (default otherwise) | `price_asc` | `price_desc` | `turnaround` | `availability` (implies available).
+- `available=true` (the creator is accepting orders with room for this service's units). `available_before` and `sort=availability` return 400 since W7-CAP: there is no reopening date.
+- `sort`: `relevance` (needs `q`; default when `q` is set) | `newest` (default otherwise) | `price_asc` | `price_desc` | `turnaround`.
 - `cursor`, `limit` (1–48, default 24).
 
 Response `{ items, next_cursor, sort, ranking }`; each item:
-`{ id, service_version_id, service_version, title, summary (≤280 chars), taxonomy, price_minor, currency, turnaround_hours, revision_limit, published_at, creator_id, creator_name, handle, niche, avatar_color, rank, next_available_starts_at, next_available_ends_at, available_units }`.
-- `available_units: 0` and `next_available_starts_at: null` = no bookable slot; show "Fully booked" and disable the CTA. The server still rejects a stale booking with 409 (DSC-05).
+`{ id, service_version_id, service_version, title, summary (≤280 chars), taxonomy, price_minor, currency, turnaround_hours, revision_limit, published_at, creator_id, creator_name, handle, niche, avatar_color, rank, availability_status }`.
+- `availability_status` ≠ `ACCEPTING` = show "Currently at capacity" or "Paused" and replace the booking CTA with "Post a request". The server still rejects a stale booking with 409 (DSC-05).
 - `ranking` is a human-readable explanation of the order (show in a tooltip if desired).
 
 ### `GET /api/discovery/creators`
 
-Params: `q`, `niche`, `taxonomy` (single), `available=true`, `available_before`, `sort` = `relevance` (needs `q`) | `reputation` (default) | `availability` | `newest`, `cursor`, `limit` (1–48, default 24).
+Params: `q`, `niche`, `taxonomy` (single), `available=true`, `sort` = `relevance` (needs `q`) | `reputation` (default) | `newest`, `cursor`, `limit` (1–48, default 24).
 
-Item: `{ id, handle, display_name, niche, bio (≤200), avatar_color, joined_at, services_count, min_price_minor, taxonomies[], completed_orders, review_count, avg_rating, sample_count, next_available_starts_at, rank, reputation_label }`.
+Item: `{ id, handle, display_name, niche, bio (≤200), avatar_color, joined_at, services_count, min_price_minor, taxonomies[], completed_orders, review_count, avg_rating, sample_count, availability_status, rank, reputation_label }`.
 - `avg_rating` is `null` below 3 reviews and `reputation_label` is `NEW`; show "New" instead of stars. With ≥3 reviews the label is `RATED`.
 - There are no follower counts; do not display or sort by followers (`sort=followers` → 400).
 
@@ -265,3 +261,21 @@ Call once when a public service page is viewed (same-origin `fetch`, no body). R
 - `/sitemap.xml` and `/robots.txt` are served by the app. Non-production robots disallow all.
 - Private prefixes (`/orders`, `/dashboard`, `/admin`, `/buyer`, `/creator`, `/settings`, `/api`, `/sign-in`, `/sign-up`, `/reset-password`) get `X-Robots-Tag: noindex, nofollow` from `next.config.ts`; pages there need no extra metadata.
 - Public pages (`/services/[id]`, `/creators/[handle]`, `/requests/[id]`, `/auctions/[id]`, `/explore`) should set `alternates.canonical` using `canonicalUrl(path)` from `src/lib/seo.ts`.
+
+## W7-CAP additions (2026-09-15): active-order limit
+
+Capacity is one limit per creator: how many orders they work on at once, shared by all of their services (master §6).
+
+Reads:
+- Public service rows, `GET /api/discovery/services` and `GET /api/discovery/creators` items: `availability_status` = `ACCEPTING` | `AT_CAPACITY` | `PAUSED`. Buyers never see counts or a reopening date. Labels: "Accepting orders" (green), "Currently at capacity", "Paused". When not accepting, hide the booking form and offer "Post a request" (`/buyer/requests/new`).
+- Service rows add `units_per_order` (how many places one order uses, default 1).
+- `getDashboardData(actor).workload` (creator's own): `{ creator_id, max_active_units, accepting_orders, held_units, active_units, in_flight_units, version, availability_status }`. `in_flight_units = held_units + active_units`; it can exceed `max_active_units` after the creator lowers the limit.
+
+Commands:
+- `set_workload_limit`: `max_active_units` (1–100). Lowering it never cancels accepted work; new orders open again once in-flight units drop below it.
+- `set_accepting_orders`: `accepting` = `true` | `false`. `false` blocks new bookings, accepted offers and new auctions (409 `NOT_ACCEPTING_ORDERS`); orders and auctions already running continue.
+- `create_service` / `update_service`: optional `units_per_order` (1–10). A live edit creates a new service version; sold orders keep the weight they were sold with.
+- Removed: `set_capacity`, `set_pool_timezone`, `pool_id`/`bucket_id` on `book` and `accept_offer`, `capacity` on `create_service`, `getCreatorPools`.
+
+What counts: a checkout hold, an accepted offer awaiting payment, and a scheduled/live auction (from scheduling until it ends unsold or its order finishes) hold places. Funded work counts until the order is approved/completed or cancelled/refunded.
+

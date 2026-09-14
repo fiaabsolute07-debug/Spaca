@@ -34,7 +34,7 @@ export default async function AdminOverview({ searchParams }: PageProps) {
     <div className="admin-queue-grid">
       {sections.filter(section => section.relevant || section.items.length > 0).map(section =>
         <Link className="stat" href={section.href} key={section.label}>
-          <span>{section.label} ↗</span>
+          <span>{section.label} ›</span>
           <strong>{section.items.length}</strong>
         </Link>)}
     </div>

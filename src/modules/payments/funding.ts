@@ -13,7 +13,7 @@
  */
 import type postgres from 'postgres';
 import { sql } from '@/lib/db';
-import { commitOrderReservation } from '@/modules/capacity';
+import { activateOrderClaim } from '@/modules/capacity';
 import { recomputeWorkClock } from '@/modules/orders/lifecycle';
 import { isFlagEnabled } from '@/modules/admin/policy';
 import {
@@ -114,8 +114,8 @@ export async function ensureFundingIntent(tx: Tx, buyerId: string, orderId: stri
   if (order.status !== 'AWAITING_PAYMENT' || !['PENDING', 'PROCESSING', 'FAILED'].includes(String(order.payment_status))) {
     throw new PaymentFlowError('This order is not awaiting payment', 'INVALID_STATE');
   }
-  const [reservation] = await tx<Row[]>`select state from app.reservations where order_id=${orderId}`;
-  if (reservation?.state !== 'HELD') throw new PaymentFlowError('The capacity hold for this order is no longer active', 'INVALID_STATE');
+  const [claim] = await tx<Row[]>`select state from app.workload_claims where order_id=${orderId}`;
+  if (claim?.state !== 'HELD') throw new PaymentFlowError('The capacity hold for this order is no longer active', 'INVALID_STATE');
 
   // Reuse the latest attempt unless the provider reported it FAILED/CANCELED or rejected it outright.
   const attempts = await tx<Row[]>`select operation_id,status,outcome from app.provider_operations where order_id=${orderId} and kind='funding.create' order by created_at asc`;
@@ -464,9 +464,9 @@ async function applyFundingEvent(tx: Tx, event: VerifiedEvent): Promise<string> 
     }
     const [existing] = await tx<Row[]>`select id from app.ledger_transactions where idempotency_key=${`funding:mock:${event.reference}`}`;
     if (existing) return 'DUPLICATE_FACT';
-    const [reservation] = await tx<Row[]>`select * from app.reservations where order_id=${orderId} for update`;
-    // RECONCILING = hold expired while this payment was still unresolved; the verified success wins.
-    if (order.payment_status === 'SUCCEEDED' || order.status !== 'AWAITING_PAYMENT' || !['HELD', 'RECONCILING'].includes(String(reservation?.state))) {
+    const [claim] = await tx<Row[]>`select * from app.workload_claims where order_id=${orderId} for update`;
+    // EXPIRY_RECONCILING = hold expired while this payment was still unresolved; the verified success wins.
+    if (order.payment_status === 'SUCCEEDED' || order.status !== 'AWAITING_PAYMENT' || !['HELD', 'EXPIRY_RECONCILING'].includes(String(claim?.state))) {
       const kind = order.payment_status === 'SUCCEEDED' ? 'DUPLICATE_FUNDING' : 'LATE_FUNDING';
       await openCase(tx, orderId, String(operation.id), kind, 'HIGH', 'Provider captured funds the order cannot accept; refund or reinstate with operator approval');
       await orderEvent(tx, orderId, kind, { provider: MOCK_PROVIDER, reference: event.reference, event_id: event.eventId });
@@ -477,8 +477,8 @@ async function applyFundingEvent(tx: Tx, event: VerifiedEvent): Promise<string> 
       version=version+1,updated_at=now() where id=${orderId}`;
     // Work clock = max(funded_at, brief_ready_at) + sold turnaround, fixed once set (ORD-03/04).
     await recomputeWorkClock(tx, orderId);
-    // Counters follow reservation state via DB trigger (drizzle/0003).
-    await commitOrderReservation(tx, orderId);
+    // Workload counters follow claim state via DB trigger (drizzle/0012).
+    await activateOrderClaim(tx, orderId);
     await orderEvent(tx, orderId, 'PAYMENT_CONFIRMED', {
       provider: MOCK_PROVIDER,
       reference: event.reference,
@@ -528,12 +528,12 @@ async function applyFundingEvent(tx: Tx, event: VerifiedEvent): Promise<string> 
 export async function applyPoolFunding(tx: Tx, input: { orderId: string; poolId: string; cashMinor: bigint; templateVersion: number }): Promise<'FUNDED'> {
   const { orderId } = input;
   const [order] = await tx<Row[]>`select * from app.orders where id=${orderId} for update`;
-  const [reservation] = await tx<Row[]>`select state from app.reservations where order_id=${orderId} for update`;
-  if (!order || order.status !== 'AWAITING_PAYMENT' || reservation?.state !== 'HELD') throw new PaymentFlowError('Pool funding needs a new order with a held slot', 'INVALID_STATE');
+  const [claim] = await tx<Row[]>`select state from app.workload_claims where order_id=${orderId} for update`;
+  if (!order || order.status !== 'AWAITING_PAYMENT' || claim?.state !== 'HELD') throw new PaymentFlowError('Pool funding needs a new order with a held slot', 'INVALID_STATE');
   if (input.cashMinor !== BigInt(String(order.amount_minor))) throw new PaymentFlowError('Pool CASH reward differs from the order price', 'INVALID_STATE');
   await tx`update app.orders set status='FUNDED',payment_status='SUCCEEDED',payment_rail='POOL',provider_fee_minor=0,funded_at=now(),version=version+1,updated_at=now() where id=${orderId}`;
   await recomputeWorkClock(tx, orderId);
-  await commitOrderReservation(tx, orderId);
+  await activateOrderClaim(tx, orderId);
   await orderEvent(tx, orderId, 'PAYMENT_CONFIRMED', { rail: 'POOL', pool_id: input.poolId, template_version: input.templateVersion, platform_fee_minor: '0', provider_fee_minor: '0' });
   await ledger(tx, orderId, 'FUNDING_CAPTURED', `funding:pool:${orderId}`, [[`pool_clearing:${input.poolId}`, input.cashMinor], [`order_principal:${orderId}`, -input.cashMinor]], 'USD');
   await outbox(tx, orderId, `notify:order.new:${orderId}`, {
@@ -612,8 +612,8 @@ export async function applyChainFunding(tx: Tx, fact: ChainFundingFact): Promise
     await openCase(tx, orderId, null, 'AMOUNT_MISMATCH', 'HIGH', 'On-chain deposit amount differs from the order snapshot; refund or top up with operator approval');
     return 'AMOUNT_MISMATCH';
   }
-  const [reservation] = await tx<Row[]>`select * from app.reservations where order_id=${orderId} for update`;
-  if (order.payment_status === 'SUCCEEDED' || order.status !== 'AWAITING_PAYMENT' || !['HELD', 'RECONCILING'].includes(String(reservation?.state))) {
+  const [claim] = await tx<Row[]>`select * from app.workload_claims where order_id=${orderId} for update`;
+  if (order.payment_status === 'SUCCEEDED' || order.status !== 'AWAITING_PAYMENT' || !['HELD', 'EXPIRY_RECONCILING'].includes(String(claim?.state))) {
     const kind = order.payment_status === 'SUCCEEDED' ? 'DUPLICATE_FUNDING' : 'LATE_FUNDING';
     await openCase(tx, orderId, null, kind, 'HIGH', 'An on-chain deposit arrived that the order cannot accept; refund it from the settlement address with operator approval');
     await orderEvent(tx, orderId, kind, chainRef);
@@ -623,7 +623,7 @@ export async function applyChainFunding(tx: Tx, fact: ChainFundingFact): Promise
   await tx`update app.orders set status='FUNDED',payment_status='SUCCEEDED',payment_rail='CRYPTO',provider_fee_minor=0,funded_at=now(),
     version=version+1,updated_at=now() where id=${orderId}`;
   await recomputeWorkClock(tx, orderId);
-  await commitOrderReservation(tx, orderId);
+  await activateOrderClaim(tx, orderId);
   await orderEvent(tx, orderId, 'PAYMENT_CONFIRMED', { ...chainRef, platform_fee_minor: '0', provider_fee_minor: '0' });
   await ledger(tx, orderId, 'FUNDING_CAPTURED', ledgerKey, [
     [`chain_clearing:${fact.chainId}`, amount],

@@ -5,7 +5,7 @@
  * unpaid cancellation defaults the auction through the order trigger in drizzle/0008; nothing relists silently.
  */
 import { CommandError, instant, money, orderEvent, text, uuid, type CommandHandler, type Row, type Tx } from '@/lib/commands';
-import { insertReservation, lockAvailableBucket, releaseAuctionReservation } from '@/modules/capacity';
+import { claimWorkload, releaseAuctionClaim } from '@/modules/capacity';
 import { CHECKOUT_HOLD_MINUTES, ownedService } from '@/modules/catalog/commands';
 import { assertFlags } from '@/modules/admin/policy';
 import { enqueueNotification } from '@/modules/notifications/enqueue';
@@ -55,16 +55,17 @@ async function assertBiddingWindow(tx: Tx, auction: Row): Promise<Date> {
 async function createSale(tx: Tx, auction: Row, sale: { buyerId: string; amountMinor: string; kind: 'WINNER' | 'BUY_NOW'; bidId: string | null; expiresAt: Date }) {
   const snapshot = auction.terms_snapshot as Record<string, unknown>;
   const terms = { ...snapshot, schema_version: 1, source: 'AUCTION', auction_id: String(auction.id), sale_kind: sale.kind, price_minor: sale.amountMinor, platform_fee_bps: 0, auto_accept_consent: false };
-  const [reservation] = await tx<Row[]>`select * from app.reservations where auction_id=${String(auction.id)} for update`;
-  if (!reservation || !['HELD', 'RECONCILING'].includes(String(reservation.state))) {
+  const [claim] = await tx<Row[]>`select * from app.workload_claims where auction_id=${String(auction.id)} for update`;
+  if (!claim || !['HELD', 'EXPIRY_RECONCILING'].includes(String(claim.state))) {
     throw new CommandError('The auction slot is no longer held; the sale cannot proceed', 'CAPACITY_UNAVAILABLE');
   }
   const brief = sale.kind === 'WINNER' ? 'Winning bid: confirm the final brief in the order workspace.' : 'Buy Now purchase: confirm the final brief in the order workspace.';
-  const [order] = await tx<Row[]>`insert into app.orders (buyer_id,creator_id,service_id,service_version_id,pool_id,source,source_ref,title,status,amount_minor,platform_fee_minor,currency,brief,terms,delivery_due_at)
-    values (${sale.buyerId},${String(auction.seller_id)},${String(auction.service_id)},${auction.service_version_id},${String(reservation.pool_id)},'AUCTION',${String(auction.id)},${String(auction.title)},
+  const [order] = await tx<Row[]>`insert into app.orders (buyer_id,creator_id,service_id,service_version_id,source,source_ref,title,status,amount_minor,platform_fee_minor,currency,brief,terms,delivery_due_at)
+    values (${sale.buyerId},${String(auction.seller_id)},${String(auction.service_id)},${auction.service_version_id},'AUCTION',${String(auction.id)},${String(auction.title)},
       'AWAITING_PAYMENT',${sale.amountMinor},0,${String(snapshot.currency ?? 'USD')},${brief},${JSON.stringify(terms)}::jsonb,null) returning id`;
   const orderId = String(order!.id);
-  await tx`update app.reservations set order_id=${orderId},auction_id=null,state='HELD',expires_at=${sale.expiresAt.toISOString()} where id=${String(reservation.id)}`;
+  // CAP-09: the same claim moves to the order; it is never claimed twice.
+  await tx`update app.workload_claims set order_id=${orderId},auction_id=null,state='HELD',expires_at=${sale.expiresAt.toISOString()} where id=${String(claim.id)}`;
   await tx`insert into app.auction_purchase_intents (auction_id,buyer_id,kind,bid_id,amount_minor,order_id,expires_at)
     values (${String(auction.id)},${sale.buyerId},${sale.kind},${sale.bidId},${sale.amountMinor},${orderId},${sale.expiresAt.toISOString()})`;
   await tx`update app.auctions set status='AWAITING_WINNER_PAYMENT',winner_id=${sale.buyerId},winning_bid_id=${sale.bidId},payment_due_at=${sale.expiresAt.toISOString()},
@@ -86,7 +87,7 @@ export async function closeAuction(tx: Tx, auctionId: string): Promise<CloseOutc
   const top = await highestValidBid(tx, auctionId);
   if (!top) {
     await tx`update app.auctions set status='NO_BIDS',closed_at=now(),version=version+1,updated_at=now() where id=${auctionId}`;
-    await releaseAuctionReservation(tx, auctionId);
+    await releaseAuctionClaim(tx, auctionId);
     await enqueueNotification(tx, auctionId, `notify:auction.no_bids:${auctionId}`, { templateId: 'auction.expired', recipientId: String(auction.seller_id), params: { auctionRef: auctionId } });
     return { outcome: 'NO_BIDS' };
   }
@@ -116,9 +117,7 @@ const createAuction: CommandHandler = async ({ tx, actor, form }) => {
   if (ends <= starts || ends <= now) throw new CommandError('The auction must end after it starts and in the future');
   if (ends.getTime() - starts.getTime() > MAX_AUCTION_DAYS * 86_400_000) throw new CommandError(`Auctions can run for at most ${MAX_AUCTION_DAYS} days`);
   const [version] = await tx<Row[]>`select * from app.service_versions where id=${String(service.published_version_id)}`;
-  // AUC-01: the held week must still fit the work after the auction ends and the winner's payment window closes.
-  const workStart = new Date(ends.getTime() + WINNER_PAYMENT_HOURS * 3600_000);
-  const bucket = await lockAvailableBucket(tx, String(version!.pool_id), Number(version!.turnaround_hours), null, workStart);
+  const units = Number(version!.units_per_order);
   const terms = {
     service_version_id: String(version!.id),
     service_version: Number(version!.version),
@@ -136,14 +135,15 @@ const createAuction: CommandHandler = async ({ tx, actor, form }) => {
     starts_at: starts.toISOString(),
     ends_at: ends.toISOString(),
     winner_payment_hours: WINNER_PAYMENT_HOURS,
-    capacity: { pool_id: String(bucket.pool_id), bucket_id: String(bucket.id), week_starts_at: new Date(bucket.starts_at).toISOString(), week_ends_at: new Date(bucket.ends_at).toISOString() },
+    capacity: { model: 'ACTIVE_ORDER_LIMIT', units },
   };
   const status = starts <= now ? 'LIVE' : 'SCHEDULED';
   const [auction] = await tx<Row[]>`insert into app.auctions (service_id,service_version_id,seller_id,title,starting_price_minor,minimum_increment_minor,buy_now_price_minor,starts_at,ends_at,status,terms_snapshot)
     values (${String(service.id)},${String(version!.id)},${actor.id},${version!.title},${starting.toString()},${increment.toString()},${buy?.toString() ?? null},
       ${starts.toISOString()},${ends.toISOString()},${status},${JSON.stringify(terms)}::jsonb) returning id`;
-  await insertReservation(tx, bucket, { auctionId: String(auction!.id) }, workStart);
-  return { path: `/auctions/${auction!.id}`, message: 'Auction scheduled and one capacity unit reserved', id: String(auction!.id) };
+  // The auction holds its units from scheduling until the sale's order finishes or the auction ends unsold.
+  await claimWorkload(tx, { creatorId: actor.id, units, origin: 'AUCTION', auctionId: String(auction!.id), expiresAt: null });
+  return { path: `/auctions/${auction!.id}`, message: 'Auction scheduled. It counts toward your active order limit until it ends.', id: String(auction!.id) };
 };
 
 /** AUC-02/03/04: lock → server time → minimum → sequenced insert → pointer; ties go to the first committed bid. */
@@ -210,7 +210,7 @@ const cancelAuction: CommandHandler = async ({ tx, actor, form }) => {
   }
   const reason = text(form, 'reason', false, 500) || 'Cancelled by seller before any bid';
   await tx`update app.auctions set status='CANCELLED',cancel_reason=${reason},closed_at=now(),version=version+1,updated_at=now() where id=${auctionId}`;
-  await releaseAuctionReservation(tx, auctionId);
+  await releaseAuctionClaim(tx, auctionId);
   return { path: `/auctions/${auctionId}`, message: 'Auction cancelled and capacity released' };
 };
 

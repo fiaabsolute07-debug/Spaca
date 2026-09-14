@@ -1,6 +1,6 @@
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MockPaymentProvider, type MockPaymentProviderOptions } from '@/modules/payments/providers';
-import { RUN_DB, callRoute, commandInstant, createPublishedService, createUser, key, poolCounters, sessionState, type TestUser } from './harness';
+import { RUN_DB, callRoute, commandInstant, createPublishedService, createUser, key, workloadCounters, sessionState, type TestUser } from './harness';
 
 vi.mock('next/headers', () => ({
   cookies: async () => {
@@ -29,18 +29,18 @@ const events = async (orderId: string) => (await sql`select kind from app.order_
 const brief = 'Orders suite brief: audience, goals, required facts and three headline options.';
 const note = (label: string) => `${label}: all agreed files and copy are included here.`;
 
-type Setup = { creator: TestUser; buyer: TestUser; serviceId: string; poolId: string; orderId: string };
+type Setup = { creator: TestUser; buyer: TestUser; serviceId: string; creatorId: string; orderId: string };
 
 async function funded(label: string, options: { consent?: boolean } = {}): Promise<Setup> {
   const creator = await createUser(`${label}-creator`);
   const buyer = await createUser(`${label}-buyer`);
-  const { serviceId, poolId } = await createPublishedService(command, creator, { capacity: 3 });
+  const { serviceId, creatorId } = await createPublishedService(command, creator, { capacity: 3 });
   const booked = await command(buyer, { command: 'book', idempotency_key: key('book'), service_id: serviceId, brief, ...(options.consent === false ? {} : { accept_terms: 'on' }) });
   if (booked.status !== 200) throw new Error(JSON.stringify(booked.body));
   const orderId = String(booked.body.id);
   const paid = await pay(buyer, orderId);
   if (paid.status !== 200) throw new Error(JSON.stringify(paid.body));
-  return { creator, buyer, serviceId, poolId, orderId };
+  return { creator, buyer, serviceId, creatorId, orderId };
 }
 
 const step = (actor: TestUser, orderId: string, fields: Record<string, string>) => command(actor, { idempotency_key: key('step'), order_id: orderId, ...fields });
@@ -254,9 +254,9 @@ describe.skipIf(!RUN_DB)('ORD — cancellation after work starts', () => {
     expect((await orderRow(orderId)).status).toBe('IN_PROGRESS');
   });
 
-  it('ORD-15: accepted partial refund refunds the agreed amount, releases the remainder, and consumes capacity', async () => {
+  it('ORD-15: accepted partial refund refunds the agreed amount, releases the remainder, and frees the creator\'s place', async () => {
     useProvider({ refundSettlement: 'immediate' });
-    const { buyer, creator, orderId, poolId } = await funded('ord15');
+    const { buyer, creator, orderId, creatorId } = await funded('ord15');
     expect((await step(creator, orderId, { command: 'start' })).status).toBe(200);
     const requested = await step(creator, orderId, { command: 'request_cancellation', refund_amount: '400', reason: 'Client changed direction halfway through.' });
     const requestId = String(requested.body.id);
@@ -268,9 +268,9 @@ describe.skipIf(!RUN_DB)('ORD — cancellation after work starts', () => {
     expect(accepted.status).toBe(200);
     const cancelled = await orderRow(orderId);
     expect(cancelled).toMatchObject({ status: 'CANCELLED', cancellation_refund_minor: '40000', payment_status: 'PARTIALLY_REFUNDED', settlement_status: 'READY' });
-    const [reservation] = await sql`select state from app.reservations where order_id=${orderId}`;
-    expect(reservation!.state).toBe('CONSUMED');
-    expect(await poolCounters(poolId)).toMatchObject({ committed_units: 1, reserved_units: 0 });
+    const [claim] = await sql`select state from app.workload_claims where order_id=${orderId}`;
+    expect(claim!.state).toBe('RELEASED');
+    expect(await workloadCounters(creatorId)).toMatchObject({ active_units: 0, held_units: 0 });
 
     expect((await jobs.releaseReadySettlements({ orderId })).outcomes).toEqual({ RELEASE_REQUESTED: 1 });
     const settled = await orderRow(orderId);

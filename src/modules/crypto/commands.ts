@@ -14,7 +14,7 @@ const createCryptoPayment: CommandHandler = async ({ tx, actor, form }) => {
   if (!order) throw new CommandError('Order not found or not visible to this account', 'NOT_FOUND');
   if (order.status !== 'AWAITING_PAYMENT' || order.payment_status === 'SUCCEEDED') throw new CommandError('This order is not awaiting payment', 'ORDER_STATE_CONFLICT');
   if (order.currency !== 'USD') throw new CommandError('Crypto checkout supports USD-priced orders only', 'UNSUPPORTED_ASSET');
-  const [hold] = await tx<Row[]>`select expires_at from app.reservations where order_id=${orderId} and state='HELD' and (expires_at is null or expires_at > now())`;
+  const [hold] = await tx<Row[]>`select expires_at from app.workload_claims where order_id=${orderId} and state='HELD' and (expires_at is null or expires_at > now())`;
   if (!hold) throw new CommandError('The checkout hold expired; book again to pay', 'SLOT_EXPIRED');
   const [cardAttempt] = await tx<Row[]>`select 1 from app.provider_operations where order_id=${orderId} and kind='funding.create'
     and (status in ('PENDING','UNKNOWN') or coalesce(outcome->>'fundingStatus','') in ('PROCESSING','SUCCEEDED')) limit 1`;
