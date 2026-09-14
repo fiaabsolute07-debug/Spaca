@@ -58,10 +58,14 @@ try {
           || (array['package','sprint','series','audit','kit','plan','campaign','session','pack','draft'])[1 + ((g / 7) % 10)] || ' ' || g as title,
         (array['CREATE','PUBLISH','ACCESS','DIGITAL'])[1 + (g % 4)] as taxonomy, (5000 + (g * 37) % 200000)::bigint as price_minor, (12 + (g % 20) * 12) as turnaround_hours
       from generate_series(1, 5000) g join bench_creators p on p.n = 1 + (g % 1000)`;
-    await tx`insert into app.services (id,creator_id,title,description,taxonomy,price_minor,currency,turnaround_hours,status)
-      select id,creator_id,title,'Scope for '||title||' including deliverables, revisions and usage notes.',taxonomy,price_minor,'USD',turnaround_hours,'DRAFT' from bench_services`;
-    await tx`insert into app.service_versions (service_id,version,title,description,taxonomy,price_minor,currency,turnaround_hours,revision_limit,created_by,created_at)
-      select id,1,title,'Scope for '||title||' including deliverables, revisions and usage notes.',taxonomy,price_minor,'USD',turnaround_hours,1,creator_id,now() - (g * interval '1 minute') from bench_services`;
+    // ACCESS listings carry session terms (drizzle/0015); other categories leave them null.
+    await tx`insert into app.services (id,creator_id,title,description,taxonomy,price_minor,currency,turnaround_hours,status,access_session_minutes,access_buffer_minutes,access_cancel_notice_hours,access_no_show_minutes)
+      select id,creator_id,title,'Scope for '||title||' including deliverables, revisions and usage notes.',taxonomy,price_minor,'USD',turnaround_hours,'DRAFT',
+        case when taxonomy='ACCESS' then 60 end,case when taxonomy='ACCESS' then 15 end,case when taxonomy='ACCESS' then 24 end,case when taxonomy='ACCESS' then 10 end from bench_services`;
+    await tx`insert into app.service_versions (service_id,version,title,description,taxonomy,price_minor,currency,turnaround_hours,revision_limit,created_by,created_at,
+        access_session_minutes,access_buffer_minutes,access_cancel_notice_hours,access_no_show_minutes)
+      select id,1,title,'Scope for '||title||' including deliverables, revisions and usage notes.',taxonomy,price_minor,'USD',turnaround_hours,1,creator_id,now() - (g * interval '1 minute'),
+        case when taxonomy='ACCESS' then 60 end,case when taxonomy='ACCESS' then 15 end,case when taxonomy='ACCESS' then 24 end,case when taxonomy='ACCESS' then 10 end from bench_services`;
     await tx`update app.services s set status='PUBLISHED',published_version_id=v.id from app.service_versions v where v.service_id=s.id and s.id in (select id from bench_services)`;
     await tx`create temp table bench_auctions on commit drop as
       select gen_random_uuid() as id, s.id as service_id, s.creator_id, s.title, series.n as g from generate_series(1, 500) as series(n) join bench_services s on s.g = series.n * 10`;

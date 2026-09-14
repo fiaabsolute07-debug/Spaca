@@ -13,13 +13,14 @@ type Props = {
   activeHold: Row | null;
   cryptoPayment?: Row | null;
   cryptoOptions?: Row[];
+  appointment?: Row | null;
   route: string;
 };
 
 const ACTIVE_WORK = ['IN_PROGRESS', 'DELIVERED', 'REVISION_REQUESTED'];
 
 /** Actions per master §7.2; the server re-checks every rule, the UI only offers what is currently valid. */
-export function OrderNextStepPanel({ order: o, buyer, creator, actorId, reviews, latestDeliveryVersion, activeCancellation, activeHold, cryptoPayment = null, cryptoOptions = [], route }: Props) {
+export function OrderNextStepPanel({ order: o, buyer, creator, actorId, reviews, latestDeliveryVersion, activeCancellation, activeHold, cryptoPayment = null, cryptoOptions = [], appointment = null, route }: Props) {
   const status = str(o.status);
   const orderId = str(o.id);
   const briefReady = Boolean(o.brief_ready_at);
@@ -28,6 +29,9 @@ export function OrderNextStepPanel({ order: o, buyer, creator, actorId, reviews,
   const onDelivery = latestDeliveryVersion ? { ...base, delivery_version: String(latestDeliveryVersion) } : base;
   const cancellation = activeCancellation;
   const isRequester = cancellation ? str(cancellation.requested_by) === actorId : false;
+  // XPL-03: a session has no start/deliver step, and inside its notice period the buyer can only request a cancellation.
+  const session = appointment !== null;
+  const lateForBuyer = session && buyer && status === 'FUNDED' && Date.now() >= new Date(str(appointment?.starts_at)).getTime() - num(appointment?.cancel_notice_hours) * 3600_000;
 
   return <div className="panel">
     <h2>Next step</h2>
@@ -50,7 +54,9 @@ export function OrderNextStepPanel({ order: o, buyer, creator, actorId, reviews,
 
     {status === 'AWAITING_PAYMENT' && buyer && <CryptoPaymentPanel orderId={orderId} intent={cryptoPayment} options={cryptoOptions} route={route} />}
 
-    {status === 'FUNDED' && creator && (briefReady
+    {status === 'FUNDED' && creator && session && <p className="muted">Paid. Join at the booked time, then record the outcome in the Session panel.</p>}
+
+    {status === 'FUNDED' && creator && !session && (briefReady
       ? <CommandForm command="start" label="Start work" values={base} returnTo={route}>
           <p className="muted">Due {date(o.delivery_due_at)}. Starting later does not move this date.</p>
         </CommandForm>
@@ -71,8 +77,8 @@ export function OrderNextStepPanel({ order: o, buyer, creator, actorId, reviews,
       <Field name="body" label="What went wrong?" type="textarea" required />
     </CommandForm>}
 
-    {['AWAITING_PAYMENT', 'FUNDED'].includes(status) && (buyer || creator) && <CommandForm variant="danger" command="cancel" label="Cancel order" values={base} returnTo={route}>
-      <p className="muted">{status === 'FUNDED' ? 'Work has not started, so the full amount is refunded through the provider.' : 'The reserved capacity is released.'}</p>
+    {['AWAITING_PAYMENT', 'FUNDED'].includes(status) && (buyer || creator) && !lateForBuyer && <CommandForm variant="danger" command="cancel" label="Cancel order" values={base} returnTo={route}>
+      <p className="muted">{status === 'FUNDED' ? (session ? 'The session has not happened, so the full amount is refunded through the provider.' : 'Work has not started, so the full amount is refunded through the provider.') : session ? 'The held time is released.' : 'The reserved capacity is released.'}</p>
     </CommandForm>}
 
     {cancellation && <div className="record">
@@ -88,8 +94,8 @@ export function OrderNextStepPanel({ order: o, buyer, creator, actorId, reviews,
           </>}
     </div>}
 
-    {!cancellation && ACTIVE_WORK.includes(status) && (buyer || creator) && <CommandForm variant="danger" command="request_cancellation" label="Request cancellation" values={base} returnTo={route}>
-      <p className="muted">Work has started, so both sides must agree on the refund amount.</p>
+    {!cancellation && (ACTIVE_WORK.includes(status) || lateForBuyer) && (buyer || creator) && <CommandForm variant="danger" command="request_cancellation" label="Request cancellation" values={base} returnTo={route}>
+      <p className="muted">{lateForBuyer ? 'The session is close, so the creator must agree to the refund amount.' : 'Work has started, so both sides must agree on the refund amount.'}</p>
       <Field name="refund_amount" label={`Refund amount (USD, up to ${money(o.amount_minor)})`} required placeholder="0.00" />
       <Field name="reason" label="Reason" type="textarea" required />
     </CommandForm>}

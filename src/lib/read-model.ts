@@ -2,13 +2,15 @@ import { sql } from './db';
 import { formatAtomic, usdMinorToAtomic } from '@/modules/crypto/registry';
 import type { Actor } from './auth';
 import { availabilityOf, workloadsFor } from '@/modules/capacity';
+import { availabilityFor } from '@/modules/access';
+import { isFlagEnabled } from '@/modules/admin/policy';
 
 export type ReadRow = Record<string, unknown>;
 const asRows = (value: unknown): ReadRow[] => Array.isArray(value) ? value as ReadRow[] : [];
 
-const SERVICE_COLUMNS_OWNER = sql`s.id,s.title,s.description,s.taxonomy,s.price_minor,s.currency,s.turnaround_hours,s.revision_limit,s.units_per_order,s.status,s.version,s.creator_id,s.published_version_id as service_version_id,s.publish_account_id,s.publish_format,s.min_live_hours,s.disclosure_text`;
+const SERVICE_COLUMNS_OWNER = sql`s.id,s.title,s.description,s.taxonomy,s.price_minor,s.currency,s.turnaround_hours,s.revision_limit,s.units_per_order,s.status,s.version,s.creator_id,s.published_version_id as service_version_id,s.publish_account_id,s.publish_format,s.min_live_hours,s.disclosure_text,s.access_session_minutes,s.access_buffer_minutes,s.access_cancel_notice_hours,s.access_no_show_minutes`;
 // Public views always show the published immutable version's terms, never unpublished edits.
-const SERVICE_COLUMNS_PUBLIC = sql`s.id,v.title,v.description,v.taxonomy,v.price_minor,v.currency,v.turnaround_hours,v.revision_limit,v.units_per_order,s.status,s.version,s.creator_id,v.id as service_version_id,v.version as service_version,v.publish_platform,v.publish_handle,v.publish_url,v.publish_format,v.min_live_hours,v.disclosure_text`;
+const SERVICE_COLUMNS_PUBLIC = sql`s.id,v.title,v.description,v.taxonomy,v.price_minor,v.currency,v.turnaround_hours,v.revision_limit,v.units_per_order,s.status,s.version,s.creator_id,v.id as service_version_id,v.version as service_version,v.publish_platform,v.publish_handle,v.publish_url,v.publish_format,v.min_live_hours,v.disclosure_text,v.access_session_minutes,v.access_buffer_minutes,v.access_cancel_notice_hours,v.access_no_show_minutes`;
 
 /**
  * Buyers see a status only, never the counts (§6.1 rule 10): ACCEPTING, AT_CAPACITY or PAUSED for one order of
@@ -83,11 +85,13 @@ export async function getDashboardData(actor: Actor) {
   ]);
   const [profileRow] = asRows(profile);
   const [statsRow] = asRows(stats);
+  const availability = await availabilityFor(sql, actor.id);
   const serviceList = asRows(services);
   const workload = (await workloadsFor(sql, [actor.id])).get(actor.id)!;
   const inFlight = Number(workload.held_units) + Number(workload.active_units);
   return { orders: asRows(orders), services: serviceList, applications: asRows(applications), requests: asRows(requests), auctions: asRows(auctions), profile: profileRow ?? {}, stats: statsRow ?? {},
-    workload: { ...workload, in_flight_units: inFlight, availability_status: availabilityOf(workload) } };
+    workload: { ...workload, in_flight_units: inFlight, availability_status: availabilityOf(workload) },
+    availability: { time_zone: availability.timeZone ?? actor.timezone ?? null, windows: availability.windows } };
 }
 
 export async function getOrderData(actor: Actor, id: string) {
@@ -113,6 +117,9 @@ export async function getOrderData(actor: Actor, id: string) {
       from app.publish_proofs p join app.deliveries d on d.id=p.delivery_id where p.order_id=${id} order by d.version desc`,
   ]);
   const isBuyer = actor.id === String(order.buyer_id);
+  // XPL-03: the session and its private meeting link are read only by the two parties (this query is already scoped to them).
+  const [appointment] = asRows(await sql`select state,starts_at,ends_at,buffer_minutes,creator_time_zone,cancel_notice_hours,no_show_minutes,meeting_url,outcome_at
+    from app.appointments where order_id=${id}`);
   // Crypto checkout (W5-C1): the buyer sees their latest intent; both parties see how the order was paid.
   const [cryptoIntent] = isBuyer ? asRows(await sql`select i.id,i.status,i.status_reason,i.chain_id,i.network_mode,i.amount_atomic,i.recipient,i.reference,i.escrow_ref,i.expires_at,
       a.symbol,a.decimals,a.kind as asset_kind,a.contract_address as token_address,n.name as network_name,
@@ -135,6 +142,7 @@ export async function getOrderData(actor: Actor, id: string) {
     deliveries: asRows(deliveries),
     publish_terms: terms.publish ?? null,
     publish_proofs: asRows(proofs),
+    appointment: appointment ?? null,
     events: asRows(events),
     messages: asRows(messages),
     reviews: asRows(reviews),
@@ -154,10 +162,11 @@ export async function getServiceData(id: string) {
     left join app.profiles p on p.user_id=s.creator_id where s.id=${id} and s.status='PUBLISHED' and u.status='ACTIVE'`);
   if (!rows[0]) return null;
   const [service] = await withAvailability(rows);
+  const access = service!.taxonomy === 'ACCESS' ? { time_zone: (await availabilityFor(sql, String(service!.creator_id))).timeZone, booking_enabled: await isFlagEnabled(sql, 'ACCESS_BOOKING_ENABLED') } : null;
   // The service page shows the samples the creator linked to this service (service_samples), not their whole portfolio.
   const samples = await sql`select sm.id,sm.creator_id,sm.title,sm.url,sm.description,sm.created_at from app.service_samples ss join app.samples sm on sm.id=ss.sample_id
     where ss.service_id=${id} and sm.visibility='PUBLIC' and sm.moderation_status='APPROVED' order by sm.created_at desc limit 12`;
-  return { service: service!, creator: { id: service!.creator_id, display_name: service!.creator_name, bio: service!.bio, niche: service!.niche, handle: service!.handle, avatar_color: service!.avatar_color }, samples: asRows(samples) };
+  return { service: service!, access, creator: { id: service!.creator_id, display_name: service!.creator_name, bio: service!.bio, niche: service!.niche, handle: service!.handle, avatar_color: service!.avatar_color }, samples: asRows(samples) };
 }
 
 export async function getCreatorData(handle: string) {

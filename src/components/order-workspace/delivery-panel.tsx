@@ -33,7 +33,8 @@ export function OrderDeliveryPanel({
   creator,
   route,
   publishTerms,
-  proofs = []
+  proofs = [],
+  session = false
 }: {
   order: Row;
   delivery: Row[];
@@ -42,10 +43,11 @@ export function OrderDeliveryPanel({
   route: string;
   publishTerms?: unknown;
   proofs?: Row[];
+  session?: boolean;
 }) {
   const publish = publishTerms ? row(publishTerms) : null;
   return <div className="panel">
-    <h2>{publish ? 'Published post' : 'Delivery'}</h2>
+    <h2>{publish ? 'Published post' : session ? 'Session record' : 'Delivery'}</h2>
     {publish && <p className="muted">
       Posts on {channelName(publish)} as a {str(publish.format).replaceAll('_', ' ').toLowerCase()}, labelled “{str(publish.disclosure_text)}”, live for at least {str(publish.min_live_hours)} hours.
     </p>}
@@ -66,7 +68,7 @@ export function OrderDeliveryPanel({
       {publish && proofs.filter((proof) => str(proof.delivery_id) === str(item.id)).map((proof) => <PublishProof key={str(proof.id)} proof={proof} publish={publish} route={route} />)}
       <FileList files={attachedTo(files, str(item.id))} />
       {Boolean(item.url) && !publish && <a className="text-link" href={str(item.url)} target="_blank" rel="noreferrer">Open link ›</a>}
-    </div>) : <p className="muted">The creator has not delivered work yet.</p>}
+    </div>) : <p className="muted">{session ? 'The creator records the session here after it starts.' : 'The creator has not delivered work yet.'}</p>}
     {creator && publish && ['IN_PROGRESS', 'REVISION_REQUESTED'].includes(str(o.status)) && <CommandForm
       command="deliver"
       label="Submit the published post"
@@ -80,7 +82,7 @@ export function OrderDeliveryPanel({
       </label>
       <Field name="body" label="Note for the buyer (optional)" type="textarea" placeholder="Anything the buyer should know about the post." />
     </CommandForm>}
-    {creator && !publish && ['IN_PROGRESS', 'REVISION_REQUESTED'].includes(str(o.status)) && <CommandForm
+    {creator && !publish && (session ? str(o.status) === 'REVISION_REQUESTED' : ['IN_PROGRESS', 'REVISION_REQUESTED'].includes(str(o.status))) && <CommandForm
       command="deliver"
       label="Submit delivery"
       values={{

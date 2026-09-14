@@ -4,6 +4,7 @@ import { Badge, CommandForm, Empty, Field, availabilityLabel, money, num, row, r
 import { Notices } from '@/components/notices';
 import { PageHeading } from '@/components/page-heading';
 import { requireActorOrLoginPrompt } from '@/components/require-actor';
+import { AvailabilityEditor } from '@/components/access/availability-editor';
 import type { PageProps } from '@/components/page-props';
 
 export const dynamic = 'force-dynamic';
@@ -24,6 +25,7 @@ export default async function CreatorServicesPage({
   const status = availabilityLabel(workload.availability_status);
   const inFlight = num(workload.in_flight_units);
   const limit = num(workload.max_active_units);
+  const availability = row(d.availability);
   return <main className="container">
     {notices}
     <div className="section-heading">
@@ -51,6 +53,18 @@ export default async function CreatorServicesPage({
           ? <CommandForm command="set_accepting_orders" label="Resume new orders" values={{ accepting: 'true' }} returnTo={route} />
           : <CommandForm command="set_accepting_orders" label="Pause new orders" variant="secondary" values={{ accepting: 'false' }} returnTo={route} />}
       </div>
+    </section>
+    <section className="panel" id="availability" aria-labelledby="availability-heading">
+      <h2 id="availability-heading">Session availability</h2>
+      <p className="muted">
+        For ACCESS services. Buyers pick a start inside these hours, at least 12 hours ahead. Sessions already booked keep their times when you change this.
+      </p>
+      <CommandForm command="set_availability" label="Save availability" variant="secondary" returnTo={route}>
+        <AvailabilityEditor
+          timeZone={availability.time_zone ? str(availability.time_zone) : null}
+          windows={rows(availability.windows).map((w) => ({ weekday: num(w.weekday), startMinute: num(w.startMinute), endMinute: num(w.endMinute) }))}
+        />
+      </CommandForm>
     </section>
     {rows(d.services).length ? <div className="cards">
       {rows(d.services).map(s => <div className="panel" key={str(s.id)}>

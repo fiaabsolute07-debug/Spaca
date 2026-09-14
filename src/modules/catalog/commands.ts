@@ -22,6 +22,8 @@ import { assertFlags } from '@/modules/admin/policy';
 import { lockSampleAsset } from '@/modules/storage/service';
 import { assertContentPolicy } from '@/modules/moderation/policy';
 import { EDITORIAL_POLICY_VERSION, channelOf, ownedSocialAccount, publishFields } from '@/modules/publish';
+import { ACCESS_POLICY_VERSION, SESSION_OUTCOME_HOURS, accessFields, availabilityFor, holdAppointment, lockAvailability } from '@/modules/access';
+import { isOfferedStart } from '@/modules/access/time';
 
 const TAXONOMIES = ['CREATE', 'PUBLISH', 'ACCESS', 'DIGITAL'];
 export const DELIVERABLE_BY_TAXONOMY: Record<string, string> = { CREATE: 'CONTENT_HANDOFF', PUBLISH: 'PUBLISHED_POST', ACCESS: 'SESSION', DIGITAL: 'DIGITAL_FILE' };
@@ -50,19 +52,24 @@ async function snapshotVersion(tx: Tx, service: Row, actor: Actor): Promise<stri
     && Number(latest.turnaround_hours) === Number(service.turnaround_hours) && Number(latest.revision_limit) === Number(service.revision_limit)
     && Number(latest.units_per_order) === Number(service.units_per_order)
     && String(latest.publish_account_id ?? '') === String(service.publish_account_id ?? '') && String(latest.publish_format ?? '') === String(service.publish_format ?? '')
-    && String(latest.min_live_hours ?? '') === String(service.min_live_hours ?? '') && String(latest.disclosure_text ?? '') === String(service.disclosure_text ?? '');
+    && String(latest.min_live_hours ?? '') === String(service.min_live_hours ?? '') && String(latest.disclosure_text ?? '') === String(service.disclosure_text ?? '')
+    && ACCESS_COLUMNS.every((column) => String(latest[column] ?? '') === String(service[column] ?? ''));
   if (unchanged) return String(latest.id);
   // PUBLISH versions snapshot the channel itself, so a later account change never alters what was sold.
   const channel = service.publish_account_id ? channelOf(await ownedSocialAccount(tx, String(service.creator_id), String(service.publish_account_id))) : null;
   const [created] = await tx<Row[]>`insert into app.service_versions
     (service_id,version,title,description,taxonomy,price_minor,currency,turnaround_hours,revision_limit,units_per_order,
-     publish_account_id,publish_platform,publish_handle,publish_url,publish_format,min_live_hours,disclosure_text,created_by)
+     publish_account_id,publish_platform,publish_handle,publish_url,publish_format,min_live_hours,disclosure_text,
+     access_session_minutes,access_buffer_minutes,access_cancel_notice_hours,access_no_show_minutes,created_by)
     values (${String(service.id)},${Number(latest?.version ?? 0) + 1},${service.title},${service.description},${service.taxonomy},${String(service.price_minor)},
       ${service.currency},${Number(service.turnaround_hours)},${Number(service.revision_limit)},${Number(service.units_per_order)},
       ${service.publish_account_id ?? null},${channel?.platform ?? null},${channel?.handle ?? null},${channel?.channel_url ?? null},
-      ${service.publish_format ?? null},${service.min_live_hours ?? null},${service.disclosure_text ?? null},${actor.id}) returning id`;
+      ${service.publish_format ?? null},${service.min_live_hours ?? null},${service.disclosure_text ?? null},
+      ${service.access_session_minutes ?? null},${service.access_buffer_minutes ?? null},${service.access_cancel_notice_hours ?? null},${service.access_no_show_minutes ?? null},${actor.id}) returning id`;
   return String(created!.id);
 }
+
+const ACCESS_COLUMNS = ['access_session_minutes', 'access_buffer_minutes', 'access_cancel_notice_hours', 'access_no_show_minutes'] as const;
 
 async function assertPublishable(tx: Tx, actor: Actor, service: Row) {
   const [counts] = await tx<Row[]>`select
@@ -77,6 +84,12 @@ async function assertPublishable(tx: Tx, actor: Actor, service: Row) {
       ? await tx<Row[]>`select 1 from app.social_accounts where id=${String(service.publish_account_id)} and creator_id=${actor.id} and removed_at is null` : [];
     if (!account) errors.push('Choose the linked account this service posts on');
     if (!service.publish_format || service.min_live_hours == null || !service.disclosure_text) errors.push('Set the post format, minimum live time and disclosure');
+  }
+  if (service.taxonomy === 'ACCESS') {
+    // Fail closed: no bookable-looking session listing while ACCESS booking is switched off.
+    await assertFlags(tx, ['ACCESS_BOOKING_ENABLED']);
+    if (ACCESS_COLUMNS.some((column) => service[column] == null)) errors.push('Set the session length, buffer, cancellation notice and no-show grace');
+    if (!(await availabilityFor(tx, actor.id)).windows.length) errors.push('Add your weekly availability so buyers can pick a time');
   }
   if (errors.length) throw new CommandError(errors.join('. '), 'INVALID_INPUT');
 }
@@ -130,12 +143,15 @@ const createService: CommandHandler = async ({ tx, actor, form }) => {
   const turnaround = integer(text(form, 'turnaround_hours'), 'turnaround_hours', 1, 8760);
   const units = unitsPerOrder(form);
   const publish = await publishTermsFromForm(tx, actor, taxonomy, form);
+  const access = taxonomy === 'ACCESS' ? accessFields(form) : null;
 
   // Every service of this creator shares one active-order limit (CAP-02); the service only sizes its orders.
   const [service] = await tx<Row[]>`insert into app.services (creator_id,title,description,taxonomy,price_minor,currency,turnaround_hours,revision_limit,units_per_order,
-      publish_account_id,publish_format,min_live_hours,disclosure_text,status)
+      publish_account_id,publish_format,min_live_hours,disclosure_text,
+      access_session_minutes,access_buffer_minutes,access_cancel_notice_hours,access_no_show_minutes,status)
     values (${actor.id},${title},${description},${taxonomy},${price.toString()},'USD',${turnaround},1,${units ?? 1},
-      ${publish?.accountId ?? null},${publish?.format ?? null},${publish?.minLiveHours ?? null},${publish?.disclosure ?? null},'DRAFT') returning id`;
+      ${publish?.accountId ?? null},${publish?.format ?? null},${publish?.minLiveHours ?? null},${publish?.disclosure ?? null},
+      ${access?.sessionMinutes ?? null},${access?.bufferMinutes ?? null},${access?.cancelNoticeHours ?? null},${access?.noShowMinutes ?? null},'DRAFT') returning id`;
   const serviceId = String(service!.id);
 
   for (let n = 1; n <= 3; n++) {
@@ -179,10 +195,13 @@ const updateService: CommandHandler = async ({ tx, actor, form }) => {
   if (title.length < 3 || description.length < 20) throw new CommandError('Title needs 3+ characters and scope 20+ characters');
   const units = unitsPerOrder(form);
   const publish = form.has('publish_account_id') ? await publishTermsFromForm(tx, actor, String(service.taxonomy), form) : null;
+  const access = service.taxonomy === 'ACCESS' && form.has('access_session_minutes') ? accessFields(form) : null;
   const [updated] = await tx<Row[]>`update app.services set title=${title},description=${description},price_minor=${price.toString()},turnaround_hours=${turnaround},
     units_per_order=coalesce(${units}::int,units_per_order),
     publish_account_id=coalesce(${publish?.accountId ?? null}::uuid,publish_account_id),publish_format=coalesce(${publish?.format ?? null},publish_format),
     min_live_hours=coalesce(${publish?.minLiveHours ?? null}::int,min_live_hours),disclosure_text=coalesce(${publish?.disclosure ?? null},disclosure_text),
+    access_session_minutes=coalesce(${access?.sessionMinutes ?? null}::int,access_session_minutes),access_buffer_minutes=coalesce(${access?.bufferMinutes ?? null}::int,access_buffer_minutes),
+    access_cancel_notice_hours=coalesce(${access?.cancelNoticeHours ?? null}::int,access_cancel_notice_hours),access_no_show_minutes=coalesce(${access?.noShowMinutes ?? null}::int,access_no_show_minutes),
     version=version+1,updated_at=now() where id=${String(service.id)} returning *`;
   if (updated!.status === 'PUBLISHED' || updated!.status === 'PAUSED') {
     // Live terms change only through a new immutable version; sold orders keep theirs (SUP-03).
@@ -255,6 +274,9 @@ const book: CommandHandler = async ({ tx, actor, form }) => {
   }
 
   const units = Number(version!.units_per_order);
+  const creatorId = String(service.creator_id);
+  // XPL-03: an ACCESS order books one offered start in the creator's availability; the session is fixed in UTC.
+  const accessBooking = version!.taxonomy === 'ACCESS' ? await accessBookingOf(tx, form, creatorId, version!) : null;
   const publish = version!.taxonomy === 'PUBLISH' ? {
     account_id: String(version!.publish_account_id), platform: String(version!.publish_platform), handle: version!.publish_handle ?? null,
     channel_url: String(version!.publish_url), format: String(version!.publish_format), min_live_hours: Number(version!.min_live_hours),
@@ -284,19 +306,49 @@ const book: CommandHandler = async ({ tx, actor, form }) => {
     // SUP-05: CREATE hands content to the buyer; only PUBLISH carries a posting obligation.
     deliverable: DELIVERABLE_BY_TAXONOMY[String(version!.taxonomy)] ?? 'CONTENT_HANDOFF',
     ...(publish ? { publish } : {}),
+    ...(accessBooking ? { access: accessBooking.terms } : {}),
   };
   // The claim locks the creator's workload and refuses the order when paused or at the limit; the transaction then rolls back.
   const expiresAt = new Date(Date.now() + CHECKOUT_HOLD_MINUTES * 60_000);
-  const creatorId = String(service.creator_id);
+  // An ACCESS order is due when its outcome is due: the session end plus the recording window.
+  const dueAt = accessBooking ? new Date(new Date(accessBooking.terms.ends_at).getTime() + SESSION_OUTCOME_HOURS * 3600_000).toISOString() : null;
   const [order] = await tx<Row[]>`insert into app.orders
     (buyer_id,creator_id,service_id,service_version_id,source,title,status,amount_minor,platform_fee_minor,currency,brief,brief_ready_at,terms,delivery_due_at)
     values (${actor.id},${creatorId},${String(service.id)},${String(version!.id)},'BOOK',${version!.title},'AWAITING_PAYMENT',
-      ${String(version!.price_minor)},0,${version!.currency},${brief},now(),${JSON.stringify(terms)}::jsonb,null) returning id`;
+      ${String(version!.price_minor)},0,${version!.currency},${brief},now(),${JSON.stringify(terms)}::jsonb,${dueAt}) returning id`;
   const orderId = String(order!.id);
   await claimWorkload(tx, { creatorId, units, origin: 'BOOK', orderId, expiresAt });
+  if (accessBooking) await holdAppointment(tx, { orderId, creatorId, startsAt: accessBooking.startsAt, terms: accessBooking.fields, timeZone: accessBooking.terms.time_zone });
   await orderEvent(tx, orderId, actor.id, 'ORDER_CREATED', { source: 'BOOK', service_version: Number(version!.version), platform_fee_minor: '0' });
-  return { path: `/orders/${orderId}`, message: 'Capacity reserved. Fund the order to start work.', id: orderId };
+  return { path: `/orders/${orderId}`, message: accessBooking ? 'Session time held. Fund the order to confirm it.' : 'Capacity reserved. Fund the order to start work.', id: orderId };
 };
+
+async function accessBookingOf(tx: Tx, form: FormData, creatorId: string, version: Row) {
+  await assertFlags(tx, ['ACCESS_BOOKING_ENABLED']);
+  const value = text(form, 'starts_at', false, 40);
+  if (!value) throw new CommandError('Pick a session time', 'SLOT_EXPIRED');
+  const startsAt = new Date(value);
+  if (Number.isNaN(startsAt.getTime()) || !/(Z|[+-]\d{2}:\d{2})$/.test(value)) throw new CommandError('starts_at must be an ISO time with a zone');
+  const fields = {
+    sessionMinutes: Number(version.access_session_minutes), bufferMinutes: Number(version.access_buffer_minutes),
+    cancelNoticeHours: Number(version.access_cancel_notice_hours), noShowMinutes: Number(version.access_no_show_minutes),
+  };
+  // Shared lock: availability edits wait for bookings in flight, bookings do not block each other.
+  await lockAvailability(tx, creatorId, 'shared');
+  const { timeZone, windows } = await availabilityFor(tx, creatorId);
+  if (!timeZone || !isOfferedStart({ timeZone, windows, sessionMinutes: fields.sessionMinutes, startsAt })) {
+    throw new CommandError('That time is no longer offered. Pick another slot.', 'SLOT_EXPIRED');
+  }
+  const endsAt = new Date(startsAt.getTime() + fields.sessionMinutes * 60_000);
+  return {
+    startsAt,
+    fields,
+    terms: {
+      session_minutes: fields.sessionMinutes, buffer_minutes: fields.bufferMinutes, cancel_notice_hours: fields.cancelNoticeHours,
+      no_show_minutes: fields.noShowMinutes, time_zone: timeZone, starts_at: startsAt.toISOString(), ends_at: endsAt.toISOString(), policy_version: ACCESS_POLICY_VERSION,
+    },
+  };
+}
 
 export const catalogCommands: Record<string, CommandHandler> = {
   update_profile: updateProfile,

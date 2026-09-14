@@ -69,6 +69,25 @@ export default async function NewServicePage({
           <Field name="min_live_hours" label="Keeps the post live for (hours)" type="number" value="72" />
           <Field name="disclosure_text" label="Sponsorship disclosure" value="#ad" />
         </div>
+        <h3>If you chose ACCESS</h3>
+        <p className="muted">
+          ACCESS is a live session at a time the buyer picks from your weekly availability.{' '}
+          <Link className="text-link" href="/creator/services#availability">Set your availability ›</Link>
+        </p>
+        <div className="form-grid">
+          <Field name="access_session_minutes" label="Session length">
+            <select name="access_session_minutes" defaultValue="60">
+              {[30, 45, 60, 90, 120].map((m) => <option key={m} value={m}>{m} minutes</option>)}
+            </select>
+          </Field>
+          <Field name="access_buffer_minutes" label="Break after each session">
+            <select name="access_buffer_minutes" defaultValue="15">
+              {[0, 5, 10, 15, 30, 60].map((m) => <option key={m} value={m}>{m} minutes</option>)}
+            </select>
+          </Field>
+          <Field name="access_cancel_notice_hours" label="Free cancellation until (hours before)" type="number" value="24" />
+          <Field name="access_no_show_minutes" label="No-show after (minutes)" type="number" value="10" />
+        </div>
         <h3>Work samples</h3>
         <p className="muted">One strong sample is enough to publish. Add up to two more if you have them.</p>
         <div className="form-grid">

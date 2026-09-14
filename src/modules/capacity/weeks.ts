@@ -24,9 +24,9 @@ function formatter(timeZone: string): Intl.DateTimeFormat {
   return existing;
 }
 
-type LocalParts = { year: number; month: number; day: number; hour: number; minute: number; second: number };
+export type LocalParts = { year: number; month: number; day: number; hour: number; minute: number; second: number };
 
-function localParts(timeZone: string, instant: number): LocalParts {
+export function localParts(timeZone: string, instant: number): LocalParts {
   const values: Record<string, number> = {};
   for (const part of formatter(timeZone).formatToParts(new Date(instant))) {
     if (part.type !== 'literal') values[part.type] = Number(part.value);
@@ -35,7 +35,7 @@ function localParts(timeZone: string, instant: number): LocalParts {
 }
 
 /** Local wall clock minus UTC, in milliseconds, at `instant`. */
-function offsetMs(timeZone: string, instant: number): number {
+export function offsetMs(timeZone: string, instant: number): number {
   const p = localParts(timeZone, instant);
   const flooredToSecond = Math.floor(instant / 1000) * 1000;
   return Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute, p.second) - flooredToSecond;

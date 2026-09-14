@@ -5,6 +5,7 @@ import { getServiceData } from '@/lib/read-model';
 import { Badge, CommandForm, Empty, Field, availabilityLabel, money, num, row, rows, str } from '@/components/ui';
 import { Notices } from '@/components/notices';
 import { ReportForm } from '@/components/report-form';
+import { SlotPicker } from '@/components/access/slot-picker';
 import type { PageProps } from '@/components/page-props';
 
 export const dynamic = 'force-dynamic';
@@ -28,6 +29,9 @@ export default async function ServicePage({
     s = row(d.service),
     c = row(d.creator);
   const availability = availabilityLabel(s.availability_status);
+  const isAccess = str(s.taxonomy) === 'ACCESS';
+  const access = d.access ? row(d.access) : null;
+  const sessionsOpen = !isAccess || access?.booking_enabled === true;
   return <main className="container">
     {notices}
     <div className="breadcrumbs">
@@ -68,12 +72,16 @@ export default async function ServicePage({
               ({str(s.publish_platform)}, self-reported), labelled “{str(s.disclosure_text)}”, and keeps it live for at least {num(s.min_live_hours)} hours.
             </p>
             <p className="muted">You share key points in the brief; the creator writes the post in their own voice. The order is delivered with the post link and the time it went live.</p>
+          </> : isAccess ? <>
+            <p>
+              A {num(s.access_session_minutes)}-minute live session at a time you pick. The creator adds a private meeting link after payment.
+            </p>
+            <p className="muted">
+              Cancel for a full refund up to {num(s.access_cancel_notice_hours)} hours before the start; after that the creator must agree.
+              If either side does not join within {num(s.access_no_show_minutes)} minutes, it can be recorded as a no-show and reviewed.
+            </p>
           </> : <p>
-            {str(s.taxonomy) === 'ACCESS'
-                ? 'You are booking access to the creator’s expertise. ' +
-                  'Agree on the meeting schedule in the brief.'
-                : 'Content is delivered for the buyer to use. Posting to the creator’s channel ' +
-                  'is not included unless explicitly agreed in the scope.'}
+            Content is delivered for the buyer to use. Posting to the creator’s channel is not included unless explicitly agreed in the scope.
           </p>}
         </div>
         <div className="panel">
@@ -96,19 +104,24 @@ export default async function ServicePage({
             {money(s.price_minor)}
           </div>
           <ul className="facts">
-            <li>
-              <span>Delivery from complete brief</span>
-              <strong>
-                {num(s.turnaround_hours)}
-                {" hours"}
-              </strong>
-            </li>
-            <li>
-              <span>Included revisions</span>
-              <strong>
-                {num(s.revision_limit)}
-              </strong>
-            </li>
+            {isAccess ? <>
+              <li><span>Session length</span><strong>{num(s.access_session_minutes)} minutes</strong></li>
+              <li><span>Free cancellation</span><strong>Up to {num(s.access_cancel_notice_hours)} hours before</strong></li>
+            </> : <>
+              <li>
+                <span>Delivery from complete brief</span>
+                <strong>
+                  {num(s.turnaround_hours)}
+                  {" hours"}
+                </strong>
+              </li>
+              <li>
+                <span>Included revisions</span>
+                <strong>
+                  {num(s.revision_limit)}
+                </strong>
+              </li>
+            </>}
             <li>
               <span>Status</span>
               <strong className={availability.className}>
@@ -120,17 +133,18 @@ export default async function ServicePage({
               <strong>$0.00</strong>
             </li>
           </ul>
-          {actor ? availability.accepting ? <CommandForm
+          {actor ? !sessionsOpen ? <Empty title="Session booking is paused">New sessions cannot be booked right now.</Empty> : availability.accepting ? <CommandForm
             command="book"
-            label="Reserve this service"
+            label={isAccess ? 'Reserve this time' : 'Reserve this service'}
             values={{
               service_id: str(s.id),
               service_version_id: str(s.service_version_id)
             }}
           >
+            {isAccess && <SlotPicker serviceId={str(s.id)} sessionMinutes={num(s.access_session_minutes)} creatorTimeZone={access?.time_zone ? str(access.time_zone) : null} />}
             <Field
               name="brief"
-              label="Tell the creator about your project"
+              label={isAccess ? 'What do you want to cover?' : 'Tell the creator about your project'}
               type="textarea"
               required
               placeholder="Your product, audience, goals, links, and requirements (at least 20 characters)."

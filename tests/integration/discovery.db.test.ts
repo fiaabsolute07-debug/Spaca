@@ -53,7 +53,16 @@ async function publish(creator: TestUser, input: { title: string; taxonomy?: str
   });
   expect(created.status, JSON.stringify(created.body)).toBe(200);
   const serviceId = String(created.body.id);
-  expect((await command(creator, { command: 'publish_service', idempotency_key: key('pub'), service_id: serviceId })).status).toBe(200);
+  // ACCESS listings publish only with weekly availability and the ACCESS flag on (drizzle/0015).
+  if (input.taxonomy === 'ACCESS') {
+    expect((await command(creator, { command: 'set_availability', idempotency_key: key('avail'), time_zone: 'UTC', windows: JSON.stringify([{ weekday: 1, start: '09:00', end: '17:00' }]) })).status).toBe(200);
+    await sql`update app.feature_flags set enabled=true where key='ACCESS_BOOKING_ENABLED'`;
+  }
+  try {
+    expect((await command(creator, { command: 'publish_service', idempotency_key: key('pub'), service_id: serviceId })).status).toBe(200);
+  } finally {
+    if (input.taxonomy === 'ACCESS') await sql`update app.feature_flags set enabled=false where key='ACCESS_BOOKING_ENABLED'`;
+  }
   // `capacity` sets the creator's active-order limit, shared by all of their services.
   if (input.capacity) expect((await command(creator, { command: 'set_workload_limit', idempotency_key: key('limit'), max_active_units: input.capacity })).status).toBe(200);
   return { serviceId };

@@ -203,6 +203,21 @@ textarea { resize: vertical; min-height: 110px; }
 .order-limit-actions .field input { width: 96px; }
 .order-limit-actions .command-form .button { margin-top: 0; }
 
+/* ---------- ACCESS sessions ---------- */
+.slot-picker { border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 14px 16px; margin: 0 0 16px; min-width: 0; }
+.slot-picker legend { font-weight: 600; padding: 0 6px; }
+.slot-day { margin-top: 12px; }
+.slot-list { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
+.slot { font: inherit; font-size: 14px; padding: 6px 12px; border-radius: 999px; border: 1px solid var(--line-strong); background: var(--bg); color: var(--ink); cursor: pointer; }
+.slot:hover { background: var(--soft); }
+.slot-selected, .slot-selected:hover { background: var(--ink); border-color: var(--ink); color: var(--white); }
+.slot-summary { font-weight: 600; margin: 12px 0 0; }
+.availability-days { display: grid; gap: 8px; margin: 8px 0 4px; }
+.availability-day { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; }
+.availability-toggle { min-width: 130px; display: flex; align-items: center; gap: 8px; }
+.availability-day input[type="time"] { font: inherit; padding: 6px 8px; border: 1px solid var(--line-strong); border-radius: 10px; background: var(--bg); color: var(--ink); }
+.availability-day input:disabled { opacity: 0.45; }
+
 /* ---------- Auth ---------- */
 .auth-layout { width: min(980px, calc(100% - 40px)); margin: 64px auto 96px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 64px; align-items: center; }
 .auth-layout h1 { font-size: clamp(32px, 4vw, 44px); line-height: 1.08; margin: 10px 0 14px; }
