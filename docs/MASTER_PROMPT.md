@@ -973,6 +973,19 @@ refundUnallocated(poolReference, asset, amount, authorization)
 - Foundry unit/fuzz/invariant tests; static analysis; independent security review trước mainnet tiền thật. Test pass không được ghi “audited”.
 - Nếu provider được chọn đã thực hiện conditional settlement, có thể dùng adapter thay contract tự viết sau ADR chứng minh capability tương đương.
 
+**Hiện thực (15/09/2026, W9-ARC):**
+- **Contract `contracts/src/SpacaEscrow.sol`:**
+  - Bucket theo đơn, hoặc theo pool + asset. Hàm `fund`, `release`, `releaseBatch`, `refund` (luôn về ví đã nạp), `setFrozen` (ký), `guardianFreeze`, `reclaim` (người nạp tự rút sau hạn, kể cả khi pause), `pause`/`unpause`.
+  - Chữ ký EIP-712 bind chain/contract/bucket/payout/nonce/expiry. Không có hàm rút của owner.
+- **Kiểm thử:** Foundry 16 unit/fuzz + 3 invariant bảo toàn, `forge lint`. Chưa phải audit.
+- **Server:**
+  - Outbox `app.chain_payouts` với worker `dispatch_chain_payouts`, không gọi chain trong transaction DB.
+  - Adapter viem cho anvil/Arc; simulator local áp đúng luật contract.
+  - Luồng end-to-end đã chạy trên anvil với contract thật.
+- **Còn chờ:**
+  - Deploy Arc testnet: cần nạp USDC testnet vào ví deploy, xem `docs/ARC_TESTNET.md`.
+  - Custody KMS/multisig (ADR 002).
+
 ### 11.4. Xác minh thanh toán on-chain
 
 Không tin tx hash do client gửi. Server/indexer kiểm chain, correct contract/recipient, asset, amount, order/pool reference, receipt success, finality. Dedupe `(chain_id, tx_hash, log_index)`.
@@ -1046,7 +1059,23 @@ Quyết định của chủ sản phẩm: **nạp tiền và xử lý thanh toá
 - KYC cho người rút về ngân hàng (và người nạp lớn nếu đối tác yêu cầu); ngưỡng do đối tác và pháp lý quyết định.
 - Nhà cung cấp off-ramp: kiểm tra quốc gia hỗ trợ, phí, mức tối thiểu, thời gian chuyển.
 
-**Hiện trạng code:** đã có xác minh nạp USDC, pool, release có authorization EIP-712 trên devnet giả lập. Chưa có: số dư theo user, giữ số dư cho đơn/campaign, batch release, rút về ví, rút về ngân hàng, KYC, custody, tích hợp Arc thật.
+**Quyết định 15/09/2026, mô hình A (non-custodial):**
+- **Nơi giữ tiền:** tiền nằm trong `SpacaEscrow` theo từng đơn hoặc campaign, spaca không giữ số dư hộ user.
+- **Rút tiền:** "rút về ví" chính là release tới ví creator đã chứng minh quyền sở hữu. Refund luôn về ví đã nạp.
+- **Tự bảo vệ:** người nạp tự `reclaim` được sau hạn (60 ngày trên testnet), trừ khi đang tranh chấp.
+- **Chưa làm:** số dư tổng theo user (bước 1–2 của bản nháp) chưa làm và không cần cho mô hình A.
+
+**Hiện trạng code:**
+- **Đã có:**
+  - Nạp vào escrow; xác minh `Funded` theo bucket.
+  - Release/refund đơn crypto và pool qua outbox; freeze khi tranh chấp.
+  - Thanh toán bằng ví trình duyệt.
+  - Script kiểm tra và đăng ký Arc testnet.
+- **Chưa có:**
+  - Deploy Arc testnet (chờ faucet).
+  - Worker gom lô `releaseBatch` (contract đã hỗ trợ).
+  - Rút về ngân hàng/off-ramp, KYC, custody KMS/multisig.
+- Chi tiết: ADR 002, `docs/ARC_TESTNET.md`, evidence `claude-W9-ARC.md`.
 
 ## 12. UI/UX, route map và trạng thái màn hình
 

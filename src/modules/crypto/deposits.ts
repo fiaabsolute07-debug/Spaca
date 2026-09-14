@@ -9,7 +9,7 @@ import { sql } from '@/lib/db';
 import { applyChainFunding, openCase } from '@/modules/payments/funding';
 import { SETTLEMENT_EVENTS } from './abi';
 import { ChainUnavailableError, getChainReader, type ChainLog, type ChainReader, type ChainReceipt } from './chain';
-import { TX_HASH_PATTERN, assetForToken, atomicToUsdMinor, formatAtomic } from './registry';
+import { TX_HASH_PATTERN, assetForToken, atomicToUsdMinor, escrowReference, formatAtomic } from './registry';
 
 export type DepositResult = {
   status: 'NOT_FOUND' | 'REJECTED' | 'PENDING_FINALITY' | 'CREDITED' | 'DUPLICATE' | 'REORGED';
@@ -19,13 +19,13 @@ export type DepositResult = {
   funding?: string;
 };
 
-type SettlementEvent = { log: ChainLog; reference: Hex; payer: Hex; token: Hex; amount: bigint };
+type SettlementEvent = { log: ChainLog; escrowRef: Hex; reference: Hex; payer: Hex; token: Hex; amount: bigint };
 
-function decodeFunded(log: ChainLog): { reference: Hex; payer: Hex; token: Hex; amount: bigint } | null {
+function decodeFunded(log: ChainLog): { escrowRef: Hex; reference: Hex; payer: Hex; token: Hex; amount: bigint } | null {
   try {
-    const decoded = decodeEventLog({ abi: SETTLEMENT_EVENTS, eventName: 'OrderFunded', data: log.data, topics: log.topics as [Hex, ...Hex[]] });
-    const args = decoded.args as { paymentRef: Hex; payer: Hex; token: Hex; amount: bigint } | undefined;
-    return args ? { reference: args.paymentRef, payer: args.payer, token: args.token, amount: args.amount } : null;
+    const decoded = decodeEventLog({ abi: SETTLEMENT_EVENTS, eventName: 'Funded', data: log.data, topics: log.topics as [Hex, ...Hex[]] });
+    const args = decoded.args as { escrowRef: Hex; paymentRef: Hex; payer: Hex; token: Hex; amount: bigint } | undefined;
+    return args ? { escrowRef: args.escrowRef, reference: args.paymentRef, payer: args.payer, token: args.token, amount: args.amount } : null;
   } catch {
     return null;
   }
@@ -41,16 +41,16 @@ function decodeSettlementLogs(receipt: ChainReceipt, settlement: string): { even
       untrusted += 1;
       continue;
     }
-    events.push({ log, reference: args.reference.toLowerCase() as Hex, payer: args.payer.toLowerCase() as Hex, token: args.token.toLowerCase() as Hex, amount: args.amount });
+    events.push({ log, escrowRef: args.escrowRef.toLowerCase() as Hex, reference: args.reference.toLowerCase() as Hex, payer: args.payer.toLowerCase() as Hex, token: args.token.toLowerCase() as Hex, amount: args.amount });
   }
   return { events, untrusted };
 }
 
 async function recordRejection(tx: Tx, network: Row, event: SettlementEvent, intent: Row | undefined, asset: Row | undefined, reason: string): Promise<DepositResult> {
   const chainId = Number(network.chain_id);
-  const recorded = await tx`insert into app.chain_deposits (chain_id,tx_hash,log_index,block_number,block_hash,emitter,token_address,asset_id,payer,amount_atomic,reference,intent_id,status,reason)
+  const recorded = await tx`insert into app.chain_deposits (chain_id,tx_hash,log_index,block_number,block_hash,emitter,token_address,asset_id,payer,amount_atomic,escrow_ref,reference,intent_id,status,reason)
     values (${chainId},${event.log.transactionHash.toLowerCase()},${event.log.logIndex},${event.log.blockNumber.toString()},${event.log.blockHash.toLowerCase()},${event.log.address.toLowerCase()},
-      ${event.token},${asset?.id ?? null},${event.payer},${event.amount.toString()},${event.reference},${intent?.id ?? null},'REJECTED',${reason})
+      ${event.token},${asset?.id ?? null},${event.payer},${event.amount.toString()},${event.escrowRef},${event.reference},${intent?.id ?? null},'REJECTED',${reason})
     on conflict (chain_id,tx_hash,log_index) do nothing returning id`;
   const orderId = intent ? String(intent.order_id) : null;
   if (intent && ['AWAITING_DEPOSIT', 'PENDING_FINALITY'].includes(String(intent.status))) {
@@ -83,6 +83,8 @@ async function processEvent(network: Row, event: SettlementEvent, head: bigint, 
     }
     const [expected] = await tx<Row[]>`select * from app.chain_assets where id=${String(intent.asset_id)}`;
     if (Number(intent.chain_id) !== chainId) return recordRejection(tx, network, event, intent, asset, 'WRONG_CHAIN');
+    // The deposit must sit in this order's escrow bucket, or releases for the order could never draw on it.
+    if (event.escrowRef !== escrowReference('order', String(intent.order_id))) return recordRejection(tx, network, event, intent, asset, 'WRONG_ESCROW');
     // Interfaces of one balance share balance_key and decimals; anything else is the wrong asset. One credit per intent.
     if (expected!.balance_key !== asset.balance_key || Number(expected!.decimals) !== Number(asset.decimals)) return recordRejection(tx, network, event, intent, asset, 'WRONG_ASSET');
     const wanted = BigInt(String(intent.amount_atomic));
@@ -101,9 +103,9 @@ async function processEvent(network: Row, event: SettlementEvent, head: bigint, 
       if (existing) {
         await tx`update app.chain_deposits set block_number=${event.log.blockNumber.toString()},block_hash=${event.log.blockHash.toLowerCase()},updated_at=now() where id=${String(existing.id)}`;
       } else {
-        await tx`insert into app.chain_deposits (chain_id,tx_hash,log_index,block_number,block_hash,emitter,token_address,asset_id,payer,amount_atomic,reference,intent_id,status)
+        await tx`insert into app.chain_deposits (chain_id,tx_hash,log_index,block_number,block_hash,emitter,token_address,asset_id,payer,amount_atomic,escrow_ref,reference,intent_id,status)
           values (${chainId},${txHash},${event.log.logIndex},${event.log.blockNumber.toString()},${event.log.blockHash.toLowerCase()},${event.log.address.toLowerCase()},
-            ${event.token},${String(asset.id)},${event.payer},${event.amount.toString()},${event.reference},${String(intent.id)},'PENDING_FINALITY')`;
+            ${event.token},${String(asset.id)},${event.payer},${event.amount.toString()},${event.escrowRef},${event.reference},${String(intent.id)},'PENDING_FINALITY')`;
       }
       if (intent.status === 'AWAITING_DEPOSIT') await tx`update app.crypto_payment_intents set status='PENDING_FINALITY',updated_at=now() where id=${String(intent.id)}`;
       return { status: 'PENDING_FINALITY', reason: `${confirmations < 0n ? 0n : confirmations}/${network.finality_confirmations} confirmations`, log_index: event.log.logIndex, order_id: String(intent.order_id) };
@@ -119,9 +121,9 @@ async function processEvent(network: Row, event: SettlementEvent, head: bigint, 
       await tx`update app.chain_deposits set status='CREDITED',credited_at=now(),asset_id=${String(asset.id)},intent_id=${String(intent.id)},
         block_number=${event.log.blockNumber.toString()},block_hash=${event.log.blockHash.toLowerCase()},updated_at=now() where id=${String(existing.id)}`;
     } else {
-      await tx`insert into app.chain_deposits (chain_id,tx_hash,log_index,block_number,block_hash,emitter,token_address,asset_id,payer,amount_atomic,reference,intent_id,status,credited_at)
+      await tx`insert into app.chain_deposits (chain_id,tx_hash,log_index,block_number,block_hash,emitter,token_address,asset_id,payer,amount_atomic,escrow_ref,reference,intent_id,status,credited_at)
         values (${chainId},${txHash},${event.log.logIndex},${event.log.blockNumber.toString()},${event.log.blockHash.toLowerCase()},${event.log.address.toLowerCase()},
-          ${event.token},${String(asset.id)},${event.payer},${event.amount.toString()},${event.reference},${String(intent.id)},'CREDITED',now())`;
+          ${event.token},${String(asset.id)},${event.payer},${event.amount.toString()},${event.escrowRef},${event.reference},${String(intent.id)},'CREDITED',now())`;
     }
     await tx`update app.crypto_payment_intents set status=${funding === 'FUNDED' ? 'CONFIRMED' : 'EXCEPTION'},status_reason=${funding === 'FUNDED' ? null : funding},updated_at=now() where id=${String(intent.id)}`;
     return { status: 'CREDITED', log_index: event.log.logIndex, order_id: String(intent.order_id), funding, reason: `${formatAtomic(event.amount, Number(asset.decimals))} ${asset.symbol}` };
@@ -134,9 +136,9 @@ async function processPoolDeposit(tx: Tx, network: Row, event: SettlementEvent, 
   const txHash = event.log.transactionHash.toLowerCase();
   const [intent] = await tx<Row[]>`select i.*,pa.asset_id,pa.pool_id from app.pool_funding_intents i join app.pool_assets pa on pa.id=i.pool_asset_id where i.id=${poolIntentId} for update of i`;
   const reject = async (reason: string): Promise<DepositResult> => {
-    await tx`insert into app.chain_deposits (chain_id,tx_hash,log_index,block_number,block_hash,emitter,token_address,asset_id,payer,amount_atomic,reference,pool_intent_id,status,reason)
+    await tx`insert into app.chain_deposits (chain_id,tx_hash,log_index,block_number,block_hash,emitter,token_address,asset_id,payer,amount_atomic,escrow_ref,reference,pool_intent_id,status,reason)
       values (${chainId},${txHash},${event.log.logIndex},${event.log.blockNumber.toString()},${event.log.blockHash.toLowerCase()},${event.log.address.toLowerCase()},
-        ${event.token},${String(asset.id)},${event.payer},${event.amount.toString()},${event.reference},${poolIntentId},'REJECTED',${reason})
+        ${event.token},${String(asset.id)},${event.payer},${event.amount.toString()},${event.escrowRef},${event.reference},${poolIntentId},'REJECTED',${reason})
       on conflict (chain_id,tx_hash,log_index) do nothing`;
     if (['AWAITING_DEPOSIT', 'PENDING_FINALITY'].includes(String(intent!.status))) {
       await tx`update app.pool_funding_intents set status='EXCEPTION',status_reason=${reason},updated_at=now() where id=${poolIntentId}`;
@@ -145,6 +147,7 @@ async function processPoolDeposit(tx: Tx, network: Row, event: SettlementEvent, 
     return { status: 'REJECTED', reason, log_index: event.log.logIndex };
   };
   if (Number(intent!.chain_id) !== chainId) return reject('WRONG_CHAIN');
+  if (event.escrowRef !== escrowReference('pool', `${String(intent!.pool_id)}:${String(intent!.pool_asset_id)}`)) return reject('WRONG_ESCROW');
   if (String(intent!.asset_id) !== String(asset.id)) return reject('WRONG_ASSET');
   const wanted = BigInt(String(intent!.amount_atomic));
   if (event.amount < wanted) return reject('UNDERPAID');
@@ -155,9 +158,9 @@ async function processPoolDeposit(tx: Tx, network: Row, event: SettlementEvent, 
   const canonical = (await reader.getBlockHash(event.log.blockNumber))?.toLowerCase() === event.log.blockHash.toLowerCase();
   if (!canonical || confirmations < BigInt(network.finality_confirmations)) {
     if (!existing) {
-      await tx`insert into app.chain_deposits (chain_id,tx_hash,log_index,block_number,block_hash,emitter,token_address,asset_id,payer,amount_atomic,reference,pool_intent_id,status)
+      await tx`insert into app.chain_deposits (chain_id,tx_hash,log_index,block_number,block_hash,emitter,token_address,asset_id,payer,amount_atomic,escrow_ref,reference,pool_intent_id,status)
         values (${chainId},${txHash},${event.log.logIndex},${event.log.blockNumber.toString()},${event.log.blockHash.toLowerCase()},${event.log.address.toLowerCase()},
-          ${event.token},${String(asset.id)},${event.payer},${event.amount.toString()},${event.reference},${poolIntentId},'PENDING_FINALITY')`;
+          ${event.token},${String(asset.id)},${event.payer},${event.amount.toString()},${event.escrowRef},${event.reference},${poolIntentId},'PENDING_FINALITY')`;
     }
     if (intent!.status === 'AWAITING_DEPOSIT') await tx`update app.pool_funding_intents set status='PENDING_FINALITY',updated_at=now() where id=${poolIntentId}`;
     return { status: 'PENDING_FINALITY', reason: `${confirmations < 0n ? 0n : confirmations}/${network.finality_confirmations} confirmations`, log_index: event.log.logIndex };
@@ -167,9 +170,9 @@ async function processPoolDeposit(tx: Tx, network: Row, event: SettlementEvent, 
   if (existing) {
     await tx`update app.chain_deposits set status='CREDITED',credited_at=now(),pool_intent_id=${poolIntentId},asset_id=${String(asset.id)},updated_at=now() where id=${String(existing.id)}`;
   } else {
-    await tx`insert into app.chain_deposits (chain_id,tx_hash,log_index,block_number,block_hash,emitter,token_address,asset_id,payer,amount_atomic,reference,pool_intent_id,status,credited_at)
+    await tx`insert into app.chain_deposits (chain_id,tx_hash,log_index,block_number,block_hash,emitter,token_address,asset_id,payer,amount_atomic,escrow_ref,reference,pool_intent_id,status,credited_at)
       values (${chainId},${txHash},${event.log.logIndex},${event.log.blockNumber.toString()},${event.log.blockHash.toLowerCase()},${event.log.address.toLowerCase()},
-        ${event.token},${String(asset.id)},${event.payer},${event.amount.toString()},${event.reference},${poolIntentId},'CREDITED',now())`;
+        ${event.token},${String(asset.id)},${event.payer},${event.amount.toString()},${event.escrowRef},${event.reference},${poolIntentId},'CREDITED',now())`;
   }
   await tx`update app.pool_funding_intents set status='CONFIRMED',status_reason=null,updated_at=now() where id=${poolIntentId}`;
   const poolStatus = await refreshPoolStatus(tx, String(intent!.pool_id));

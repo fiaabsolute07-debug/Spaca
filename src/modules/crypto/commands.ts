@@ -5,7 +5,7 @@
 import { randomUUID } from 'node:crypto';
 import { CommandError, integer, text, uuid, type CommandHandler, type Row } from '@/lib/commands';
 import { assertFlags } from '@/modules/admin/policy';
-import { enabledNetwork, formatAtomic, settlementReference, usdMinorToAtomic } from './registry';
+import { enabledNetwork, escrowReference, formatAtomic, settlementReference, usdMinorToAtomic } from './registry';
 
 const createCryptoPayment: CommandHandler = async ({ tx, actor, form }) => {
   await assertFlags(tx, ['CRYPTO_CHECKOUT_ENABLED', 'CHECKOUT_CREATION_ENABLED']);
@@ -42,10 +42,10 @@ const createCryptoPayment: CommandHandler = async ({ tx, actor, form }) => {
 
   const id = randomUUID();
   const amount = usdMinorToAtomic(BigInt(String(order.amount_minor)), Number(asset.decimals));
-  await tx`insert into app.crypto_payment_intents (id,order_id,buyer_id,chain_id,asset_id,network_mode,amount_atomic,recipient,reference,payer_wallet_id,expires_at)
+  await tx`insert into app.crypto_payment_intents (id,order_id,buyer_id,chain_id,asset_id,network_mode,amount_atomic,recipient,reference,escrow_ref,payer_wallet_id,expires_at)
     values (${id},${orderId},${actor.id},${chainId},${String(asset.id)},${String(network.mode)},${amount.toString()},${String(network.settlement_address)},
-      ${settlementReference(orderId, id)},${walletId},${hold.expires_at ?? new Date(Date.now() + 15 * 60_000)})`;
-  return { path: `/orders/${orderId}`, message: `Send exactly ${formatAtomic(amount, Number(asset.decimals))} ${asset.symbol} on ${network.name} with the payment reference`, id };
+      ${settlementReference(orderId, id)},${escrowReference('order', orderId)},${walletId},${hold.expires_at ?? new Date(Date.now() + 15 * 60_000)})`;
+  return { path: `/orders/${orderId}`, message: `Fund the escrow with exactly ${formatAtomic(amount, Number(asset.decimals))} ${asset.symbol} on ${network.name}`, id };
 };
 
 export const cryptoCommands: Record<string, CommandHandler> = { create_crypto_payment: createCryptoPayment };

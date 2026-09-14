@@ -3,8 +3,9 @@
  * template atomically and its order is funded from the allocation; approval releases each allocation exactly once
  * with a server authorization; unused balance is refundable; perks become unique entitlements.
  *
- * Payout execution runs through the chain payout adapter inside the transaction. That is acceptable only for the
- * in-process devnet simulator; a real network needs an outbox worker (NOT IMPLEMENTED) before any testnet use.
+ * Pool deposits sit in the pool's SpacaEscrow bucket. Releases and unused-balance refunds are queued in the chain
+ * payout outbox inside the business transaction and dispatched by the worker outside it (W9-ARC); the pool buckets
+ * move to `pending_outflow` when queued and to `released`/`refunded` (or back) when the payout is confirmed or fails.
  */
 import { randomUUID } from 'node:crypto';
 import type { Hex } from 'viem';
@@ -12,14 +13,15 @@ import type { Actor } from '@/lib/auth';
 import { CommandError, UUID_PATTERN, type Row, type Tx } from '@/lib/commands';
 import { sql } from '@/lib/db';
 import { NATIVE_TOKEN } from '@/modules/crypto/abi';
-import { bytes32Of, newNonce, releaseDomain, signRelease, type SignedRelease } from '@/modules/crypto/authorization';
-import { ChainUnavailableError, PayoutRejectedError, getChainReader, getPayoutAdapter } from '@/modules/crypto/chain';
-import { enabledNetwork, formatAtomic, parseDecimalToAtomic, settlementReference } from '@/modules/crypto/registry';
+import { getChainReader } from '@/modules/crypto/chain';
+import { enqueueChainPayout, registerPayoutEffects } from '@/modules/crypto/payouts';
+import { enabledNetwork, escrowReference, formatAtomic, parseDecimalToAtomic, settlementReference } from '@/modules/crypto/registry';
 import { PaymentFlowError, openCase } from '@/modules/payments/funding';
 import { moveBalance, refreshPoolStatus } from './balances';
 import { cashMinorOf, moneyItems, validateTemplate, type TemplateItem } from './template';
 
-const AUTHORIZATION_TTL_SECONDS = 15 * 60;
+/** One escrow bucket per pool asset: the contract holds a single token per bucket. */
+export const poolEscrowRef = (poolId: string, poolAssetId: string) => escrowReference('pool', `${poolId}:${poolAssetId}`);
 
 async function lockPool(tx: Tx, poolId: string): Promise<Row> {
   const [pool] = await tx<Row[]>`select * from app.campaign_pools where id=${poolId} for update`;
@@ -102,9 +104,9 @@ export async function createPoolFundingIntent(tx: Tx, actor: Actor, input: { poo
   }
   if (amount <= 0n) throw new CommandError('Amount must be positive');
   const id = randomUUID();
-  await tx`insert into app.pool_funding_intents (id,pool_id,pool_asset_id,buyer_id,chain_id,network_mode,amount_atomic,recipient,reference)
+  await tx`insert into app.pool_funding_intents (id,pool_id,pool_asset_id,buyer_id,chain_id,network_mode,amount_atomic,recipient,reference,escrow_ref)
     values (${id},${input.poolId},${String(poolAsset.id)},${actor.id},${Number(pool.chain_id)},${String(network.mode)},${amount.toString()},${String(network.settlement_address)},
-      ${settlementReference(`pool:${input.poolId}`, id)})`;
+      ${settlementReference(`pool:${input.poolId}`, id)},${poolEscrowRef(input.poolId, String(poolAsset.id))})`;
   return { id, display: `${formatAtomic(amount, Number(poolAsset.decimals))} ${poolAsset.symbol}` };
 }
 
@@ -181,31 +183,6 @@ export async function returnPoolAllocations(tx: Tx, orderId: string): Promise<nu
   return allocations.length;
 }
 
-async function executePayout(tx: Tx, network: Row, kind: 'ALLOCATION' | 'POOL_REFUND', payout: { id: string; orderRef: string; recipient: string; token: string; amount: bigint }) {
-  const nonce = newNonce();
-  const expiry = BigInt(Math.floor(Date.now() / 1000) + AUTHORIZATION_TTL_SECONDS);
-  const signed: SignedRelease = await signRelease(releaseDomain(Number(network.chain_id), String(network.settlement_address)), {
-    payoutRef: bytes32Of(`${kind}:${payout.id}`), orderRef: bytes32Of(payout.orderRef), recipient: payout.recipient as Hex, token: payout.token as Hex, amount: payout.amount, nonce, expiry,
-  });
-  await tx`insert into app.release_authorizations (nonce,payout_kind,payout_id,chain_id,verifying_contract,recipient,token,amount_atomic,expires_at,signature)
-    values (${nonce},${kind},${payout.id},${Number(network.chain_id)},${String(network.settlement_address)},${payout.recipient},${payout.token},${payout.amount.toString()},
-      to_timestamp(${Number(expiry)}),${signed.signature})`;
-  try {
-    const { txHash } = await getPayoutAdapter(network).executeRelease(signed);
-    await tx`update app.release_authorizations set consumed_at=now(),outcome='TRANSFERRED' where nonce=${nonce}`;
-    return { ok: true as const, nonce, txHash: String(txHash) };
-  } catch (error) {
-    const code = error instanceof PayoutRejectedError ? error.code : error instanceof ChainUnavailableError ? 'RPC_UNAVAILABLE' : 'PAYOUT_ERROR';
-    // The contract remembers released payout references; a lost success is reconciled instead of paid twice.
-    if (code.startsWith('ALREADY_RELEASED:')) {
-      await tx`update app.release_authorizations set consumed_at=now(),outcome='FAILED' where nonce=${nonce}`;
-      return { ok: true as const, nonce, txHash: code.slice('ALREADY_RELEASED:'.length) };
-    }
-    await tx`update app.release_authorizations set consumed_at=now(),outcome='FAILED' where nonce=${nonce}`;
-    return { ok: false as const, nonce, code };
-  }
-}
-
 export type PoolSettlement = { requiredOutstanding: number; released: string[]; failed: { key: string; code: string }[] };
 
 /** CRY-08: releases each still-active allocation once; a failed asset stays active for retry, released ones never repeat. */
@@ -225,34 +202,74 @@ export async function settlePoolAllocations(tx: Tx, order: Row): Promise<PoolSet
   if (!network) throw new PaymentFlowError('The pool network is not enabled', 'UNAVAILABLE');
   const result: PoolSettlement = { requiredOutstanding: 0, released: [], failed: [] };
   for (const allocation of allocations) {
+    if (allocation.state === 'RELEASED') result.released.push(String(allocation.item_key));
     if (allocation.state !== 'ACTIVE') continue;
     const amount = BigInt(String(allocation.amount_atomic));
     const id = String(allocation.id);
     const [attempt] = await tx<Row[]>`update app.pool_allocations set state='RELEASE_PENDING',attempts=attempts+1,updated_at=now() where id=${id} returning attempts`;
-    // Value moves to pending_outflow before the payout is attempted, and leaves it exactly once afterwards.
-    const reference = `release:${id}:${attempt!.attempts}`;
-    await moveBalance(tx, String(allocation.pool_asset_id), 'RELEASE_START', amount, reference);
-    const payout = await executePayout(tx, network, 'ALLOCATION', {
-      id, orderRef: orderId, recipient, token: allocation.asset_kind === 'NATIVE' ? NATIVE_TOKEN : String(allocation.contract_address), amount,
+    // Value moves to pending_outflow when queued and leaves it exactly once when the payout is confirmed or fails.
+    await moveBalance(tx, String(allocation.pool_asset_id), 'RELEASE_START', amount, `release:${id}:${attempt!.attempts}`);
+    await enqueueChainPayout(tx, {
+      kind: 'ALLOCATION', subjectId: id, orderId, chainId, escrowRef: poolEscrowRef(String(allocation.pool_id), String(allocation.pool_asset_id)),
+      // One payout reference per attempt: a failed attempt never paid, so the next attempt gets a new reference.
+      logicalKey: `ALLOCATION:${id}:${attempt!.attempts}`,
+      recipient, token: allocation.asset_kind === 'NATIVE' ? NATIVE_TOKEN : String(allocation.contract_address), amountAtomic: amount,
     });
-    if (payout.ok) {
-      await moveBalance(tx, String(allocation.pool_asset_id), 'RELEASE_DONE', amount, reference);
-      await tx`update app.pool_allocations set state='RELEASED',release_tx=${payout.txHash},last_error=null,updated_at=now() where id=${id}`;
-      result.released.push(String(allocation.item_key));
-    } else {
-      await moveBalance(tx, String(allocation.pool_asset_id), 'RELEASE_FAILED', amount, reference);
-      await tx`update app.pool_allocations set state='ACTIVE',last_error=${payout.code},updated_at=now() where id=${id}`;
-      result.failed.push({ key: String(allocation.item_key), code: payout.code });
-    }
   }
   const [{ outstanding }] = await tx<{ outstanding: number }[]>`select count(*)::int as outstanding from app.pool_allocations where order_id=${orderId} and required and state <> 'RELEASED'`;
   result.requiredOutstanding = outstanding;
-  if (result.failed.length) {
-    await openCase(tx, orderId, null, 'POOL_PAYOUT_PARTIAL', outstanding ? 'HIGH' : 'MEDIUM',
-      `Pool payout failed for ${result.failed.map((f) => `${f.key} (${f.code})`).join(', ')}; the settlement job retries only these items`);
-  }
   return result;
 }
+
+/** Completes a pool-funded hire once every required allocation is released (called when a payout confirms). */
+async function completeIfSettled(tx: Tx, orderId: string) {
+  const [order] = await tx<Row[]>`select * from app.orders where id=${orderId} for update`;
+  if (!order || order.settlement_status === 'RELEASED' || !['APPROVED', 'CANCELLED'].includes(String(order.status))) return;
+  if (order.payment_rail !== 'POOL') return;
+  // Completion only; it never queues new payouts, so a confirmed payout record is never rolled back by settlement work.
+  const { finalizePoolOrder } = await import('@/modules/payments/funding');
+  await finalizePoolOrder(tx, order);
+}
+
+registerPayoutEffects(['ALLOCATION'], {
+  async onConfirmed(tx, payout) {
+    const [allocation] = await tx<Row[]>`select * from app.pool_allocations where id=${String(payout.subject_id)} for update`;
+    if (!allocation || allocation.state !== 'RELEASE_PENDING') return;
+    const amount = BigInt(String(allocation.amount_atomic));
+    await moveBalance(tx, String(allocation.pool_asset_id), 'RELEASE_DONE', amount, `release:${String(allocation.id)}:${Number(allocation.attempts)}`);
+    await tx`update app.pool_allocations set state='RELEASED',release_tx=${payout.tx_hash ?? null},last_error=null,updated_at=now() where id=${String(allocation.id)}`;
+    await completeIfSettled(tx, String(allocation.order_id));
+  },
+  async onFailed(tx, payout, code) {
+    const [allocation] = await tx<Row[]>`select * from app.pool_allocations where id=${String(payout.subject_id)} for update`;
+    if (!allocation || allocation.state !== 'RELEASE_PENDING') return;
+    const amount = BigInt(String(allocation.amount_atomic));
+    await moveBalance(tx, String(allocation.pool_asset_id), 'RELEASE_FAILED', amount, `release:${String(allocation.id)}:${Number(allocation.attempts)}`);
+    await tx`update app.pool_allocations set state='ACTIVE',last_error=${code},updated_at=now() where id=${String(allocation.id)}`;
+    const [{ outstanding }] = await tx<{ outstanding: number }[]>`select count(*)::int as outstanding from app.pool_allocations where order_id=${String(allocation.order_id)} and required and state <> 'RELEASED'`;
+    await openCase(tx, String(allocation.order_id), null, 'POOL_PAYOUT_PARTIAL', outstanding ? 'HIGH' : 'MEDIUM',
+      `Pool payout failed for ${String(allocation.item_key)} (${code}); the settlement job retries only this item`);
+    if (!allocation.required) await completeIfSettled(tx, String(allocation.order_id));
+  },
+});
+
+registerPayoutEffects(['POOL_REFUND'], {
+  async onConfirmed(tx, payout) {
+    const [refund] = await tx<Row[]>`select r.*,pa.pool_id from app.pool_refunds r join app.pool_assets pa on pa.id=r.pool_asset_id where r.id=${String(payout.subject_id)} for update of r`;
+    if (!refund || refund.state !== 'REFUND_PENDING') return;
+    await moveBalance(tx, String(refund.pool_asset_id), 'REFUND_DONE', BigInt(String(refund.amount_atomic)), `refund:${String(refund.id)}`);
+    await tx`update app.pool_refunds set state='REFUNDED',refund_tx=${payout.tx_hash ?? null},updated_at=now() where id=${String(refund.id)}`;
+    await refreshPoolStatus(tx, String(refund.pool_id));
+  },
+  async onFailed(tx, payout, code) {
+    const [refund] = await tx<Row[]>`select r.*,pa.pool_id from app.pool_refunds r join app.pool_assets pa on pa.id=r.pool_asset_id where r.id=${String(payout.subject_id)} for update of r`;
+    if (!refund || refund.state !== 'REFUND_PENDING') return;
+    await moveBalance(tx, String(refund.pool_asset_id), 'REFUND_FAILED', BigInt(String(refund.amount_atomic)), `refund:${String(refund.id)}`);
+    await tx`update app.pool_refunds set state='FAILED',last_error=${code},updated_at=now() where id=${String(refund.id)}`;
+    await openCase(tx, null, null, 'POOL_REFUND_FAILED', 'HIGH', `Pool ${String(refund.pool_id)} refund ${String(refund.id)} failed (${code}); balance returned to unallocated`);
+    await refreshPoolStatus(tx, String(refund.pool_id));
+  },
+});
 
 /** CRY-09: refunds only confirmed, unallocated balance; allocations and in-flight payouts are untouched. */
 export async function refundUnusedPoolBalance(tx: Tx, actor: Actor, input: { poolId: string; assetId: string; amount?: string }) {
@@ -274,26 +291,21 @@ export async function refundUnusedPoolBalance(tx: Tx, actor: Actor, input: { poo
   }
   if (amount <= 0n) throw new CommandError('There is no unallocated balance to refund', 'DOMAIN_RULE');
   if (amount > unallocated) throw new CommandError(`Only ${formatAtomic(unallocated, Number(poolAsset.decimals))} ${poolAsset.symbol} is unallocated and refundable`, 'BUDGET_EXCEEDED');
-  const recipient = await activeWallet(tx, actor.id, Number(pool.chain_id));
-  if (!recipient) throw new CommandError('Link a verified wallet on the pool network to receive the refund', 'DOMAIN_RULE');
   const [network] = await tx<Row[]>`select * from app.chain_networks where chain_id=${Number(pool.chain_id)} and enabled`;
   if (!network) throw new CommandError('The pool network is not enabled', 'FEATURE_DISABLED');
-  const [refund] = await tx<Row[]>`insert into app.pool_refunds (pool_asset_id,requested_by,recipient,amount_atomic) values (${String(poolAsset.id)},${actor.id},${recipient},${amount.toString()}) returning id`;
+  // The escrow always refunds the wallet that funded the pool bucket; record that wallet as the recipient.
+  const [funder] = await tx<Row[]>`select d.payer from app.chain_deposits d join app.pool_funding_intents i on i.id=d.pool_intent_id
+    where i.pool_id=${input.poolId} and d.status='CREDITED' order by d.credited_at asc limit 1`;
+  if (!funder) throw new CommandError('This pool has no confirmed deposit to refund', 'DOMAIN_RULE');
+  const [refund] = await tx<Row[]>`insert into app.pool_refunds (pool_asset_id,requested_by,recipient,amount_atomic) values (${String(poolAsset.id)},${actor.id},${String(funder.payer)},${amount.toString()}) returning id`;
   const refundId = String(refund!.id);
   await moveBalance(tx, String(poolAsset.id), 'REFUND_START', amount, `refund:${refundId}`);
-  const payout = await executePayout(tx, network, 'POOL_REFUND', {
-    id: refundId, orderRef: `pool:${input.poolId}`, recipient, token: poolAsset.asset_kind === 'NATIVE' ? NATIVE_TOKEN : String(poolAsset.contract_address), amount,
+  await enqueueChainPayout(tx, {
+    kind: 'POOL_REFUND', subjectId: refundId, chainId: Number(pool.chain_id), escrowRef: poolEscrowRef(input.poolId, String(poolAsset.id)), logicalKey: `POOL_REFUND:${refundId}`,
+    recipient: String(funder.payer), token: poolAsset.asset_kind === 'NATIVE' ? NATIVE_TOKEN : String(poolAsset.contract_address), amountAtomic: amount,
   });
-  if (payout.ok) {
-    await moveBalance(tx, String(poolAsset.id), 'REFUND_DONE', amount, `refund:${refundId}`);
-    await tx`update app.pool_refunds set state='REFUNDED',refund_tx=${payout.txHash},updated_at=now() where id=${refundId}`;
-  } else {
-    await moveBalance(tx, String(poolAsset.id), 'REFUND_FAILED', amount, `refund:${refundId}`);
-    await tx`update app.pool_refunds set state='FAILED',last_error=${payout.code},updated_at=now() where id=${refundId}`;
-    await openCase(tx, null, null, 'POOL_REFUND_FAILED', 'HIGH', `Pool ${input.poolId} refund ${refundId} failed (${payout.code}); balance returned to unallocated`);
-  }
   await refreshPoolStatus(tx, input.poolId);
-  return { refundId, state: payout.ok ? 'REFUNDED' : 'FAILED', display: `${formatAtomic(amount, Number(poolAsset.decimals))} ${poolAsset.symbol}` };
+  return { refundId, state: 'REFUND_PENDING', display: `${formatAtomic(amount, Number(poolAsset.decimals))} ${poolAsset.symbol}` };
 }
 
 export async function closeCampaignPool(tx: Tx, actor: Actor, poolId: string) {

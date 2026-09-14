@@ -28,6 +28,7 @@ import { enqueueNotification } from '@/modules/notifications/enqueue';
 import { approveOrder } from '@/modules/orders/commands';
 import { closeAuction } from '@/modules/auctions/commands';
 import { recheckPendingDeposits, scanChainDeposits } from '@/modules/crypto/deposits';
+import { dispatchChainPayout, dueChainPayouts } from '@/modules/crypto/payouts';
 import { latestDelivery, termsOf } from '@/modules/orders/lifecycle';
 import { FINALIZE_GRACE_SECONDS, type StorageBucket } from '@/modules/storage/policy';
 import { getStorageProvider } from '@/modules/storage/provider';
@@ -196,7 +197,8 @@ export async function reconcileProviderOperations(options: JobScope & { minAgeSe
 /** Releases creator entitlement for approved, undisputed, provider-funded orders. */
 export async function releaseReadySettlements(options: JobScope = {}): Promise<JobReport> {
   const { result, tally } = report('release_ready_settlements');
-  if (!mockPaymentsEnabled()) return result;
+  // Card funding needs the mock provider locally; escrow-backed rails (CRYPTO, POOL) settle through the payout outbox.
+  const railCondition = mockPaymentsEnabled() ? sql`true` : sql`o.payment_rail in ('CRYPTO','POOL')`;
   // Approved orders, or mutually cancelled orders whose agreed refund left a creator remainder (ORD-15).
   // Pool-funded hires stay PENDING after a partial payout and are retried here for the failed assets only (CRY-08).
   const readyCondition = sql`(o.settlement_status='READY' or (o.payment_rail='POOL' and o.settlement_status='PENDING'))
@@ -204,7 +206,7 @@ export async function releaseReadySettlements(options: JobScope = {}): Promise<J
       or (o.status='CANCELLED' and o.cancellation_refund_minor is not null and o.cancellation_refund_minor < o.amount_minor
           and o.payment_status in ('SUCCEEDED','REFUND_PENDING','PARTIALLY_REFUNDED')))
     and not exists (select 1 from app.disputes d where d.order_id=o.id and d.status in ('OPEN','UNDER_REVIEW'))`;
-  const ready = await sql<Row[]>`select o.id from app.orders o where ${readyCondition} and ${scoped(sql`o.id`, options)} order by o.updated_at asc limit ${options.limit ?? 50}`;
+  const ready = await sql<Row[]>`select o.id from app.orders o where ${readyCondition} and ${railCondition} and ${scoped(sql`o.id`, options)} order by o.updated_at asc limit ${options.limit ?? 50}`;
   for (const candidate of ready) {
     try {
       tally(await sql.begin(async (tx) => {
@@ -218,7 +220,21 @@ export async function releaseReadySettlements(options: JobScope = {}): Promise<J
       else { console.error('release_ready_settlements failed', candidate.id, error); tally('ERROR'); }
     }
   }
-  await deliverPendingMockWebhooks();
+  if (mockPaymentsEnabled()) await deliverPendingMockWebhooks();
+  return result;
+}
+
+/** Signs and submits queued escrow payouts outside database transactions, then applies confirmed or failed outcomes. */
+export async function dispatchChainPayouts(options: { limit?: number; orderId?: string } = {}): Promise<JobReport> {
+  const { result, tally } = report('dispatch_chain_payouts');
+  for (const id of await dueChainPayouts(options)) {
+    try {
+      tally(await dispatchChainPayout(id));
+    } catch (error) {
+      console.error('dispatch_chain_payouts failed', id, error instanceof Error ? error.message : error);
+      tally('ERROR');
+    }
+  }
   return result;
 }
 
@@ -483,6 +499,7 @@ export async function runJobsOnce(): Promise<JobReport[]> {
     await closeDueAuctions(),
     await autoAcceptDeliveries(),
     await releaseReadySettlements(),
+    await dispatchChainPayouts(),
     await sendOrderReminders(),
     await dispatchNotificationOutbox(),
     await cleanupStorage(),

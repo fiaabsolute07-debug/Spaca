@@ -305,3 +305,14 @@ Commands:
 - `deliver` on PUBLISH orders: `post_url`, `published_at` (datetime-local, UTC), `disclosure_attested=on`, optional `body`. 422 for another channel or a time before the order started; 400 for missing fields or a future time.
 - `report_content`: `target_type` (REQUEST, ORDER, SERVICE, PROFILE, SAMPLE, PUBLISH_PROOF), `target_id`, `reason` (UNDISCLOSED_PROMOTION, FAKE_ENGAGEMENT, GUARANTEED_RETURNS, DECEPTIVE_SCRIPT, IMPERSONATION, POST_REMOVED_EARLY, SPAM, OTHER), `details` (10+). Redirects back to `return_to`.
 - `admin_resolve_report` (moderator/admin): `report_id`, `decision` ACTIONED|DISMISSED, `action` (NONE, CLOSE_REQUEST, PAUSE_SERVICE, REJECT_SAMPLE, SUSPEND_USER per target), `reason`.
+
+## W9-ARC additions (2026-09-15): escrow checkout and payouts
+
+- `getOrderData(...).crypto_payment` adds `escrow_ref` and `token_address`. The panel shows escrow contract (`recipient`), bucket (`escrow_ref`) and payment reference, and labels LOCAL/TESTNET modes.
+- Paying on an RPC network: the buyer's wallet calls `approve(escrow, amount)` on the token, then `fund(escrowRef, paymentRef, token, amount)` on the escrow. `CryptoDepositActions` does this with an EIP-1193 wallet and then posts the transaction hash to `/api/crypto/deposits`. The server verifies the `Funded` log and the bucket; a wrong bucket is `WRONG_ESCROW`.
+- Payouts are asynchronous:
+  - After approval the order shows `settlement_status` PENDING until the escrow release is confirmed, then COMPLETED/RELEASED.
+  - A cancellation shows `payment_status` REFUND_PENDING until the refund to the paying wallet is confirmed, then REFUNDED.
+  - Operators see `app.chain_payouts` states QUEUED, SUBMITTING, UNKNOWN, RETRY, CONFIRMED, FAILED.
+- Pool refunds (`refund_pool_unused`) return `state: REFUND_PENDING`; the escrow sends them to the wallet that funded the pool.
+- Crypto order events: `SETTLEMENT_RELEASED` (rail CRYPTO, tx_hash), `REFUND_CONFIRMED`, `ESCROW_FROZEN` / `ESCROW_UNFROZEN` (disputes), `SETTLEMENT_FAILED`, `REFUND_FAILED`.

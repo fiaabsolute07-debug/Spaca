@@ -16,6 +16,8 @@ import { sql } from '@/lib/db';
 import { activateOrderClaim } from '@/modules/capacity';
 import { recomputeWorkClock } from '@/modules/orders/lifecycle';
 import { isFlagEnabled } from '@/modules/admin/policy';
+import { enqueueChainPayout, registerPayoutEffects } from '@/modules/crypto/payouts';
+import { atomicToUsdMinor, escrowReference, usdMinorToAtomic } from '@/modules/crypto/registry';
 import {
   MockPaymentProvider,
   computeRequestHash,
@@ -201,7 +203,7 @@ export async function cancelOpenFunding(tx: Tx, orderId: string): Promise<void> 
 /** Requests a full refund of provider-confirmed funding. The order shows REFUNDED only after the provider confirms. */
 export async function requestProviderRefund(tx: Tx, order: Row, reason: RefundReason): Promise<ProviderCallResult> {
   const orderId = String(order.id);
-  if (order.payment_rail === 'CRYPTO') throw new PaymentFlowError('Crypto refunds need the chain settlement adapter, which is not implemented yet', 'UNAVAILABLE');
+  if (order.payment_rail === 'CRYPTO') return queueCryptoRefund(tx, order);
   if (order.payment_rail === 'POOL') return returnPoolFunding(tx, order);
   const [funding] = await tx<Row[]>`select provider_reference from app.provider_operations
     where order_id=${orderId} and kind='funding.create' and outcome->>'fundingStatus'='SUCCEEDED' order by created_at desc limit 1`;
@@ -246,8 +248,8 @@ export function feePayerPolicy(): FeePayerPolicy {
 export async function requestCreatorRelease(tx: Tx, order: Row): Promise<ProviderCallResult> {
   const orderId = String(order.id);
   if (!(await isFlagEnabled(tx, 'PAYOUT_CREATION_ENABLED'))) throw new PaymentFlowError('New payouts are paused by the payout kill switch', 'UNAVAILABLE');
-  if (order.payment_rail === 'CRYPTO') throw new PaymentFlowError('Crypto payouts need the chain settlement adapter, which is not implemented yet', 'UNAVAILABLE');
-  if (order.payment_rail === 'POOL') return settlePoolFunding(tx, order);
+  if (order.payment_rail === 'CRYPTO') return queueCryptoRelease(tx, order);
+  if (order.payment_rail === 'POOL') return settlePoolOrder(tx, order);
   const [funding] = await tx<Row[]>`select provider_reference from app.provider_operations
     where order_id=${orderId} and kind='funding.create' and outcome->>'fundingStatus'='SUCCEEDED' order by created_at desc limit 1`;
   if (!funding) throw new PaymentFlowError('No provider-confirmed funding exists for this order', 'INVALID_STATE');
@@ -561,15 +563,28 @@ async function returnPoolFunding(tx: Tx, order: Row): Promise<ProviderCallResult
 }
 
 /** CRY-08: COMPLETED only when every required allocation is released; failed assets retry alone via the settlement job. */
-async function settlePoolFunding(tx: Tx, order: Row): Promise<ProviderCallResult> {
+/**
+ * CRY-08: queues each still-active allocation; the order completes when every required allocation is confirmed
+ * released (finalizePoolOrder, called from the payout effect). Failed assets retry alone on the next settlement run.
+ */
+async function settlePoolOrder(tx: Tx, order: Row): Promise<ProviderCallResult> {
   const orderId = String(order.id);
   const { settlePoolAllocations } = await import('@/modules/pools/service');
   const result = await settlePoolAllocations(tx, order);
   if (result.requiredOutstanding > 0) {
-    await tx`update app.orders set settlement_status='PENDING',updated_at=now() where id=${orderId}`;
-    return { state: 'RETRY', operationId: `pool-release:${orderId}`, code: `PARTIAL_${result.failed.map((f) => f.code).join('_') || 'PENDING'}` };
+    await tx`update app.orders set settlement_status='PENDING',updated_at=now() where id=${orderId} and settlement_status<>'PENDING'`;
+    return { state: 'RETRY', operationId: `pool-release:${orderId}`, code: 'PARTIAL_PENDING' };
   }
-  const [poolRow] = await tx<Row[]>`select pool_id from app.pool_allocations where order_id=${orderId} limit 1`;
+  await finalizePoolOrder(tx, order);
+  return { state: 'READY', operationId: `pool-release:${orderId}`, reference: 'pool' };
+}
+
+/** Records completion once every required allocation is released; optional ones may still be pending or failed. */
+export async function finalizePoolOrder(tx: Tx, order: Row): Promise<boolean> {
+  const orderId = String(order.id);
+  const allocations = await tx<Row[]>`select pool_id,item_key,required,state,last_error from app.pool_allocations where order_id=${orderId}`;
+  if (!allocations.length || allocations.some((a) => a.required && a.state !== 'RELEASED') || order.settlement_status === 'RELEASED') return false;
+  const poolId = String(allocations[0]!.pool_id);
   const amount = BigInt(String(order.amount_minor));
   if (order.status === 'APPROVED') {
     await tx`update app.orders set settlement_status='RELEASED',status='COMPLETED',completed_at=now(),version=version+1,updated_at=now() where id=${orderId}`;
@@ -577,13 +592,136 @@ async function settlePoolFunding(tx: Tx, order: Row): Promise<ProviderCallResult
   } else {
     await tx`update app.orders set settlement_status='RELEASED',updated_at=now() where id=${orderId}`;
   }
-  await orderEvent(tx, orderId, 'SETTLEMENT_RELEASED', { rail: 'POOL', pool_id: poolRow?.pool_id ?? null, released: result.released, optional_failed: result.failed.map((f) => f.key), platform_fee_minor: '0' });
-  await ledger(tx, orderId, 'SETTLEMENT_RELEASED', `release:pool:${orderId}`, [[`order_principal:${orderId}`, amount], [`pool_clearing:${poolRow!.pool_id}`, -amount]], 'USD');
+  await orderEvent(tx, orderId, 'SETTLEMENT_RELEASED', {
+    rail: 'POOL', pool_id: poolId, released: allocations.filter((a) => a.state === 'RELEASED').map((a) => a.item_key),
+    optional_not_released: allocations.filter((a) => !a.required && a.state !== 'RELEASED').map((a) => a.item_key), platform_fee_minor: '0',
+  });
+  await ledger(tx, orderId, 'SETTLEMENT_RELEASED', `release:pool:${orderId}`, [[`order_principal:${orderId}`, amount], [`pool_clearing:${poolId}`, -amount]], 'USD');
   await outbox(tx, orderId, `notify:payout.succeeded:${orderId}`, {
     templateId: 'payout.succeeded', recipientId: String(order.creator_id), params: { orderRef: orderId, amount: amount.toString(), currency: 'USD' },
   });
-  return { state: 'READY', operationId: `pool-release:${orderId}`, reference: 'pool' };
+  return true;
 }
+
+// ---------------------------------------------------------------------------
+// CRYPTO rail: releases, refunds and dispute freezes through SpacaEscrow (W9-ARC)
+// ---------------------------------------------------------------------------
+
+async function creditedDeposit(tx: Tx, orderId: string): Promise<Row> {
+  const [deposit] = await tx<Row[]>`select d.chain_id,d.token_address,d.payer,d.amount_atomic,a.decimals
+    from app.chain_deposits d join app.crypto_payment_intents i on i.id=d.intent_id join app.chain_assets a on a.id=d.asset_id
+    where i.order_id=${orderId} and d.status='CREDITED' limit 1`;
+  if (!deposit) throw new PaymentFlowError('No verified on-chain deposit exists for this order', 'INVALID_STATE');
+  return deposit;
+}
+
+/** Full or agreed partial refund back to the paying wallet; the escrow contract fixes the recipient. */
+async function queueCryptoRefund(tx: Tx, order: Row): Promise<ProviderCallResult> {
+  const orderId = String(order.id);
+  const deposit = await creditedDeposit(tx, orderId);
+  const agreed = order.cancellation_refund_minor === null || order.cancellation_refund_minor === undefined ? null : BigInt(String(order.cancellation_refund_minor));
+  const amount = agreed ?? BigInt(String(order.amount_minor));
+  if (amount <= 0n) throw new PaymentFlowError('There is no amount to refund for this order', 'INVALID_STATE');
+  const partial = agreed !== null && agreed < BigInt(String(order.amount_minor));
+  const logicalKey = `ORDER_REFUND:${orderId}:${partial ? 'agreed' : 'full'}`;
+  const payout = await enqueueChainPayout(tx, {
+    kind: 'ORDER_REFUND', subjectId: orderId, orderId, chainId: Number(deposit.chain_id), escrowRef: escrowReference('order', orderId), logicalKey,
+    recipient: String(deposit.payer), token: String(deposit.token_address), amountAtomic: usdMinorToAtomic(amount, Number(deposit.decimals)),
+  });
+  return { state: 'READY', operationId: logicalKey, reference: String(payout.id) };
+}
+
+/** Creator entitlement (or the remainder after an agreed refund) to the creator's verified wallet on the deposit chain. */
+async function queueCryptoRelease(tx: Tx, order: Row): Promise<ProviderCallResult> {
+  const orderId = String(order.id);
+  const deposit = await creditedDeposit(tx, orderId);
+  const [wallet] = await tx<Row[]>`select address from app.wallets where user_id=${String(order.creator_id)} and chain_id=${String(deposit.chain_id)} and revoked_at is null order by verified_at desc limit 1`;
+  if (!wallet) {
+    // Committed with the case (not thrown), so the operator sees it; settlement stays READY and the job retries.
+    await openCase(tx, orderId, null, 'NO_PAYOUT_WALLET', 'MEDIUM', 'The creator has no verified wallet on the payment network; ask them to link one, then the settlement job retries');
+    return { state: 'RETRY', operationId: `ORDER_RELEASE:${orderId}`, code: 'NO_PAYOUT_WALLET' };
+  }
+  const refunded = order.status === 'CANCELLED' && order.cancellation_refund_minor !== null && order.cancellation_refund_minor !== undefined ? BigInt(String(order.cancellation_refund_minor)) : 0n;
+  const amount = BigInt(String(order.amount_minor)) - refunded;
+  if (amount <= 0n) throw new PaymentFlowError('Creator entitlement would not be positive', 'INVALID_STATE');
+  const logicalKey = `ORDER_RELEASE:${orderId}:${refunded > 0n ? 'remainder' : 'full'}`;
+  const payout = await enqueueChainPayout(tx, {
+    kind: 'ORDER_RELEASE', subjectId: orderId, orderId, chainId: Number(deposit.chain_id), escrowRef: escrowReference('order', orderId), logicalKey,
+    recipient: String(wallet.address), token: String(deposit.token_address), amountAtomic: usdMinorToAtomic(amount, Number(deposit.decimals)),
+  });
+  await tx`update app.orders set settlement_status='PENDING',version=version+1,updated_at=now() where id=${orderId} and settlement_status='READY'`;
+  return { state: 'READY', operationId: logicalKey, reference: String(payout.id) };
+}
+
+/**
+ * A dispute on a crypto-funded order freezes its escrow bucket so the payer cannot reclaim mid-dispute; resolution
+ * unfreezes it before the release or refund payout, which the worker dispatches in queue order.
+ */
+export async function setCryptoEscrowFrozen(tx: Tx, order: Row, disputeId: string, frozen: boolean): Promise<void> {
+  if (order.payment_rail !== 'CRYPTO') return;
+  const orderId = String(order.id);
+  const deposit = await creditedDeposit(tx, orderId);
+  await enqueueChainPayout(tx, {
+    kind: frozen ? 'FREEZE' : 'UNFREEZE', subjectId: orderId, orderId, chainId: Number(deposit.chain_id), escrowRef: escrowReference('order', orderId),
+    logicalKey: `${frozen ? 'FREEZE' : 'UNFREEZE'}:${orderId}:${disputeId}`, amountAtomic: 0n,
+  });
+}
+
+async function payoutMinor(tx: Tx, payout: Row): Promise<bigint> {
+  const { assetForToken } = await import('@/modules/crypto/registry');
+  const asset = await assetForToken(tx, Number(payout.chain_id), String(payout.token));
+  const minor = asset ? atomicToUsdMinor(BigInt(String(payout.amount_atomic)), Number(asset.decimals)) : null;
+  if (minor === null) throw new Error(`payout ${String(payout.id)} amount is not cent-exact for its asset`);
+  return minor;
+}
+
+registerPayoutEffects(['ORDER_RELEASE'], {
+  async onConfirmed(tx, payout) {
+    const orderId = String(payout.order_id);
+    const [order] = await tx<Row[]>`select * from app.orders where id=${orderId} for update`;
+    if (!order || order.settlement_status === 'RELEASED') return;
+    const amount = await payoutMinor(tx, payout);
+    if (order.status === 'APPROVED') {
+      await tx`update app.orders set settlement_status='RELEASED',status='COMPLETED',completed_at=now(),version=version+1,updated_at=now() where id=${orderId}`;
+      await outbox(tx, orderId, `notify:order.completed:${orderId}`, { templateId: 'order.completed', recipientId: String(order.buyer_id), params: { orderRef: orderId } });
+    } else {
+      await tx`update app.orders set settlement_status='RELEASED',updated_at=now() where id=${orderId}`;
+    }
+    await orderEvent(tx, orderId, 'SETTLEMENT_RELEASED', { rail: 'CRYPTO', chain_id: Number(payout.chain_id), tx_hash: payout.tx_hash ?? null, amount_atomic: String(payout.amount_atomic), creator_net_minor: amount.toString(), platform_fee_minor: '0' });
+    await ledger(tx, orderId, 'SETTLEMENT_RELEASED', `release:chain:${String(payout.payout_ref)}`, [[`order_principal:${orderId}`, amount], [`chain_clearing:${String(payout.chain_id)}`, -amount]], 'USD');
+    await outbox(tx, orderId, `notify:payout.succeeded:${orderId}`, { templateId: 'payout.succeeded', recipientId: String(order.creator_id), params: { orderRef: orderId, amount: amount.toString(), currency: 'USD' } });
+  },
+  async onFailed(tx, payout, code) {
+    const orderId = String(payout.order_id);
+    await tx`update app.orders set settlement_status='FAILED',updated_at=now() where id=${orderId} and settlement_status='PENDING'`;
+    await orderEvent(tx, orderId, 'SETTLEMENT_FAILED', { rail: 'CRYPTO', code });
+  },
+});
+
+registerPayoutEffects(['ORDER_REFUND'], {
+  async onConfirmed(tx, payout) {
+    const orderId = String(payout.order_id);
+    const [order] = await tx<Row[]>`select * from app.orders where id=${orderId} for update`;
+    if (!order || ['REFUNDED', 'PARTIALLY_REFUNDED'].includes(String(order.payment_status))) return;
+    const refunded = await payoutMinor(tx, payout);
+    const full = refunded === BigInt(String(order.amount_minor));
+    if (full) await tx`update app.orders set status=case when status='CANCELLED' then 'REFUNDED' else status end,payment_status='REFUNDED',settlement_status='NOT_READY',version=version+1,updated_at=now() where id=${orderId}`;
+    else await tx`update app.orders set payment_status='PARTIALLY_REFUNDED',updated_at=now() where id=${orderId}`;
+    await orderEvent(tx, orderId, 'REFUND_CONFIRMED', { rail: 'CRYPTO', chain_id: Number(payout.chain_id), tx_hash: payout.tx_hash ?? null, amount_minor: refunded.toString(), full });
+    await ledger(tx, orderId, 'REFUND_SETTLED', `refund:chain:${String(payout.payout_ref)}`, [[`order_principal:${orderId}`, refunded], [`chain_clearing:${String(payout.chain_id)}`, -refunded]], 'USD');
+    await outbox(tx, orderId, `notify:refund.updated:SUCCEEDED:${orderId}`, { templateId: 'refund.updated', recipientId: String(order.buyer_id), params: { orderRef: orderId, amount: refunded.toString(), currency: 'USD', refundStatus: 'SUCCEEDED' } });
+  },
+  async onFailed(tx, payout, code) {
+    await orderEvent(tx, String(payout.order_id), 'REFUND_FAILED', { rail: 'CRYPTO', code });
+  },
+});
+
+registerPayoutEffects(['FREEZE', 'UNFREEZE'], {
+  async onConfirmed(tx, payout) {
+    await orderEvent(tx, String(payout.order_id), payout.kind === 'FREEZE' ? 'ESCROW_FROZEN' : 'ESCROW_UNFROZEN', { chain_id: Number(payout.chain_id), tx_hash: payout.tx_hash ?? null });
+  },
+  async onFailed() {},
+});
 
 export type ChainFundingFact = {
   orderId: string;

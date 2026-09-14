@@ -56,6 +56,11 @@ export async function assetForToken(tx: Tx, chainId: number, token: string): Pro
   return asset;
 }
 
+/** Escrow bucket of an order or a campaign pool on SpacaEscrow; opaque bytes32, no order data on chain (§11.3). */
+export function escrowReference(kind: 'order' | 'pool', id: string): Hex {
+  return `0x${createHash('sha256').update(`spaca:escrow:${kind}:${id}`).digest('hex')}`;
+}
+
 /** Opaque bytes32 reference; carries no order data on chain (no PII, §11.3). */
 export function settlementReference(orderId: string, intentId: string): Hex {
   return `0x${createHash('sha256').update(`creator-marketplace:order:${orderId}:intent:${intentId}`).digest('hex')}`;

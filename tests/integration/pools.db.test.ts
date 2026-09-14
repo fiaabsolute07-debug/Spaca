@@ -26,6 +26,8 @@ const { sql } = await import('@/lib/db');
 const { createSession } = await import('@/lib/auth');
 
 const command = (actor: TestUser | null, fields: Record<string, string>) => callRoute(commands.POST, '/api/commands', actor, fields);
+/** The wallet that funds pool buckets; the escrow refunds unused balance to it, whatever wallet the buyer links later. */
+const FUNDER = '0x00000000000000000000000000000000000000f2' as Hex;
 const asActor = (user: TestUser): Actor => ({ id: user.id, email: user.email, display_name: 'x', roles: ['buyer', 'creator'], is_test: true, status: 'ACTIVE', timezone: 'UTC' });
 const reason = 'Pool integration suite toggles reward flags.';
 const USDC = 10n ** 18n;
@@ -79,7 +81,7 @@ async function fund(buyer: TestUser, poolId: string, assetId: string, amount: st
   const created = await command(buyer, { command: 'create_pool_funding', idempotency_key: key('fund'), pool_id: poolId, asset_id: assetId, amount });
   expect(created.status, JSON.stringify(created.body)).toBe(200);
   const [intent] = await sql`select * from app.pool_funding_intents where id=${String(created.body.id)}`;
-  const txHash = dev.submitDeposit({ emitter: SETTLEMENT, reference: intent!.reference as Hex, payer: '0x00000000000000000000000000000000000000f2', token: tokenAddress, amount: BigInt(String(intent!.amount_atomic)) });
+  const txHash = dev.submitDeposit({ emitter: SETTLEMENT, escrowRef: intent!.escrow_ref as Hex, reference: intent!.reference as Hex, payer: FUNDER, token: tokenAddress, amount: BigInt(String(intent!.amount_atomic)) });
   dev.mine(3);
   const [result] = await deposits.verifyChainTransaction(CHAIN, txHash);
   expect(result, JSON.stringify(result)).toMatchObject({ status: 'CREDITED' });
@@ -200,16 +202,22 @@ describe.skipIf(!RUN_DB)('CRY-08/09/10 — settlement per asset, unused refunds 
 
     dev.failTransfersOf(RWD_TOKEN);
     dev.failTransfersOf(BONUS_TOKEN);
-    expect((await jobs.releaseReadySettlements({ orderId })).outcomes).toEqual({ RELEASE_RETRY_PARTIAL_TOKEN_TRANSFER_FAILED_TOKEN_TRANSFER_FAILED: 1 });
+    // Settlement only queues payouts; nothing touches the chain inside its transaction.
+    expect((await jobs.releaseReadySettlements({ orderId })).outcomes).toEqual({ RELEASE_RETRY_PARTIAL_PENDING: 1 });
+    expect(dev.transfers).toEqual([]);
+    expect((await sql`select state,count(*)::int as n from app.chain_payouts where order_id=${orderId} group by state`)).toEqual([{ state: 'QUEUED', n: 3 }]);
+    expect((await jobs.dispatchChainPayouts({ orderId })).outcomes).toEqual({ CONFIRMED: 1, FAILED: 2 });
     const states = Object.fromEntries((await sql`select item_key,state,attempts,last_error from app.pool_allocations where order_id=${orderId}`).map((r) => [String(r.item_key), r]));
     expect(states.cash).toMatchObject({ state: 'RELEASED', attempts: 1 });
     expect(states.rwd).toMatchObject({ state: 'ACTIVE', attempts: 1, last_error: 'TOKEN_TRANSFER_FAILED' });
+    expect((await sql`select release_tx from app.pool_allocations where order_id=${orderId} and item_key='cash'`)[0]!.release_tx).toMatch(/^0x[0-9a-f]{64}$/);
     expect((await sql`select status,settlement_status from app.orders where id=${orderId}`)[0]).toMatchObject({ status: 'APPROVED', settlement_status: 'PENDING' });
     expect(dev.transfers.map((t) => t.token)).toEqual([NATIVE_TOKEN]);
     expect((await sql`select count(*)::int as n from app.reconciliation_cases where order_id=${orderId} and kind='POOL_PAYOUT_PARTIAL'`)[0]!.n).toBe(1);
 
     dev.failTransfersOf(RWD_TOKEN, false);
-    expect((await jobs.releaseReadySettlements({ orderId })).outcomes).toEqual({ RELEASE_REQUESTED: 1 });
+    expect((await jobs.releaseReadySettlements({ orderId })).outcomes).toEqual({ RELEASE_RETRY_PARTIAL_PENDING: 1 });
+    expect((await jobs.dispatchChainPayouts({ orderId })).outcomes).toEqual({ FAILED: 1, CONFIRMED: 1 });
     expect(dev.transfers.map((t) => t.token)).toEqual([NATIVE_TOKEN, RWD_TOKEN]);
     expect((await sql`select status,settlement_status from app.orders where id=${orderId}`)[0]).toMatchObject({ status: 'COMPLETED', settlement_status: 'RELEASED' });
     expect((await sql`select state,last_error from app.pool_allocations where order_id=${orderId} and item_key='bonus'`)[0]).toMatchObject({ state: 'ACTIVE', last_error: 'TOKEN_TRANSFER_FAILED' });
@@ -229,41 +237,81 @@ describe.skipIf(!RUN_DB)('CRY-08/09/10 — settlement per asset, unused refunds 
     const { requestId, poolId } = await pooledRequest(buyer, [cash('100')], 3);
     await fund(buyer, poolId, assets.usdc, '300', NATIVE_TOKEN as Hex);
     await accept(maker, await offerTo(buyer, requestId, maker, '100'));
-    expect((await command(buyer, { command: 'refund_pool_unused', idempotency_key: key('r'), pool_id: poolId, asset_id: assets.usdc })).status).toBe(422);
-    const buyerWallet = await linkWallet(buyer);
+    await linkWallet(buyer);
     const tooMuch = await command(buyer, { command: 'refund_pool_unused', idempotency_key: key('r'), pool_id: poolId, asset_id: assets.usdc, amount: '250' });
     expect(tooMuch.status).toBe(422);
     expect(String(tooMuch.body.error)).toMatch(/200\.00 USDC/);
     expect((await command(maker, { command: 'refund_pool_unused', idempotency_key: key('r'), pool_id: poolId, asset_id: assets.usdc })).status).toBe(404);
     const refunded = await command(buyer, { command: 'refund_pool_unused', idempotency_key: key('r'), pool_id: poolId, asset_id: assets.usdc });
     expect(refunded.status, JSON.stringify(refunded.body)).toBe(200);
+    const queued = await poolAssets(poolId);
+    expect(queued.USDC).toMatchObject({ unallocated: '0', pending_outflow: (200n * USDC).toString(), refunded: '0' });
+    expect(conserved(queued.USDC!)).toBe(true);
+    expect((await jobs.dispatchChainPayouts()).outcomes.CONFIRMED ?? 0).toBeGreaterThanOrEqual(1);
     const balances = await poolAssets(poolId);
     expect(balances.USDC).toMatchObject({ confirmed_deposit: (300n * USDC).toString(), unallocated: '0', allocated_active: (100n * USDC).toString(), refunded: (200n * USDC).toString() });
     expect(conserved(balances.USDC!)).toBe(true);
-    expect(dev.transfers).toEqual([expect.objectContaining({ recipient: buyerWallet, amount: 200n * USDC })]);
+    // The escrow sends refunds to the funding wallet; the recorded recipient is that wallet.
+    expect(dev.transfers).toEqual([expect.objectContaining({ kind: 'REFUND', recipient: FUNDER, amount: 200n * USDC })]);
+    expect((await sql`select state,recipient from app.pool_refunds where pool_asset_id=${String(balances.USDC!.id)}`)[0]).toMatchObject({ state: 'REFUNDED', recipient: FUNDER });
     expect((await command(buyer, { command: 'close_campaign_pool', idempotency_key: key('c'), pool_id: poolId })).status).toBe(409);
   });
 
-  it('CRY-10: release authorizations bind chain, contract, payout, recipient and amount, and cannot be replayed', async () => {
-    const domain = authorization.releaseDomain(CHAIN, SETTLEMENT);
-    const message = { payoutRef: authorization.bytes32Of(`ALLOCATION:${randomUUID()}`), orderRef: authorization.bytes32Of('order'), recipient: '0x00000000000000000000000000000000000000c1' as Hex,
+  it('CRY-10: escrow authorizations bind chain, contract, bucket, payout, recipient and amount, and cannot be replayed', async () => {
+    const escrowRef = authorization.bytes32Of(`bucket:${randomUUID()}`);
+    dev.submitDeposit({ emitter: SETTLEMENT, escrowRef, reference: authorization.bytes32Of(`dep:${randomUUID()}`), payer: FUNDER, token: NATIVE_TOKEN as Hex, amount: 10n * USDC });
+    const domain = authorization.escrowDomain(CHAIN, SETTLEMENT);
+    const message = { payoutRef: authorization.bytes32Of(`ALLOCATION:${randomUUID()}`), escrowRef, recipient: '0x00000000000000000000000000000000000000c1' as Hex,
       token: NATIVE_TOKEN as Hex, amount: 7n * USDC, nonce: authorization.newNonce(), expiry: BigInt(Math.floor(Date.now() / 1000) + 600) };
     const signed = await authorization.signRelease(domain, message);
     const rejection = (promise: Promise<unknown>) => promise.then(() => 'OK', (error: { code?: string }) => error.code);
-    expect(await rejection(dev.executeRelease({ ...signed, message: { ...message, amount: 8n * USDC } }))).toBe('BAD_SIGNATURE');
-    expect(await rejection(dev.executeRelease({ ...signed, message: { ...message, recipient: '0x00000000000000000000000000000000000000c2' } }))).toBe('BAD_SIGNATURE');
+    expect(await rejection(dev.executeRelease({ ...signed, message: { ...message, amount: 8n * USDC } }))).toBe('BadSignature');
+    expect(await rejection(dev.executeRelease({ ...signed, message: { ...message, recipient: '0x00000000000000000000000000000000000000c2' } }))).toBe('BadSignature');
     expect(await rejection(dev.executeRelease({ ...signed, domain: { ...domain, chainId: CHAIN + 1 } }))).toBe('WRONG_CHAIN');
     expect(await rejection(dev.executeRelease({ ...signed, domain: { ...domain, verifyingContract: '0x00000000000000000000000000000000000000dd' } }))).toBe('WRONG_CONTRACT');
     const expired = await authorization.signRelease(domain, { ...message, nonce: authorization.newNonce(), expiry: BigInt(Math.floor(Date.now() / 1000) - 1) });
-    expect(await rejection(dev.executeRelease(expired))).toBe('EXPIRED');
+    expect(await rejection(dev.executeRelease(expired))).toBe('AuthorizationExpired');
+    const overdraw = await authorization.signRelease(domain, { ...message, payoutRef: authorization.bytes32Of(`over:${randomUUID()}`), nonce: authorization.newNonce(), amount: 11n * USDC });
+    expect(await rejection(dev.executeRelease(overdraw))).toBe('InsufficientBucketBalance');
     expect(await rejection(dev.executeRelease(signed))).toBe('OK');
-    expect(await rejection(dev.executeRelease(signed))).toBe('NONCE_USED');
+    expect(await rejection(dev.executeRelease(signed))).toBe('NonceUsed');
     const fresh = await authorization.signRelease(domain, { ...message, nonce: authorization.newNonce() });
     expect(String(await rejection(dev.executeRelease(fresh)))).toMatch(/^ALREADY_RELEASED:0x/);
     const forger = privateKeyToAccount(generatePrivateKey());
-    const forged = await forger.signTypedData({ domain, types: authorization.RELEASE_TYPES, primaryType: 'Release', message: { ...message, nonce: authorization.newNonce(), payoutRef: authorization.bytes32Of('forged') } });
-    expect(await rejection(dev.executeRelease({ domain, message: { ...message, nonce: authorization.newNonce(), payoutRef: authorization.bytes32Of('forged') }, signature: forged }))).toBe('BAD_SIGNATURE');
-    expect(dev.transfers.length).toBe(1);
+    const forgedMessage = { ...message, nonce: authorization.newNonce(), payoutRef: authorization.bytes32Of('forged'), amount: 1n * USDC };
+    const forged = await forger.signTypedData({ domain, types: authorization.RELEASE_TYPES, primaryType: 'Release', message: forgedMessage });
+    expect(await rejection(dev.executeRelease({ domain, message: forgedMessage, signature: forged }))).toBe('BadSignature');
+    // Refund authorizations carry no recipient: the bucket's payer always receives them.
+    const refund = await authorization.signRefund(domain, { payoutRef: authorization.bytes32Of(`refund:${randomUUID()}`), escrowRef, amount: 3n * USDC, nonce: authorization.newNonce(), expiry: message.expiry });
+    expect(await rejection(dev.executeRefund(refund))).toBe('OK');
+    expect(dev.transfers.map((t) => [t.kind, t.recipient])).toEqual([['RELEASE', message.recipient], ['REFUND', FUNDER]]);
+    expect(dev.bucket(escrowRef)).toMatchObject({ deposited: 10n * USDC, released: 7n * USDC, refunded: 3n * USDC });
+  });
+
+  it('CRY-13: a paused escrow keeps payouts queued (no failure, no double pay) and they complete once unpaused', async () => {
+    const buyer = await createUser('cry13-buyer');
+    const maker = await creator('cry13-creator');
+    const { requestId, poolId } = await pooledRequest(buyer, [cash('100')], 1);
+    await fund(buyer, poolId, assets.usdc, '100', NATIVE_TOKEN as Hex);
+    const orderId = String((await accept(maker, await offerTo(buyer, requestId, maker, '100'))).body.id);
+    await deliverAndApprove(buyer, maker, orderId);
+    dev.setPaused(true);
+    await jobs.releaseReadySettlements({ orderId });
+    expect((await jobs.dispatchChainPayouts({ orderId })).outcomes).toEqual({ RETRY: 1 });
+    const [waiting] = await sql`select id,state,last_error,attempts from app.chain_payouts where order_id=${orderId}`;
+    expect(waiting).toMatchObject({ state: 'RETRY', last_error: 'EnforcedPause', attempts: 1 });
+    expect((await sql`select state from app.pool_allocations where order_id=${orderId}`)[0]!.state).toBe('RELEASE_PENDING');
+    expect(dev.transfers).toEqual([]);
+
+    dev.setPaused(false);
+    await sql`update app.chain_payouts set next_attempt_at=now() where id=${String(waiting!.id)}`;
+    expect((await jobs.dispatchChainPayouts({ orderId })).outcomes).toEqual({ CONFIRMED: 1 });
+    expect((await sql`select status,settlement_status from app.orders where id=${orderId}`)[0]).toMatchObject({ status: 'COMPLETED', settlement_status: 'RELEASED' });
+    expect(dev.transfers).toHaveLength(1);
+    // A lost confirmation is reconciled from the chain instead of being paid again.
+    await sql`update app.chain_payouts set next_attempt_at=now() where id=${String(waiting!.id)}`;
+    expect((await jobs.dispatchChainPayouts({ orderId })).examined).toBe(0);
+    expect(dev.transfers).toHaveLength(1);
   });
 });
 

@@ -18,7 +18,7 @@ import {
 } from '@/lib/commands';
 import type { Actor } from '@/lib/auth';
 import { enqueueNotification } from '@/modules/notifications/enqueue';
-import { PaymentFlowError, cancelOpenFunding, openCase, refundReasonFor, requestProviderRefund } from '@/modules/payments/funding';
+import { PaymentFlowError, cancelOpenFunding, openCase, refundReasonFor, requestProviderRefund, setCryptoEscrowFrozen } from '@/modules/payments/funding';
 import { attachDeliveryAssets, lockDeliveryAssets, parseAssetIds } from '@/modules/storage/service';
 import { checkPublicationProof, publishTermsOf } from '@/modules/publish';
 import {
@@ -184,7 +184,9 @@ const dispute = withOrder(async ({ tx, actor, form, order, orderId, status, isBu
   if (!['IN_PROGRESS', 'DELIVERED', 'REVISION_REQUESTED'].includes(status)) throw new CommandError('This order cannot be disputed in its current state', 'ORDER_STATE_CONFLICT');
   const reason = text(form, 'body', true, 5000);
   if (reason.length < 10) throw new CommandError('Describe the issue in at least 10 characters');
-  await tx`insert into app.disputes (order_id,opened_by,reason) values (${orderId},${actor.id},${reason})`;
+  const [opened] = await tx<Row[]>`insert into app.disputes (order_id,opened_by,reason) values (${orderId},${actor.id},${reason}) returning id`;
+  // Crypto-funded escrow is frozen so the payer cannot reclaim it while the dispute is open (W9-ARC).
+  await setCryptoEscrowFrozen(tx, order, String(opened!.id), true);
   await tx`update app.orders set status='DISPUTED',status_before_dispute=${status},version=version+1,updated_at=now() where id=${orderId}`;
   await resolveReviewHold(tx, orderId, 'BUYER_ACTED');
   await expirePendingCancellation(tx, orderId);

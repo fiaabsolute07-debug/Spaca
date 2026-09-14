@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { checkClientFunding, checkDevRouteGuards, checkExampleSecrets, checkFeeConstraints, parseReleaseGates } from '../../scripts/lib/release-rules';
+import { checkClientFunding, checkDevRouteGuards, checkExampleSecrets, checkFeeConstraints, parseReleaseGates, checkMainnetCryptoBlocked } from '../../scripts/lib/release-rules';
 
 const file = (path: string, content: string) => ({ path, content });
 
@@ -79,3 +79,16 @@ describe('.env.example secret scan and gate parsing', () => {
     expect(parseReleaseGates(markdown)).toEqual([{ gate: 'G5', status: 'BLOCKED' }, { gate: 'G6', status: 'NOT_RUN' }]);
   });
 });
+
+describe('P4-10 mainnet crypto gate', () => {
+  const guard = "CONSTRAINT chain_networks_mainnet_blocked CHECK (mode <> 'MAINNET' OR NOT enabled)";
+  const signer = file('src/modules/crypto/authorization.ts', "if (process.env.NODE_ENV === 'production') throw new Error('x');");
+  it('passes only with the CHECK, no enabling migration and a production-refusing signer', () => {
+    expect(checkMainnetCryptoBlocked([file('drizzle/0009.sql', guard)], [signer]).status).toBe('PASS');
+    expect(checkMainnetCryptoBlocked([file('drizzle/0009.sql', 'CREATE TABLE app.chain_networks (mode text)')], [signer]).status).toBe('FAIL');
+    expect(checkMainnetCryptoBlocked([file('drizzle/0009.sql', guard), file('drizzle/0099.sql', 'ALTER TABLE app.chain_networks DROP CONSTRAINT chain_networks_mainnet_blocked;')], [signer]).status).toBe('FAIL');
+    expect(checkMainnetCryptoBlocked([file('drizzle/0009.sql', guard), file('drizzle/0099.sql', "update app.chain_networks set enabled=true where mode='MAINNET';")], [signer]).status).toBe('FAIL');
+    expect(checkMainnetCryptoBlocked([file('drizzle/0009.sql', guard)], [file('src/modules/crypto/authorization.ts', 'export const x = 1;')]).status).toBe('FAIL');
+  });
+});
+

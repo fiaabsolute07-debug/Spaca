@@ -114,8 +114,8 @@ export async function getOrderData(actor: Actor, id: string) {
   ]);
   const isBuyer = actor.id === String(order.buyer_id);
   // Crypto checkout (W5-C1): the buyer sees their latest intent; both parties see how the order was paid.
-  const [cryptoIntent] = isBuyer ? asRows(await sql`select i.id,i.status,i.status_reason,i.chain_id,i.network_mode,i.amount_atomic,i.recipient,i.reference,i.expires_at,
-      a.symbol,a.decimals,a.kind as asset_kind,n.name as network_name,
+  const [cryptoIntent] = isBuyer ? asRows(await sql`select i.id,i.status,i.status_reason,i.chain_id,i.network_mode,i.amount_atomic,i.recipient,i.reference,i.escrow_ref,i.expires_at,
+      a.symbol,a.decimals,a.kind as asset_kind,a.contract_address as token_address,n.name as network_name,
       (select json_build_object('tx_hash',d.tx_hash,'status',d.status,'reason',d.reason) from app.chain_deposits d where d.intent_id=i.id order by d.created_at desc limit 1) as last_deposit
     from app.crypto_payment_intents i join app.chain_assets a on a.id=i.asset_id join app.chain_networks n on n.chain_id=i.chain_id
     where i.order_id=${id} order by i.created_at desc limit 1`) : [];

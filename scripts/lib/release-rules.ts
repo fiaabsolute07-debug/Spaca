@@ -221,3 +221,24 @@ export function formatReleaseReport(checks: readonly ReleaseCheck[], gates: read
     'INFO | checklist gates (informational; static PASS does not establish release readiness)',
     ...gates.map((gate) => `${gate.status} | ${gate.gate}`)].join('\n');
 }
+
+/**
+ * P4-10 / CRY-14: mainnet crypto stays blocked. Migrations must keep the CHECK that refuses an enabled MAINNET network,
+ * no migration may enable one, and production must refuse the per-process release signer.
+ */
+export function checkMainnetCryptoBlocked(migrations: readonly SourceFile[], sources: readonly SourceFile[]): ReleaseCheck {
+  const findings: string[] = [];
+  const sql = migrations.map((file) => stripComments(file.content)).join('\n');
+  if (!/chain_networks_mainnet_blocked\s+CHECK\s*\(\s*mode\s*<>\s*'MAINNET'\s+OR\s+NOT\s+enabled\s*\)/i.test(sql)) findings.push('drizzle: chain_networks_mainnet_blocked CHECK is missing');
+  if (/DROP\s+CONSTRAINT\s+(?:IF\s+EXISTS\s+)?chain_networks_mainnet_blocked/i.test(sql)) findings.push('drizzle: a migration drops chain_networks_mainnet_blocked');
+  for (const file of migrations) {
+    const statements = stripComments(file.content).split(';');
+    if (statements.some((statement) => /(?:insert\s+into|update)\s+app\.chain_networks/i.test(statement) && /'MAINNET'/i.test(statement) && /\btrue\b/i.test(statement))) {
+      findings.push(`${file.path}: migration writes an enabled MAINNET network`);
+    }
+  }
+  const signer = sources.find((file) => normalizePath(file.path) === 'src/modules/crypto/authorization.ts');
+  if (!signer || !/process\.env\.NODE_ENV\s*===\s*'production'\)\s*throw/.test(signer.content)) findings.push('src/modules/crypto/authorization.ts: production must refuse the local release signer');
+  return result('mainnet crypto blocked (no enabled MAINNET, no local signer in production)', findings);
+}
+

@@ -59,9 +59,22 @@ async function intentFor(buyer: TestUser, orderId: string, fields: Record<string
   expect(created.status, JSON.stringify(created.body)).toBe(200);
   return (await sql`select * from app.crypto_payment_intents where id=${String(created.body.id)}`)[0]!;
 }
-const pay = (dev: InstanceType<typeof chain.LocalDevChain>, intent: Record<string, unknown>, overrides: Partial<{ amount: bigint; token: Hex; emitter: Hex; payer: Hex; reference: Hex; reverted: boolean }> = {}) => dev.submitDeposit({
-  emitter: SETTLEMENT, reference: intent.reference as Hex, payer: '0x00000000000000000000000000000000000000f1', token: NATIVE_TOKEN as Hex, amount: BigInt(String(intent.amount_atomic)), ...overrides,
+const PAYER = '0x00000000000000000000000000000000000000f1' as Hex;
+const pay = (dev: InstanceType<typeof chain.LocalDevChain>, intent: Record<string, unknown>, overrides: Partial<{ amount: bigint; token: Hex; emitter: Hex; payer: Hex; reference: Hex; escrowRef: Hex; reverted: boolean }> = {}) => dev.submitDeposit({
+  emitter: SETTLEMENT, escrowRef: intent.escrow_ref as Hex, reference: intent.reference as Hex, payer: PAYER, token: NATIVE_TOKEN as Hex, amount: BigInt(String(intent.amount_atomic)), ...overrides,
 });
+async function linkWallet(user: TestUser, chainId: number): Promise<Hex> {
+  const account = privateKeyToAccount(generatePrivateKey());
+  const challenge = await wallets.createWalletChallenge(asActor(user), { chainId, address: account.address, domain: 'localhost:3000', uri: 'http://localhost:3000' });
+  await wallets.verifyWalletChallenge(asActor(user), { challengeId: challenge.challenge_id, signature: await account.signMessage({ message: challenge.message }), domain: 'localhost:3000' });
+  return account.address.toLowerCase() as Hex;
+}
+async function financeUser(): Promise<TestUser> {
+  const email = `it-crypto-finance-${randomUUID().slice(0, 8)}@example.test`;
+  const [user] = await sql<{ id: string }[]>`insert into app.users (email,display_name,roles,is_test,status) values (${email},'IT finance',${[]},true,'ACTIVE') returning id`;
+  await sql`insert into app.user_roles (user_id,role,granted_reason) values (${user!.id},'finance','Crypto suite finance grant')`;
+  return { id: user!.id, email, token: await createSession(user!.id) };
+}
 const orderRow = async (id: string) => (await sql`select * from app.orders where id=${id}`)[0]!;
 const verify = async (buyer: TestUser, intentId: string, txHash: string) => callRoute(depositsRoute.POST, '/api/crypto/deposits', buyer, { intent_id: intentId, tx_hash: txHash });
 
@@ -81,8 +94,8 @@ beforeAll(async () => {
 beforeEach(async () => {
   if (!RUN_DB) return;
   funding.setMockPaymentProviderForTests(new MockPaymentProvider({ accountId: 'acct_mock_local', webhookSecrets: ['whsec_crypto_suite_secret_01'] }));
-  devA = new chain.LocalDevChain(CHAIN_A);
-  devB = new chain.LocalDevChain(CHAIN_B);
+  devA = new chain.LocalDevChain(CHAIN_A, SETTLEMENT);
+  devB = new chain.LocalDevChain(CHAIN_B, SETTLEMENT);
   chain.setChainReaderForTests(CHAIN_A, devA);
   chain.setChainReaderForTests(CHAIN_B, devB);
   await sql`update app.chain_networks set enabled=true where chain_id in (${CHAIN_A},${CHAIN_B})`;
@@ -259,7 +272,7 @@ describe.skipIf(!RUN_DB)('CRY-03/04/05 — exact credit once, finality, outages 
     expect((await sql`select count(*)::int as n from app.chain_deposits where intent_id=${String(intent.id)} and status='CREDITED'`)[0]!.n).toBe(1);
   });
 
-  it('late deposits after cancellation open a case; crypto refunds and payouts are refused until the chain adapter exists', async () => {
+  it('late deposits after cancellation open a case; a cancelled crypto order is refunded to the paying wallet through the escrow', async () => {
     const late = await awaitingOrder('crylate');
     const lateIntent = await intentFor(late.buyer, late.orderId);
     expect((await command(late.buyer, { command: 'cancel', idempotency_key: key('c'), order_id: late.orderId })).status).toBe(200);
@@ -276,8 +289,61 @@ describe.skipIf(!RUN_DB)('CRY-03/04/05 — exact credit once, finality, outages 
     devA.mine(3);
     await deposits.verifyChainTransaction(CHAIN_A, paidTx);
     expect((await command(paid.buyer, { command: 'cancel', idempotency_key: key('c'), order_id: paid.orderId })).status).toBe(200);
-    const [refundCase] = await sql`select next_action from app.reconciliation_cases where order_id=${paid.orderId} and kind='REFUND_NOT_REQUESTED'`;
-    expect(String(refundCase!.next_action)).toMatch(/chain settlement adapter/);
-    expect((await orderRow(paid.orderId)).payment_status).toBe('REFUND_PENDING');
+    expect(await orderRow(paid.orderId)).toMatchObject({ status: 'CANCELLED', payment_status: 'REFUND_PENDING' });
+    expect((await sql`select kind,state,recipient from app.chain_payouts where order_id=${paid.orderId}`)).toEqual([{ kind: 'ORDER_REFUND', state: 'QUEUED', recipient: PAYER }]);
+    expect(devA.transfers).toEqual([]);
+    expect((await jobs.dispatchChainPayouts({ orderId: paid.orderId })).outcomes).toEqual({ CONFIRMED: 1 });
+    expect(await orderRow(paid.orderId)).toMatchObject({ status: 'REFUNDED', payment_status: 'REFUNDED' });
+    expect(devA.transfers).toEqual([expect.objectContaining({ kind: 'REFUND', recipient: PAYER, amount: BigInt(String(paidIntent.amount_atomic)) })]);
+    const ledger = await sql`select sum(e.amount_minor)::text as total from app.ledger_entries e join app.ledger_transactions t on t.id=e.transaction_id where t.order_id=${paid.orderId}`;
+    expect(ledger[0]!.total).toBe('0');
+    expect(devA.bucket(paidIntent.escrow_ref as Hex)).toMatchObject({ refunded: BigInt(String(paidIntent.amount_atomic)), released: 0n });
+  });
+
+  it('an approved crypto order releases to the creator wallet once; without a wallet it waits with a case', async () => {
+    const funded = await awaitingOrder('cryrelease');
+    const intent = await intentFor(funded.buyer, funded.orderId);
+    const fundedTx = pay(devA, intent);
+    devA.mine(3);
+    await deposits.verifyChainTransaction(CHAIN_A, fundedTx);
+    expect((await orderRow(funded.orderId)).status).toBe('FUNDED');
+    for (const [actor, fields] of [[funded.creator, { command: 'start' }], [funded.creator, { command: 'deliver', body: 'Delivered launch copy, all agreed items included here.' }], [funded.buyer, { command: 'approve', delivery_version: '1' }]] as const) {
+      expect((await command(actor, { idempotency_key: key('step'), order_id: funded.orderId, ...fields })).status).toBe(200);
+    }
+    expect((await jobs.releaseReadySettlements({ orderId: funded.orderId })).outcomes).toEqual({ RELEASE_RETRY_NO_PAYOUT_WALLET: 1 });
+    expect((await sql`select count(*)::int as n from app.reconciliation_cases where order_id=${funded.orderId} and kind='NO_PAYOUT_WALLET'`)[0]!.n).toBe(1);
+
+    const wallet = await linkWallet(funded.creator, CHAIN_A);
+    expect((await jobs.releaseReadySettlements({ orderId: funded.orderId })).outcomes).toEqual({ RELEASE_REQUESTED: 1 });
+    expect((await orderRow(funded.orderId)).settlement_status).toBe('PENDING');
+    expect((await jobs.releaseReadySettlements({ orderId: funded.orderId })).examined).toBe(0);
+    expect((await jobs.dispatchChainPayouts({ orderId: funded.orderId })).outcomes).toEqual({ CONFIRMED: 1 });
+    expect(await orderRow(funded.orderId)).toMatchObject({ status: 'COMPLETED', settlement_status: 'RELEASED' });
+    expect(devA.transfers).toEqual([expect.objectContaining({ kind: 'RELEASE', recipient: wallet, amount: BigInt(String(intent.amount_atomic)) })]);
+    const [event] = await sql`select payload from app.order_events where order_id=${funded.orderId} and kind='SETTLEMENT_RELEASED'`;
+    expect(event!.payload).toMatchObject({ rail: 'CRYPTO', platform_fee_minor: '0', creator_net_minor: '65000' });
+    const ledger = await sql`select sum(e.amount_minor)::text as total from app.ledger_entries e join app.ledger_transactions t on t.id=e.transaction_id where t.order_id=${funded.orderId}`;
+    expect(ledger[0]!.total).toBe('0');
+  });
+
+  it('a dispute freezes the escrow; resolution unfreezes it before the refund, which the worker applies in order', async () => {
+    const disputed = await awaitingOrder('crydispute');
+    const intent = await intentFor(disputed.buyer, disputed.orderId);
+    const disputedTx = pay(devA, intent);
+    devA.mine(3);
+    await deposits.verifyChainTransaction(CHAIN_A, disputedTx);
+    expect((await command(disputed.creator, { command: 'start', idempotency_key: key('s'), order_id: disputed.orderId })).status).toBe(200);
+    expect((await command(disputed.buyer, { command: 'dispute', idempotency_key: key('d'), order_id: disputed.orderId, body: 'The creator stopped responding after starting.' })).status).toBe(200);
+    expect((await jobs.dispatchChainPayouts({ orderId: disputed.orderId })).outcomes).toEqual({ CONFIRMED: 1 });
+    expect(devA.bucket(intent.escrow_ref as Hex)).toMatchObject({ frozen: true });
+
+    const finance = await financeUser();
+    const [dispute] = await sql`select id from app.disputes where order_id=${disputed.orderId}`;
+    const resolved = await command(finance, { command: 'admin_resolve_dispute', idempotency_key: key('r'), dispute_id: String(dispute!.id), outcome: 'REFUND_FULL', reason: 'Creator abandoned the work; full refund.' });
+    expect(resolved.status, JSON.stringify(resolved.body)).toBe(200);
+    expect((await sql`select kind from app.chain_payouts where order_id=${disputed.orderId} order by created_at`).map((r) => r.kind)).toEqual(['FREEZE', 'UNFREEZE', 'ORDER_REFUND']);
+    expect((await jobs.dispatchChainPayouts({ orderId: disputed.orderId })).outcomes).toEqual({ CONFIRMED: 2 });
+    expect(devA.bucket(intent.escrow_ref as Hex)).toMatchObject({ frozen: false, refunded: BigInt(String(intent.amount_atomic)) });
+    expect(await orderRow(disputed.orderId)).toMatchObject({ status: 'REFUNDED', payment_status: 'REFUNDED' });
   });
 });

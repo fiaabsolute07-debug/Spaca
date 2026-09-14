@@ -7,7 +7,7 @@ import { CommandError, expectedVersion, money, orderEvent, text, uuid, type Comm
 import { enqueueNotification } from '@/modules/notifications/enqueue';
 import { approveOrder } from '@/modules/orders/commands';
 import { latestDelivery, termsOf } from '@/modules/orders/lifecycle';
-import { PaymentFlowError, openCase, requestProviderRefund } from '@/modules/payments/funding';
+import { PaymentFlowError, openCase, requestProviderRefund, setCryptoEscrowFrozen } from '@/modules/payments/funding';
 import { quarantineAsset } from '@/modules/storage/service';
 import { recomputeHighestBid } from '@/modules/auctions/commands';
 import { audit, reasonOf, requireRole, type FeatureFlagKey, type PrivilegedRole } from './policy';
@@ -41,6 +41,8 @@ const resolveDispute: CommandHandler = async ({ tx, actor, form }) => {
   const before = orderSnapshot(order);
   const amount = BigInt(order.amount_minor);
   let refund: bigint | null = null;
+  // Unfreeze is queued before any release or refund of this order, and the payout worker dispatches in queue order.
+  await setCryptoEscrowFrozen(tx, order, disputeId, false);
 
   if (outcome === 'RESUME') {
     const resumeTo = String(order.status_before_dispute ?? 'IN_PROGRESS');

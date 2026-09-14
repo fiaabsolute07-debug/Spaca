@@ -1,7 +1,7 @@
 import { readFile, readdir } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { resolve } from 'node:path';
-import { checkClientFunding, checkDevRouteGuards, checkExampleSecrets, checkFeeConstraints,
+import { checkClientFunding, checkDevRouteGuards, checkExampleSecrets, checkFeeConstraints, checkMainnetCryptoBlocked,
   formatReleaseReport, parseReleaseGates, type SourceFile } from './lib/release-rules';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
@@ -23,7 +23,7 @@ try {
     readdir(resolve(root, 'drizzle')).then((names) => Promise.all(names.filter((name) => name.endsWith('.sql')).sort().map((name) => read(`drizzle/${name}`)))),
     sourceFiles('src'), read('.env.example'), read('docs/RELEASE_CHECKLIST.md'),
   ]);
-  const checks = [checkFeeConstraints(migrations), checkClientFunding(sources), checkDevRouteGuards(sources), checkExampleSecrets(example.content)];
+  const checks = [checkFeeConstraints(migrations), checkClientFunding(sources), checkDevRouteGuards(sources), checkExampleSecrets(example.content), checkMainnetCryptoBlocked(migrations, sources)];
   console.log(formatReleaseReport(checks, parseReleaseGates(checklist.content)));
   process.exitCode = checks.some((check) => check.status === 'FAIL') ? 1 : 0;
 } catch {

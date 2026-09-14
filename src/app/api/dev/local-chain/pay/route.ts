@@ -25,7 +25,7 @@ export async function POST(request: Request) {
   const chain = getLocalDevChain(Number(intent.chain_id), String(intent.recipient));
   if (!chain) return NextResponse.json({ error: 'Not found' }, { status: 404 });
   const txHash = chain.submitDeposit({
-    emitter: intent.recipient, reference: intent.reference, payer: intent.wallet_address ?? '0x00000000000000000000000000000000000de7a1',
+    emitter: intent.recipient, escrowRef: intent.escrow_ref, reference: intent.reference, payer: intent.wallet_address ?? '0x00000000000000000000000000000000000de7a1',
     token: intent.kind === 'NATIVE' ? NATIVE_TOKEN : intent.contract_address, amount: BigInt(String(intent.amount_atomic)),
   });
   chain.mine(Math.max(0, Number(intent.finality_confirmations) - 1));

@@ -1,0 +1,28 @@
+[profile.default]
+src = "src"
+out = "out"
+test = "test"
+script = "script"
+libs = ["lib"]
+solc_version = "0.8.30"
+# Arc targets the Osaka baseline; Cancun bytecode runs there and on local anvil.
+evm_version = "cancun"
+optimizer = true
+optimizer_runs = 10000
+bytecode_hash = "none"
+remappings = [
+  "@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/",
+  "forge-std/=lib/forge-std/src/",
+]
+
+[fuzz]
+runs = 5000
+seed = "0x5bac"
+
+[invariant]
+runs = 256
+depth = 64
+fail_on_revert = false
+
+[rpc_endpoints]
+arc_testnet = "https://rpc.testnet.arc.io"

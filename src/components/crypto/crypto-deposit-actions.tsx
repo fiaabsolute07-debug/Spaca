@@ -2,6 +2,12 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { createPublicClient, createWalletClient, custom, parseAbi, type EIP1193Provider, type Hex } from 'viem';
+
+const ESCROW_FUND_ABI = parseAbi(['function fund(bytes32 escrowRef, bytes32 paymentRef, address token, uint256 amount)']);
+const ERC20_APPROVE_ABI = parseAbi(['function approve(address spender, uint256 amount) returns (bool)', 'function allowance(address owner, address spender) view returns (uint256)']);
+
+export type WalletFunding = { chainId: number; chainName: string; escrow: string; token: string; escrowRef: string; paymentRef: string; amountAtomic: string };
 
 type Result = { status: string; reason?: string; funding?: string };
 
@@ -15,7 +21,7 @@ const LABEL: Record<string, string> = {
 };
 
 /** Sends a transaction hash as a hint; the server verifies the chain. The local devnet can simulate the wallet. */
-export function CryptoDepositActions({ intentId, localDevnet }: { intentId: string; localDevnet: boolean }) {
+export function CryptoDepositActions({ intentId, localDevnet, wallet }: { intentId: string; localDevnet: boolean; wallet?: WalletFunding | null }) {
   const router = useRouter();
   const [hash, setHash] = useState('');
   const [pending, setPending] = useState(false);
@@ -35,14 +41,45 @@ export function CryptoDepositActions({ intentId, localDevnet }: { intentId: stri
     setMessage(null);
     try {
       await action();
-    } catch {
-      setMessage('Network error');
+    } catch (error) {
+      const text = error instanceof Error ? error.message : '';
+      setMessage(/rejected|denied/i.test(text) ? 'Cancelled in the wallet' : 'The wallet or network returned an error. Nothing is charged unless the deposit transaction succeeded.');
     } finally {
       setPending(false);
     }
   }
 
+  /** Browser wallet (EIP-1193): approve the exact amount for the escrow, fund the bucket, then let the server verify. */
+  async function payWithWallet(funding: WalletFunding) {
+    const ethereum = (window as unknown as { ethereum?: EIP1193Provider }).ethereum;
+    if (!ethereum) return setMessage('No browser wallet found. Install a wallet such as MetaMask or Rabby, or send from any wallet and paste the transaction hash.');
+    const [account] = await ethereum.request({ method: 'eth_requestAccounts' }) as Hex[];
+    if (!account) return setMessage('The wallet did not share an account');
+    const hexChain = `0x${funding.chainId.toString(16)}`;
+    try {
+      await ethereum.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: hexChain }] });
+    } catch {
+      return setMessage(`Switch your wallet to ${funding.chainName} (chain ${funding.chainId}) and try again`);
+    }
+    const chain = { id: funding.chainId, name: funding.chainName, nativeCurrency: { name: 'USDC', symbol: 'USDC', decimals: 18 }, rpcUrls: { default: { http: [] as string[] } } } as const;
+    const client = createWalletClient({ account, chain, transport: custom(ethereum) });
+    const reader = createPublicClient({ chain, transport: custom(ethereum) });
+    const amount = BigInt(funding.amountAtomic);
+    const allowance = await reader.readContract({ address: funding.token as Hex, abi: ERC20_APPROVE_ABI, functionName: 'allowance', args: [account, funding.escrow as Hex] });
+    if (allowance < amount) {
+      setMessage('Step 1 of 2: approve the exact amount for the escrow in your wallet');
+      const approval = await client.writeContract({ address: funding.token as Hex, abi: ERC20_APPROVE_ABI, functionName: 'approve', args: [funding.escrow as Hex, amount] });
+      await reader.waitForTransactionReceipt({ hash: approval });
+    }
+    setMessage('Step 2 of 2: confirm the deposit into the escrow in your wallet');
+    const txHash = await client.writeContract({ address: funding.escrow as Hex, abi: ESCROW_FUND_ABI, functionName: 'fund', args: [funding.escrowRef as Hex, funding.paymentRef as Hex, funding.token as Hex, amount] });
+    setHash(txHash);
+    await reader.waitForTransactionReceipt({ hash: txHash });
+    await check(txHash);
+  }
+
   return <div className="crypto-actions">
+    {wallet && !localDevnet && <button type="button" className="button compact" disabled={pending} onClick={() => run(() => payWithWallet(wallet))}>Pay with browser wallet</button>}
     {localDevnet && <button type="button" className="button button-outline compact" disabled={pending} onClick={() => run(async () => {
       const response = await fetch('/api/dev/local-chain/pay', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ intent_id: intentId }) });
       const body = (await response.json().catch(() => ({}))) as { tx_hash?: string; error?: string };

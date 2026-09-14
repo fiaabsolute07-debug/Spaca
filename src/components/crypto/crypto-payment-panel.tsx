@@ -17,15 +17,17 @@ export function CryptoPaymentPanel({ orderId, intent, options, route }: { orderI
     {open ? <>
       <NetworkBadge mode={intent.network_mode} />
       <ul className="facts">
-        <li><span>Send exactly</span><strong>{str(intent.amount_display)} {str(intent.symbol)}</strong></li>
+        <li><span>Fund exactly</span><strong>{str(intent.amount_display)} {str(intent.symbol)}</strong></li>
         <li><span>Network</span><strong>{str(intent.network_name)} (chain {str(intent.chain_id)})</strong></li>
-        <li><span>To settlement contract</span><strong className="mono">{str(intent.recipient)}</strong></li>
+        <li><span>Escrow contract</span><strong className="mono">{str(intent.recipient)}</strong></li>
+        <li><span>Escrow bucket</span><strong className="mono">{str(intent.escrow_ref)}</strong></li>
         <li><span>Payment reference</span><strong className="mono">{str(intent.reference)}</strong></li>
         <li><span>Pay before</span><strong>{date(intent.expires_at)}</strong></li>
         <li><span>Status</span><strong>{str(intent.status).replaceAll('_', ' ')}{deposit ? ` · last check: ${str(deposit.status)}${deposit.reason ? ` (${str(deposit.reason)})` : ''}` : ''}</strong></li>
       </ul>
-      <p className="muted">The order is funded only after the server verifies the settlement event, amount, asset, reference and finality on chain. Sending a different amount or asset creates a support case instead of funding.</p>
-      <CryptoDepositActions intentId={str(intent.id)} localDevnet={str(intent.network_mode) === 'LOCAL'} />
+      <p className="muted">Your USDC goes into the spaca escrow contract, not to spaca. It is paid to the creator only after you approve the work, refunded to your wallet if the order is cancelled, and you can reclaim it yourself if nothing happens for 60 days. The order is funded only after the server verifies the deposit on chain.</p>
+      <CryptoDepositActions intentId={str(intent.id)} localDevnet={str(intent.network_mode) === 'LOCAL'}
+        wallet={intent.token_address ? { chainId: Number(intent.chain_id), chainName: str(intent.network_name), escrow: str(intent.recipient), token: str(intent.token_address), escrowRef: str(intent.escrow_ref), paymentRef: str(intent.reference), amountAtomic: str(intent.amount_atomic) } : null} />
     </> : <>
       {intent && <p className="muted">Previous crypto attempt: {str(intent.status).replaceAll('_', ' ')}{intent.status_reason ? ` · ${str(intent.status_reason)}` : ''}</p>}
       {rows(options).map((option) => <CommandForm variant="secondary" key={`${str(option.chain_id)}-${str(option.asset_id)}`} command="create_crypto_payment"
