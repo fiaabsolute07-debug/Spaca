@@ -27,6 +27,7 @@ import { isProviderError } from '@/modules/payments/providers';
 import { enqueueNotification } from '@/modules/notifications/enqueue';
 import { approveOrder } from '@/modules/orders/commands';
 import { closeAuction } from '@/modules/auctions/commands';
+import { ensureBuckets } from '@/modules/capacity';
 import { recheckPendingDeposits, scanChainDeposits } from '@/modules/crypto/deposits';
 import { latestDelivery, termsOf } from '@/modules/orders/lifecycle';
 import { FINALIZE_GRACE_SECONDS, type StorageBucket } from '@/modules/storage/policy';
@@ -456,6 +457,23 @@ export async function indexChainDeposits(): Promise<JobReport> {
   return result;
 }
 
+/** Keeps weekly capacity buckets materialized across the booking horizon so availability search sees future weeks. */
+export async function extendCapacityHorizon(options: { limit?: number } = {}): Promise<JobReport> {
+  const { result, tally } = report('extend_capacity_horizon');
+  const pools = await sql<Row[]>`select distinct v.pool_id from app.services s join app.service_versions v on v.id=s.published_version_id
+    where s.status='PUBLISHED' order by v.pool_id limit ${options.limit ?? 500}`;
+  for (const pool of pools) {
+    try {
+      await sql.begin((tx) => ensureBuckets(tx, String(pool.pool_id)));
+      tally('EXTENDED');
+    } catch (error) {
+      console.error('extend_capacity_horizon failed', pool.pool_id, error instanceof Error ? error.name : error);
+      tally('ERROR');
+    }
+  }
+  return result;
+}
+
 export async function runJobsOnce(): Promise<JobReport[]> {
   return [
     await reprocessWebhookInbox(),
@@ -469,5 +487,6 @@ export async function runJobsOnce(): Promise<JobReport[]> {
     await sendOrderReminders(),
     await dispatchNotificationOutbox(),
     await cleanupStorage(),
+    await extendCapacityHorizon(),
   ];
 }

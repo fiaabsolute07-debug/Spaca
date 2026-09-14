@@ -210,3 +210,58 @@ Settlement:
 - An approved pool order releases each allocation on chain.
 - If a required asset fails, the order stays APPROVED with `settlement_status` PENDING and the job retries only the failed items.
 - The order becomes COMPLETED once every required reward is released.
+
+## W6-D additions (2026-09-14): discovery, trending, views, SEO
+
+All discovery endpoints are public `GET`, return `cache-control: no-store` and `X-Robots-Tag: noindex, nofollow` (they are under `/api`).
+- Invalid input → **400** `{ error, code: 'INVALID_INPUT' }`. Show the message; do not silently drop the filter.
+- Database trouble → **503** `{ error, code: 'TEMPORARILY_UNAVAILABLE', retryable: true }` with `retry-after: 5` and **no items**. Show an error state with a retry action, never placeholder listings (DSC-02).
+- Empty result → 200 with `items: []`, `next_cursor: null`. Show an empty state with a way to clear filters.
+- Pagination is keyset: pass `next_cursor` back as `cursor` with the **same** `sort` and filters. A cursor from another sort → 400 (restart at page 1). `null` means no more pages.
+- Money is `price_minor` as a string of cents with `currency`; timestamps are ISO/Postgres timestamps (server time).
+- In `APP_ENV=production`, `is_test` fixture accounts never appear; locally they do.
+
+### `GET /api/discovery/services`
+
+Params (all optional):
+- `q` (≤120 chars; letters/digits become AND-ed prefix terms), `taxonomy` (comma list of `CREATE,PUBLISH,ACCESS,DIGITAL`), `niche` (exact, case-insensitive), `creator` (handle).
+- `price_min`, `price_max` (decimal USD, e.g. `150` or `149.99`), `turnaround_max` (hours 1–8760).
+- `available=true` (has a free capacity slot that still fits turnaround), `available_before` (ISO date or datetime; implies available).
+- `sort`: `relevance` (needs `q`; default when `q` is set) | `newest` (default otherwise) | `price_asc` | `price_desc` | `turnaround` | `availability` (implies available).
+- `cursor`, `limit` (1–48, default 24).
+
+Response `{ items, next_cursor, sort, ranking }`; each item:
+`{ id, service_version_id, service_version, title, summary (≤280 chars), taxonomy, price_minor, currency, turnaround_hours, revision_limit, published_at, creator_id, creator_name, handle, niche, avatar_color, rank, next_available_starts_at, next_available_ends_at, available_units }`.
+- `available_units: 0` and `next_available_starts_at: null` = no bookable slot; show "Fully booked" and disable the CTA. The server still rejects a stale booking with 409 (DSC-05).
+- `ranking` is a human-readable explanation of the order (show in a tooltip if desired).
+
+### `GET /api/discovery/creators`
+
+Params: `q`, `niche`, `taxonomy` (single), `available=true`, `available_before`, `sort` = `relevance` (needs `q`) | `reputation` (default) | `availability` | `newest`, `cursor`, `limit` (1–48, default 24).
+
+Item: `{ id, handle, display_name, niche, bio (≤200), avatar_color, joined_at, services_count, min_price_minor, taxonomies[], completed_orders, review_count, avg_rating, sample_count, next_available_starts_at, rank, reputation_label }`.
+- `avg_rating` is `null` below 3 reviews and `reputation_label` is `NEW`; show "New" instead of stars. With ≥3 reviews the label is `RATED`.
+- There are no follower counts; do not display or sort by followers (`sort=followers` → 400).
+
+### `GET /api/discovery/auctions` (ending soon)
+
+Params: `within_hours` (1–168, default 48), `cursor`, `limit` (1–24, default 12).
+
+Response `{ items, server_now, next_cursor }`; item: `{ id, title, starting_price_minor, current_price_minor, minimum_increment_minor, buy_now_price_minor, bid_count, starts_at, ends_at, first_valid_bid_at, creator_name, server_now, buy_now_available }`.
+- Only auctions live by server time are returned, soonest end first. Compute countdowns from `server_now`, not the browser clock. Bids are still validated by the bid API.
+
+### `GET /api/discovery/trending`
+
+Params: `niche`, `taxonomy` (single). Response always carries `formula` (`version: 'trending-v1'`, eligibility thresholds, score expression).
+- `label: 'TRENDING'`: `items[{ id, title, taxonomy, price_minor, currency, turnaround_hours, creator_name, handle, completed_30d, reviews_30d, avg_rating_30d, views_7d, score }]`, ordered by score.
+- `label: 'COLD_START'`: `note` plus `items[{ id, title, taxonomy, price_minor, currency, turnaround_hours, creator_name, handle, published_at, badge: 'NEW' }]`. Title the section "New services" (use `note`), **never** "Trending", and show no popularity numbers (DSC-04).
+
+### `POST /api/services/[id]/view`
+
+Call once when a public service page is viewed (same-origin `fetch`, no body). Response `{ counted: boolean, reason? }` with reason `ALREADY_COUNTED_TODAY | OWNER | NO_VIEWER_KEY | DAILY_CAP`; unknown/unpublished service → 404 `NOT_FOUND`. Fire-and-forget; never show counts from it.
+
+### SEO
+
+- `/sitemap.xml` and `/robots.txt` are served by the app. Non-production robots disallow all.
+- Private prefixes (`/orders`, `/dashboard`, `/admin`, `/buyer`, `/creator`, `/settings`, `/api`, `/sign-in`, `/sign-up`, `/reset-password`) get `X-Robots-Tag: noindex, nofollow` from `next.config.ts`; pages there need no extra metadata.
+- Public pages (`/services/[id]`, `/creators/[handle]`, `/requests/[id]`, `/auctions/[id]`, `/explore`) should set `alternates.canonical` using `canonicalUrl(path)` from `src/lib/seo.ts`.

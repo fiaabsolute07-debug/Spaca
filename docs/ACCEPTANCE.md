@@ -1,11 +1,11 @@
 # Acceptance ledger
 
-As of 2026-09-14, verified baseline **90004fd**, crypto rows from W5-C1/W5-C2. One row per master §18 ID, including unstarted work. Platform fee is always **0%**. P3 is done-local from W4-A; P4 is in progress by Claude. Counts: **58 PASS, 59 PARTIAL, 23 NOT_RUN, 2 BLOCKED (142 total)**.
+As of 2026-09-14, verified baseline **90004fd**, crypto rows from W5-C1/W5-C2, DSC rows from W6-D. One row per master §18 ID, including unstarted work. Platform fee is always **0%**. P3 is done-local from W4-A; P4 is in progress by Claude. Counts: **62 PASS, 58 PARTIAL, 20 NOT_RUN, 2 BLOCKED (142 total)**.
 
 | Gate | Status | Evidence / remaining work |
 |---|---|---|
 | G0 Reproducible | PARTIAL | Local blank/upgrade migrations, seed and checks pass; clean clone/frozen install/CI run absent. |
-| G1 Domain correct | PARTIAL | 195/195 with DB suites enabled at 90004fd; full §18 races, finance edges and later phases remain. |
+| G1 Domain correct | PARTIAL | 222/222 with DB suites enabled at W6-D (on 26d6680); full §18 races, finance edges and later phases remain. |
 | G2 Secure boundaries | PARTIAL | Local ownership, roles/audit and storage negatives pass; Supabase, full secret/SSRF/session matrix remain. |
 | G3 Usable | PARTIAL | W1-B/W3-R journeys, W2-S/C6 360px checks, W4-A live outbid polling; C5 authored, browser execution and keyboard coverage remain. |
 | G4 Recoverable | PARTIAL | Mock journal/inbox/retry recovery passes; remote-success DB crash, restore and rollback rehearsal remain. |
@@ -13,11 +13,11 @@ As of 2026-09-14, verified baseline **90004fd**, crypto rows from W5-C1/W5-C2. O
 | G6 Live eligible | BLOCKED | Provider credentials/approval, entity/policies, fee payer/reserve, infrastructure and launch authority absent. |
 | G7 Market evidence | BLOCKED | No authorized real paid/completed transaction evidence; fixtures and mock payments do not count. |
 
-Gate statuses remain consistent with [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md): **G0–G4 PARTIAL; G5–G7 BLOCKED**. Latest recorded full run: **195/195 tests, 18 files, DB suites enabled; tsc exit 0**, in Claude's shell at `90004fd` ([W4-A](evidence/claude-W4-A.md)). This includes unit/provider tests, not 195 exclusively database tests. C3c updates documentation from that evidence; C5 authoring/test discovery is not browser execution.
+Gate statuses remain consistent with [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md): **G0–G4 PARTIAL; G5–G7 BLOCKED**. Latest recorded full run: **222/222 tests, 22 files, DB suites enabled; tsc exit 0**, in Claude's shell with the W6-D changes on `26d6680` ([W6-D](evidence/claude-W6-D.md)). This includes unit/provider tests, not 222 exclusively database tests. C3c updates documentation from that evidence; C5 authoring/test discovery is not browser execution.
 
 PASS requires an executed, passed evidence-table test covering the criterion; PARTIAL retains narrower proof or the evidence's own qualification. NOT_RUN means no mapped execution; BLOCKED means a required external credential/provider/environment is absent. Environment describes evidence or the blocked target. `doc-only` is not execution. Pure contracts are `unit`; mock-provider DB tests are `local-db+mock`. No sandbox, testnet or live PASS is permitted. Phase delivery and gate/acceptance completion are separate.
 
-Sources: [P0](evidence/p0-foundation.md), [provider report](CLAUDE_REPORT.md), [DB](evidence/claude-db-integration.md), [W1-A](evidence/claude-W1-A.md), [W1-B](evidence/claude-W1-B.md), [C4](evidence/claude-C4.md), [C1](evidence/codex-C1.md), [C2](evidence/codex-C2.md), [W2-B](evidence/claude-W2-B.md), [W2-S](evidence/claude-W2-S.md), [W3-R](evidence/claude-W3-R.md), [C6](evidence/codex-C6.md), [C6 review](evidence/claude-review-C6.md), [W4-A](evidence/claude-W4-A.md), [C3 review](evidence/claude-review-C3.md). Later evidence supersedes older status prose. Table labels identify reported tests; commits identify the corresponding implementation, not a fresh C3 execution.
+Sources: [P0](evidence/p0-foundation.md), [provider report](CLAUDE_REPORT.md), [DB](evidence/claude-db-integration.md), [W1-A](evidence/claude-W1-A.md), [W1-B](evidence/claude-W1-B.md), [C4](evidence/claude-C4.md), [C1](evidence/codex-C1.md), [C2](evidence/codex-C2.md), [W2-B](evidence/claude-W2-B.md), [W2-S](evidence/claude-W2-S.md), [W3-R](evidence/claude-W3-R.md), [C6](evidence/codex-C6.md), [C6 review](evidence/claude-review-C6.md), [W4-A](evidence/claude-W4-A.md), [C3 review](evidence/claude-review-C3.md), [W6-D](evidence/claude-W6-D.md). Later evidence supersedes older status prose. Table labels identify reported tests; commits identify the corresponding implementation, not a fresh C3 execution.
 
 | Family | PASS | PARTIAL | NOT_RUN | BLOCKED |
 |---|---:|---:|---:|---:|
@@ -33,10 +33,10 @@ Sources: [P0](evidence/p0-foundation.md), [provider report](CLAUDE_REPORT.md), [
 | REQ | 8 | 3 | 0 | 0 |
 | AUC | 12 | 2 | 0 | 0 |
 | CRY | 9 | 4 | 1 | 0 |
-| DSC | 0 | 3 | 3 | 0 |
+| DSC | 4 | 2 | 0 | 0 |
 | XPL | 0 | 0 | 6 | 0 |
 | OPS | 1 | 6 | 1 | 0 |
-| **Total** | 58 | 59 | 23 | 2 |
+| **Total** | 62 | 58 | 20 | 2 |
 
 | ID | Summary (≤12 words) | Status | Environment | Evidence (file + test name or commit) | Gap/next task |
 |---|---|---|---|---|---|
@@ -162,12 +162,12 @@ Sources: [P0](evidence/p0-foundation.md), [provider report](CLAUDE_REPORT.md), [
 | CRY-12 | Issue unique evidenced NFT or perk entitlements without invented valuations | PASS | local-db+mock | [W5-C2](evidence/claude-W5-C2.md): simulated local devnet, `tests/integration/pools.db.test.ts`: unique PERK/NFT entitlements, proof-based fulfilment, single claim, NFT ownership check and one-token-one-entitlement index, no USD value | Real NFT transfer verification on testnet BLOCKED. |
 | CRY-13 | Exercise privileged pause and recovery without arbitrary fund access | NOT_RUN | doc-only | — | P4 custody/role compromise/recovery simulations. |
 | CRY-14 | Keep mainnet blocked until availability and review gates pass | PARTIAL | local-db+mock | [W5-C1](evidence/claude-W5-C1.md): simulated local devnet, `tests/integration/crypto.db.test.ts`: DB refuses enabled MAINNET and unverified enabled TESTNET | No release-check mainnet row yet; actual mainnet eligibility BLOCKED. |
-| DSC-01 | Filter and paginate eligible listings deterministically | PARTIAL | local-db+mock | [DB](evidence/claude-db-integration.md): TEST_PLAN 1 public/approved/published catalogue isolation; `2e00eca` | P5 full taxonomy/price/time filters and stable pagination tests. |
-| DSC-02 | Display actionable empty and error states without invented listings | NOT_RUN | doc-only | — | P5 empty search/DB outage browser tests. |
-| DSC-03 | Exclude ended auctions despite stale caches | PARTIAL | local-db+mock | [DB](evidence/claude-db-integration.md): TEST_PLAN 7 late bid rejected; `2e00eca` | P5 ending-soon query/cache refresh exclusion untested. |
-| DSC-04 | Label cold-start discovery without fabricating popularity | NOT_RUN | doc-only | — | P5 sparse-data ranking/curated-label tests. |
-| DSC-05 | Refresh availability after sale or pause and reject stale checkout | PARTIAL | local-db+mock | [W1-A](evidence/claude-W1-A.md): SUP-04 sales stopped; CAP-01 last-slot race; `dc68490` | P5 public cache invalidation/CTA revalidation evidence absent. |
-| DSC-06 | Meet recorded search SLOs on representative service and bid volumes | NOT_RUN | doc-only | — | P5 authorized benchmark/query-plan evidence; no scale claim. |
+| DSC-01 | Filter and paginate eligible listings deterministically | PASS | local-db+mock | [W6-D](evidence/claude-W6-D.md): `tests/integration/discovery.db.test.ts` DSC-01 filters and sorts (hidden/archived/draft/suspended excluded, every sort paged at limit 1 equals single page, invalid cursor/sort 400) | Browser explore UI not built (user/Codex). |
+| DSC-02 | Display actionable empty and error states without invented listings | PARTIAL | local-db+mock | [W6-D](evidence/claude-W6-D.md): DSC-02/05 test: empty `items: []`, DB failure 503 retryable with no items | Browser empty/error states with actions NOT_RUN (no discovery UI yet). |
+| DSC-03 | Exclude ended auctions despite stale caches | PASS | local-db+mock | [W6-D](evidence/claude-W6-D.md): DSC-03 ending soon excludes a LIVE auction past `ends_at` by server time; [DB](evidence/claude-db-integration.md) TEST_PLAN 7 late bid rejected | Browser countdown from `server_now` not built. |
+| DSC-04 | Label cold-start discovery without fabricating popularity | PASS | local-db+mock | [W6-D](evidence/claude-W6-D.md): DSC-04 trending: COLD_START/NEW without scores, thresholds, formula ranking; production excludes fixture demand | UI must render the COLD_START label (UI_CONTRACT W6-D). |
+| DSC-05 | Refresh availability after sale or pause and reject stale checkout | PARTIAL | local-db+mock | [W6-D](evidence/claude-W6-D.md): DSC-02/05 test: pause and capacity 0 reflected immediately (`no-store`), stale booking 409; [W1-A](evidence/claude-W1-A.md) SUP-04, CAP-01 | No public cache layer exists to invalidate; browser stale-CTA check NOT_RUN. |
+| DSC-06 | Meet recorded search SLOs on representative service and bid volumes | PASS | local-db | [W6-D](evidence/claude-W6-D.md): `scripts/discovery-benchmark.ts` ≈7.7k services/50.2k bids, all p95 within local targets, plan checks incl. seq-scan control | Local-machine targets only; no staging/production-scale claim. |
 | XPL-01 | Label manually supplied social accounts as self-reported | NOT_RUN | doc-only | — | P6 URL and public-label tests; no fake verification. |
 | XPL-02 | Verify PUBLISH delivery against channel, timing, disclosure and proof | NOT_RUN | doc-only | — | P6 snapshot-specific PUBLISH lifecycle tests. |
 | XPL-03 | Enforce timezone, buffer, cancellation and no-show rules for ACCESS | NOT_RUN | doc-only | — | P6 appointment policy/lifecycle tests beyond weekly buckets. |

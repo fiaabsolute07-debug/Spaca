@@ -14,6 +14,7 @@ const productionEnv = {
   NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: 'sb_publishable_example',
   DEV_SESSIONS: 'off',
   STORAGE_PROVIDER: 'supabase',
+  VIEW_HASH_SALT: 'production-view-salt-example',
   PAYMENT_MODE: 'sandbox',
   LIVE_PAYMENTS_ENABLED: 'false',
 };

@@ -14,7 +14,8 @@ Verified baseline **94792af**: **206/206 tests, 20 files with DB suites enabled;
 | P2 | done-local; REQ-11 PARTIAL (comparison sort/filter missing) |
 | P3 | done-local; AUC-01..14 PASS local-db+mock; payout readiness, metrics and E2E execution remain |
 | P4 | IN_PROGRESS — Claude; no results inferred from concurrent files |
-| P5–P6 | TODO |
+| P5 | done-local backend (W6-D); discovery UI and browser E2E pending |
+| P6 | TODO |
 
 Local adapters are `MockPaymentProvider`, `LocalStorageProvider` (signature checking, no antivirus, no Supabase adapter), in-app notifications/local email sink and in-process jobs through `POST /api/dev/jobs`. `pnpm jobs:dev` polls that route; no Inngest integration exists. `sandbox_pay` returns 403. Fund only from verified provider facts, including the existing reconciliation fetch path. Mock provider history disappears when Next restarts; provider recovery must use the original process and operation ID.
 
@@ -22,8 +23,8 @@ For Claude's local shell, existing scripts are `pnpm db:start`, `pnpm db:migrate
 
 Next work for Claude:
 
-1. Review and integrate [C3c evidence](evidence/codex-C3c.md) and [C5 evidence](evidence/codex-C5.md), then update the collaboration board and commit only assigned paths. The ledger now totals **51 PASS, 55 PARTIAL, 33 NOT_RUN, 3 BLOCKED** across 142 rows.
-2. P4 W5-C1 (local devnet crypto checkout) is done; continue with W5-C2 pools/allocations/entitlements. Testnet and contracts stay BLOCKED/NOT_RUN. P5–P6 remain TODO. P3 local evidence is `90004fd`; implement seller payout readiness and P3-07 bidder/uplift metrics as follow-ups.
+1. Review and integrate [C3c evidence](evidence/codex-C3c.md) and [C5 evidence](evidence/codex-C5.md), then update the collaboration board and commit only assigned paths. The ledger now totals **62 PASS, 58 PARTIAL, 20 NOT_RUN, 2 BLOCKED** across 142 rows.
+2. P4 W5-C1 (devnet checkout) and W5-C2 (campaign pools) and P5 W6-D (discovery backend, [evidence](evidence/claude-W6-D.md)) are done locally. Next is W7 = P6 (XPL-01..06). Testnet and contracts stay BLOCKED/NOT_RUN. P3 local evidence is `90004fd`; implement seller payout readiness and P3-07 bidder/uplift metrics as follow-ups.
 3. Pool → bucket → order review is accepted in [C3 review](evidence/claude-review-C3.md). Add real hire-funding/expiry and cancellation/auto-release races; close ORD-12 deadline amendments and ORD-14 chargeback gaps.
 4. Add package script `"test:e2e": "playwright test"`. Start Next dev on 3100 against a seeded local mock DB with system Chrome, then run C5 and record results/screenshots. Authoring and discovery do not close OPS-07/G3; keyboard/long-text, multi-hire completion, auction close/reconnect and populated case journeys need further coverage. Add P2 comparison controls/analytics/export follow-ups.
 5. Before staging: implement real provider/storage adapters and remote operation boundaries, deployed scheduler/alerts, safe reconcile dry-run, restore/rollback rehearsal and Supabase auth/storage tests. Credentials alone do not implement these integrations.
