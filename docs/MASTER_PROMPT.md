@@ -135,7 +135,8 @@ Một user có thể đồng thời là buyer và creator. Quyền admin/moderat
 - **Tagline tham khảo:** "Run creator campaigns on X for your web3 launch — fund once in USDC, pay each creator on approval." Phụ: "Hire one creator or a whole launch team — scope locked, paid on approval."
 - **Không dùng làm thông điệp:** "0% fee"; "lịch trống thật"; "escrow"/"trustless"/"guaranteed"; crypto/Arc "đã live" khi mới devnet/testnet; số liệu, khách hàng, đánh giá chưa có thật.
 - **Quy tắc bắt buộc cho web3:** bài tài trợ phải có disclosure; cấm hứa lợi nhuận, tín hiệu giao dịch/khuyến nghị đầu tư, shill trá hình và fake engagement; token reward không gắn giá USD bảo đảm. Crypto là rail thanh toán và reward quan trọng nhưng người mua vẫn trả được bằng thẻ; không bắt tạo ví.
-- **Chưa chốt (cần chủ sản phẩm quyết):** có đôn crypto thật (Arc testnet, contract, custody) lên trước P6 không; có kiểm duyệt dự án trước khi cho mở campaign không.
+- **Thanh toán (chốt 14/09/2026):** nạp và xử lý trên Arc; rút về ví blockchain hoặc ngân hàng tùy người nhận; hỗ trợ cả ngân sách Micro vài USD (§11.7).
+- **Chưa chốt (cần chủ sản phẩm quyết):** thứ tự làm Arc thật (testnet, contract, custody) so với P6; có kiểm duyệt dự án trước khi cho mở campaign không; người mua có được nạp bằng thẻ không; đối tác off-ramp, pháp nhân và KYC.
 
 ### 1.3. Taxonomy
 
@@ -540,7 +541,7 @@ Capacity là **giới hạn số đơn đang làm cùng lúc** (work-in-progress
 9. Revision hoặc dispute không tạo claim mới và được phép làm tổng tạm vượt giới hạn do creator giảm giới hạn trước đó; nghĩa vụ đã nhận luôn được giữ.
 10. Buyer thấy trạng thái, không thấy con số: "Accepting orders" hoặc "Currently at capacity" (kèm CTA post a request/notify), hoặc "Paused". Không hiển thị "2 of 3 slots", không đoán ngày mở lại.
 
-**Hiện trạng code (14/09/2026):** engine đã build (W1-A, migration 0003) vẫn là CapacityPool + weekly CapacityBucket + CapacityReservation. Chuyển sang workload limit là một task riêng: migration (backfill `max_active_units` từ `weekly_units`, map reservation HELD/COMMITTED/CONSUMED sang HELD/ACTIVE/DONE theo trạng thái order), sửa booking/hire/auction/funding/expiry/approve/refund, bỏ job extend_capacity_horizon và filter availability theo bucket trong discovery, viết lại CAP tests. Làm trước UI mới.
+**Hiện trạng code (15/09/2026):** engine đã chuyển sang giới hạn đơn đang làm (W7-CAP, migration 0012, evidence `docs/evidence/claude-W7-CAP.md`): `creator_workloads` + `workload_claims`, trigger chặn claim vượt giới hạn/khi pause, trigger đơn nhả chỗ khi APPROVED/COMPLETED/CANCELLED/REFUNDED, buyer chỉ thấy `availability_status`. `units_per_order` nằm trên services/service_versions thay vì bảng `ServiceWorkloadRule` riêng. Còn mở: CAP-04/05/10 races, CAP-11 (ACCESS, P6).
 
 ### 6.2. Book Now transaction
 
@@ -840,6 +841,41 @@ Bảng gồm sample preview, niche, quote, turnaround, earliest start, completed
 
 ---
 
+### 9.6. Campaign "Performance": phí cố định + thưởng view có trần (chốt 14/09/2026)
+
+Campaign có hai loại: **Fixed** (giá cố định mỗi bài, như §9.1–9.5) và **Performance** (phí cố định + thưởng theo lượt xem). Performance nhắm vào dự án muốn tiếp cận nhiều người nhất có thể, và được thiết kế để buff view không có lời.
+
+**Công thức cho mỗi bài (terms snapshot khi hire, không đổi sau đó)**
+
+```text
+views_measured   = lượt xem của bài tại mốc chốt (mặc định 7 ngày sau khi đăng), đọc từ X qua kết nối của creator
+baseline_median  = trung vị lượt xem các bài gốc gần đây của creator (xem quy tắc bên dưới), chốt tại lúc hire
+views_cap        = floor(baseline_median × MEDIAN_MULTIPLIER)            -- mặc định MEDIAN_MULTIPLIER = 3
+views_payable    = min(views_measured, views_cap)
+view_bonus       = min(floor(views_payable / 1000) × rpm_rate, bonus_cap)
+payout           = base_fee + view_bonus
+```
+
+Ví dụ minh họa (không phải bảng giá): base_fee 20 USD, rpm_rate 2 USD / 1.000 view, bonus_cap 80 USD (tổng tối đa 100 USD). Creator có trung vị 8.000 view → views_cap 24.000. Bài đạt 150.000 view → chỉ tính 24.000 → thưởng 48 USD → nhận 68 USD. Bài đạt 10.000 view → thưởng 20 USD → nhận 40 USD.
+
+**Barrier trung vị (baseline_median)**
+
+- Tính trên **N = 20 bài gốc gần nhất** của creator trong 90 ngày, đo tại cùng mốc thời gian (7 ngày sau khi đăng). Loại reply, repost, bài tài trợ trước đó và bài thuộc campaign spaca.
+- **Chốt tại thời điểm creator được hire** và lưu vào terms snapshot; buff view các bài cũ sau khi đã nhận việc không làm tăng trần.
+- Creator có ít hơn **10 bài đủ điều kiện** thì không được nhận campaign Performance (vẫn nhận Fixed).
+- Trung vị tăng quá nhanh so với kỳ trước (ví dụ gấp 2 lần trong 30 ngày) → gắn cờ xem xét trước khi cho nhận Performance.
+
+**Đo và trả**
+
+- Creator tham gia Performance phải **kết nối tài khoản X quyền chỉ đọc**. Không chấp nhận ảnh chụp màn hình. Đây là ngoại lệ có chủ đích với nguyên tắc không phụ thuộc X API (SUP-06), chỉ áp dụng cho Performance; Fixed vẫn chạy không cần kết nối.
+- **base_fee** trả theo luồng duyệt bài bình thường (§7.5, §11.7).
+- **view_bonus** chỉ tính sau mốc chốt và **giữ thêm thời gian kiểm tra** (mặc định 7 ngày sau mốc chốt) rồi mới yêu cầu thanh toán.
+- Tín hiệu bất thường → giữ view_bonus để xem xét, không tự trả: tỷ lệ tương tác trên view thấp bất thường, view tăng vọt trong thời gian ngắn rồi đứng im, reply trùng lặp hoặc từ tài khoản mới, follower tăng đột biến quanh thời điểm đăng.
+- Xác nhận gian lận → không trả view_bonus, trừ uy tín, cấm Performance; base_fee xử lý như tranh chấp thường.
+- Dự án thấy trước khi hire: base_fee, rpm_rate, bonus_cap, **tổng tối đa có thể phải trả mỗi creator** và tổng trần của campaign. Ngân sách campaign giữ theo mức tối đa, phần không dùng hoàn lại theo §11.7.
+
+**Chưa chốt:** giá trị mặc định cuối cùng của mốc chốt, MEDIAN_MULTIPLIER, thời gian kiểm tra; khả năng và chi phí đọc số liệu qua X API (cần kiểm tra điều khoản hiện hành).
+
 ## 10. Auction engine
 
 ### 10.1. Điều kiện tạo
@@ -980,6 +1016,37 @@ Nếu pool thiếu một reward bắt buộc, không đánh dấu fully funded. 
 - Unused pool refund chỉ dùng balance chưa allocated và không pending dispute/outflow.
 
 ---
+
+### 11.7. Mô hình nạp / xử lý / rút tiền trên Arc (chốt 14/09/2026)
+
+Quyết định của chủ sản phẩm: **nạp tiền và xử lý thanh toán trên Arc; khi rút, người nhận tự chọn về ví blockchain hoặc về ngân hàng.** Mục tiêu là phục vụ cả ngân sách nhỏ (vài USD mỗi creator, gói Micro) lẫn campaign lớn.
+
+**Luồng tiền**
+
+1. **Nạp:** người mua nạp USDC trên Arc vào tài khoản spaca (địa chỉ nạp/reference riêng). Server/indexer xác minh giao dịch theo §11.4 rồi ghi có vào **số dư của người mua** trong ledger.
+2. **Giữ cho campaign/đơn:** khi tạo đơn hoặc campaign, số dư chuyển sang trạng thái giữ (reserved) theo đúng số tiền đã chốt; không giữ vượt số dư khả dụng.
+3. **Xử lý trên blockchain:** tiền của campaign/đơn được khóa trong settlement contract hoặc pool on-chain (§11.3, §11.5). Khi bài được duyệt, khoản thưởng được release on-chain. Để khoản vài USD không bị phí mạng và độ trễ làm đắt, các release nhỏ được **gom lô** (batch) theo chu kỳ hoặc ngưỡng; mỗi release vẫn có authorization một lần và reference riêng để đối soát. Ledger nội bộ phản ánh đúng trạng thái on-chain, không tạo số dư không có tiền thật đứng sau.
+4. **Rút (người nhận chọn):**
+   - **Về ví blockchain:** USDC gửi tới ví đã chứng minh quyền sở hữu (§11.2) trên Arc.
+   - **Về ngân hàng:** qua nhà cung cấp on/off-ramp được cấp phép, đổi USDC sang tiền pháp định và chuyển vào tài khoản ngân hàng của người nhận.
+   - Có **mức rút tối thiểu** và hiển thị phí/khoản thực nhận trước khi xác nhận; phí mạng và phí off-ramp là chi phí bên thứ ba có disclosure (§8.1).
+
+**Bất biến**
+
+- Tổng số dư khả dụng + giữ + đang release + đang rút của mọi user ≤ USDC thực có trong ví/contract của spaca, đối soát được theo từng asset.
+- Mỗi khoản nạp chỉ được ghi có một lần; mỗi khoản rút chỉ gửi đi một lần (idempotent operation, outbox, reconcile trước khi retry).
+- Không trả tiền cho creator trước khi bài được duyệt hoặc hết review window theo §7.5.
+- Ngân sách Micro vẫn tuân thủ: không bán like/repost/follow; bài tài trợ có disclosure.
+
+**Điều kiện trước tiền thật (không chặn việc build local/testnet)**
+
+- Arc mainnet sẵn sàng và tham số đã được kiểm tra lại (hiện tài liệu ghi testnet).
+- Custody: ADR chọn multisig/KMS cho ví và quyền release/rút.
+- Pháp lý: giữ số dư hộ người dùng và chuyển đổi crypto sang tiền pháp định có thể cần giấy phép hoặc đối tác được cấp phép, tùy pháp nhân và quốc gia.
+- KYC cho người rút về ngân hàng (và người nạp lớn nếu đối tác yêu cầu); ngưỡng do đối tác và pháp lý quyết định.
+- Nhà cung cấp off-ramp: kiểm tra quốc gia hỗ trợ, phí, mức tối thiểu, thời gian chuyển.
+
+**Hiện trạng code:** đã có xác minh nạp USDC, pool, release có authorization EIP-712 trên devnet giả lập. Chưa có: số dư theo user, giữ số dư cho đơn/campaign, batch release, rút về ví, rút về ngân hàng, KYC, custody, tích hợp Arc thật.
 
 ## 12. UI/UX, route map và trạng thái màn hình
 
