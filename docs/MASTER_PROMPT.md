@@ -1,6 +1,6 @@
 # MASTER PROMPT — BUILD CREATOR CAPACITY MARKETPLACE TỪ A–Z
 
-**Phiên bản:** 1.1 · **Ngày biên soạn:** 13/09/2026 · **Cập nhật:** 14/09/2026 (bỏ cam kết phí 0%, chốt định vị) · **Ngôn ngữ làm việc:** tiếng Việt.
+**Phiên bản:** 1.1 · **Ngày biên soạn:** 13/09/2026 · **Cập nhật:** 14/09/2026 (bỏ cam kết phí 0%, chốt định vị, capacity = số đơn đang làm cùng lúc) · **Ngôn ngữ làm việc:** tiếng Việt.
 
 **Yêu cầu đã chốt:** xây sản phẩm theo `creator_capacity_marketplace_plan.md`. **Phí nền tảng chưa chốt** (xem §8.1); định vị ban đầu: startup AI/SaaS/DevTools thuê creator X viết về tech (xem §1.2.1). File này là đặc tả để giao việc cho coding agent, không phải báo cáo sản phẩm đã được xây hoặc kiểm thử.
 
@@ -89,7 +89,7 @@ Không tạo tài liệu rỗng rồi đánh dấu hoàn thành. Mỗi file ph�
 
 ### 1.1. Một câu mô tả
 
-Creator đăng **dịch vụ + khả năng nhận việc thực tế**. Buyer đặt ngay, trả giá cho suất khan hiếm, hoặc đăng nhu cầu để creator ứng tuyển và báo giá. Tất cả hội tụ vào một order, một hệ thống bàn giao, thanh toán và uy tín.
+Creator đăng **dịch vụ + khả năng nhận việc thực tế**. Buyer đặt ngay, đấu giá chỗ nhận việc của creator đông khách, hoặc đăng nhu cầu để creator ứng tuyển và báo giá. Tất cả hội tụ vào một order, một hệ thống bàn giao, thanh toán và uy tín.
 
 ### 1.2. Người dùng và các công việc chính
 
@@ -112,7 +112,7 @@ Một user có thể đồng thời là buyer và creator. Quyền admin/moderat
 - **Bên bán:** creator trên X viết về tech: thread writer, researcher, copywriter, consultant bán sản phẩm giao được.
 - **Bốn loại sản phẩm (§1.3):** CREATE = bài viết/nội dung; PUBLISH = lượt đăng trên kênh creator; ACCESS = thời gian tư vấn theo lịch; DIGITAL = sản phẩm số bán nhiều lần.
 - **Ba cách mua:** Book Now, Request/Campaign nhiều creator, Auction.
-- **Thông điệp chính:** thuê creator X cho launch AI/SaaS, scope rõ, lịch trống thật. Không dùng "0% fee" làm thông điệp.
+- **Thông điệp chính:** thuê creator X cho launch AI/SaaS, thuê cả đội trong một campaign, điều khoản chốt lúc mua, uy tín thật không chạy theo follower. Không dùng "0% fee" hay "lịch trống thật" làm thông điệp (creator mới luôn trống; lịch trên sàn không phản ánh việc ngoài sàn).
 - **Ngoài phạm vi:** bán tín hiệu giao dịch/khuyến nghị đầu tư; lời hứa lợi nhuận. Crypto pool là mở rộng cho campaign, không phải thông điệp dẫn đầu.
 
 ### 1.3. Taxonomy
@@ -173,7 +173,7 @@ Mục này lấp những chỗ nguồn chưa quy định. Ghi chúng vào ADR/co
 | Creator không bắt đầu | Quá 24 giờ sau `work_start_at` mà chưa bắt đầu: buyer được yêu cầu hủy; server khóa order khi xử lý |
 | Giao trễ | Nhắc ngay khi trễ; sau 24 giờ quá deadline mà chưa có delivery, buyer có luồng hủy/hoàn tiền theo policy |
 | Đấu giá | English ascending; bước giá cố định; thời gian server quyết định; không gia hạn phút chót mặc định |
-| Hạn winner thanh toán | 24 giờ; phải nằm trước thời điểm tối đa nhận việc của slot |
+| Hạn winner thanh toán | 24 giờ; claim của auction giữ chỗ tới khi winner trả hoặc default |
 | Winner không thanh toán | Đóng `WINNER_DEFAULTED`, không tự ép bidder kế tiếp mua; next-bidder offer là enhancement riêng |
 | Buy Now trong auction | Chỉ cho phép trước valid bid đầu tiên, cấu hình từ lúc tạo auction; UI ghi rõ |
 | Request quote expiry | 7 ngày hoặc application deadline, chọn mốc sớm hơn; creator có thể chọn ngắn hơn |
@@ -402,14 +402,12 @@ Mặc định: image 10 MB, document 25 MB, video 250 MB, tối đa 10 file mỗ
 | `PortfolioSample` | creator_id, title, description, storage_asset_id/external_url, visibility, moderation_status | owner + created_at index; URL/file validator |
 | `Service` | creator_id, slug, taxonomy, title, scope, exclusions, base_price, asset_id, turnaround_hours, revision_limit, status, version | owner+status, taxonomy+status; price > 0; live terms immutable qua version |
 | `ServiceSample` | service_id, sample_id | owner consistency; unique pair |
-| `CapacityPool` | creator_id, name, timezone, allocation_kind | Shared pool giữa nhiều service, tránh cộng capacity giả |
-| `ServiceCapacityRule` | service_id, pool_id, units_per_order | unique(service_id) trong v1: mỗi service dùng một pool, nhiều service chia sẻ pool; units positive; ba nguồn đơn dùng cùng engine |
-| `CapacityBucket` | pool_id, starts_at, ends_at, total_units, reserved_units, committed_units | unique(pool_id, starts_at) + exclusion không overlap interval cùng pool; counters >= 0; sum <= total |
-| `ServiceSlot` | service_id, bucket_id, starts_at, latest_checkout_at, due_at nullable, units, mode, state | explicit slot/time; mode BOOK/AUCTION; availability index |
-| `CapacityReservation` | bucket_id, slot_id nullable, order_id nullable, auction_id nullable, offer_id nullable, units, state, expires_at, payment_attempt_id | one active inventory claim per logical operation; expiry index |
+| `CreatorWorkload` | creator_id, max_active_units (mặc định 3), accepting_orders (bool), held_units, active_units, version, updated_at | một row mỗi creator; `held_units + active_units <= max_active_units` chỉ bắt buộc khi tạo claim mới; counters >= 0 |
+| `ServiceWorkloadRule` | service_id, units_per_order (mặc định 1) | unique(service_id); units positive; mọi service của creator dùng chung một workload; ba nguồn đơn dùng cùng engine |
+| `WorkloadClaim` | creator_id, units, state HELD/EXPIRY_RECONCILING/ACTIVE/RELEASED/DONE, origin BOOK/OFFER/AUCTION, order_id nullable, auction_id nullable, offer_id nullable, expires_at, payment_attempt_id | one open claim per logical operation; expiry index; transition cập nhật counters đúng một lần |
 | `AvailabilityBlock` | creator_id/pool_id, starts_at, ends_at, reason | overlap guard for timed ACCESS sessions; UTC instants |
 
-`CapacityPool` là bổ sung quan trọng: nếu một creator bán cả thread và video nhưng tổng tuần chỉ làm được ba việc, hai listing phải cùng dùng pool ba units (hoặc trọng số creator khai báo), thay vì mỗi listing tự hiển thị ba suất.
+`CreatorWorkload` thay cho mô hình suất/tuần cũ (quyết định 14/09/2026, phương án B): creator chỉ khai **số đơn đang làm cùng lúc** (mặc định 3, chỉnh sau). Nếu một creator bán cả thread và video, cả hai listing chia sẻ cùng giới hạn; video có thể nặng hơn qua `units_per_order`. Không có week bucket, không bắt creator ước lượng theo tuần hay theo múi giờ.
 
 ### 5.3. Request, application, auction
 
@@ -419,7 +417,7 @@ Mặc định: image 10 MB, document 25 MB, video 250 MB, tối đa 10 file mỗ
 | `Application` | request_id, creator_id, quote_amount, quote_asset_id, turnaround, samples snapshot, note, valid_until, status, version, capacity_plan | unique(request_id, creator_id); quote > 0; same request currency |
 | `HireOffer` | request_id, application_id, buyer_id, creator_id, terms_snapshot, expires_at, status, order_id, capacity_plan_snapshot | one active offer per application; unique successful order |
 | `RequestBudgetReservation` | request_id, offer_id/order_id, amount, state | atomic active allocations + commitments <= budget |
-| `Auction` | service_slot_id, seller_id, asset_id, starting_price, minimum_increment, buy_now_price nullable, starts_at, ends_at, status, first_valid_bid_at nullable bất biến, current_bid_id, winner_id, winning_bid_id, payment_due_at, terms_snapshot | exclusive active claim on slot; time/price checks; ends_at index |
+| `Auction` | service_id, workload_claim_id, seller_id, asset_id, starting_price, minimum_increment, buy_now_price nullable, starts_at, ends_at, status, first_valid_bid_at nullable bất biến, current_bid_id, winner_id, winning_bid_id, payment_due_at, terms_snapshot | exclusive active claim on slot; time/price checks; ends_at index |
 | `AuctionBid` | auction_id, bidder_id, amount, accepted_at, sequence, request_key, status | unique(auction_id, sequence); unique bidder request_key; index amount desc/sequence asc |
 | `AuctionPurchaseIntent` | auction_id, buyer_id, kind WINNER/BUY_NOW, status, payment_attempt_id, expires_at, order_id | order_id unique FK; at most one active sale intent per auction |
 
@@ -472,7 +470,7 @@ Never delete accepted bid rows to sửa lịch sử. Invalidate có reason/audit
 | Entity | Fields/constraints cần triển khai |
 |---|---|
 | `Asset` | kind FIAT/NATIVE/ERC20/NFT, currency hoặc chain+contract+interface, decimals, mode, allowlist status; unique canonical identity |
-| `BookingIntent` | buyer_id, service_id/version, slot_id, idempotency record, terms hash; unique logical booking |
+| `BookingIntent` | buyer_id, service_id/version, workload_claim_id, idempotency record, terms hash; unique logical booking |
 | `FundingIntent` | source ORDER/POOL, đúng một order_id/pool_id FK, expected amount/asset, mode/status; linked attempts |
 | `ProviderOperation` | operation ID, kind, input hash, provider/mode/ref, status, retry count/next time, last error; unique semantic key |
 | `IdempotencyRecord` | actor+command+resource+key unique, request hash, result ref/status, retained expiry |
@@ -501,26 +499,32 @@ Order cần relational source identity; không dùng một source_ref text khôn
 
 ---
 
-## 6. Capacity engine: bán đúng số việc creator có thể làm
+## 6. Capacity engine: không nhận quá số đơn creator làm cùng lúc
 
-### 6.1. Bất biến bắt buộc
+### 6.1. Mô hình và bất biến bắt buộc
 
-1. `available_units = total_units - reserved_units - committed_units >= 0`.
-2. `reserved_units` bao gồm checkout hold, auction lock và accepted hire hold còn hiệu lực.
-3. `committed_units` bao gồm cả việc đang làm và việc đã hoàn thành trong bucket đó. Khi việc hoàn tất, đổi reservation sang CONSUMED nhưng không giảm committed count của tuần đã dùng.
-4. Một service slot không đồng thời được Book Now bán và auction giữ.
-5. Request hire cũng dùng cùng capacity engine. Việc ứng tuyển chưa giữ capacity; việc creator xác nhận hire mới giữ.
-6. Bucket của tuần sau độc lập; không tạo job reset counter của tuần cũ làm mất lịch sử.
-7. Giảm capacity chỉ được thực hiện nếu total mới vẫn đủ cho mọi reservation/commitment. Tăng capacity phải do creator nhập, không tự tăng để tránh checkout thất bại.
-8. Hủy trước khi làm có thể trả capacity nếu slot còn dùng được. Việc đã làm tiêu tốn workload, không tự trả capacity chỉ vì refund.
+Capacity là **giới hạn số đơn đang làm cùng lúc** (work-in-progress limit) của mỗi creator, không phải suất theo tuần. Lý do: creator mới luôn trống nên "suất tuần" không mang thông tin cho buyer; creator khó ước lượng theo tuần; một đơn vị tuần không khớp thread 48h, video 2 tuần hay call 1h.
+
+1. `held_units + active_units <= max_active_units` phải đúng tại thời điểm tạo claim mới (HELD). Claim mới bị từ chối nếu vượt hoặc `accepting_orders = false`.
+2. `held_units` = tổng HELD + EXPIRY_RECONCILING: checkout hold, auction lock (SCHEDULED/LIVE/winner payment) và accepted hire hold còn hiệu lực.
+3. `active_units` = tổng ACTIVE: order đã FUNDED cho tới khi rời trạng thái đang làm. Đơn giữ chỗ trong FUNDED, IN_PROGRESS, DELIVERED, REVISION_REQUESTED, DISPUTED; nhả chỗ (DONE hoặc RELEASED) khi APPROVED/COMPLETED/CANCELLED/REFUNDED.
+4. Một claim chỉ thuộc một nguồn tại một thời điểm; auction/offer chuyển cùng claim sang order, không claim lần hai.
+5. Request hire dùng cùng engine. Ứng tuyển chưa giữ chỗ; creator xác nhận hire mới giữ.
+6. Creator **giảm** `max_active_units` bất cứ lúc nào: không hủy nghĩa vụ đang có, chỉ chặn claim mới cho tới khi số đơn giảm xuống dưới giới hạn. Tăng giới hạn do creator nhập.
+7. `accepting_orders = false` (nút "Pause new orders") chặn claim mới ngay; đơn và auction đang chạy tiếp tục.
+8. Hủy trước khi làm trả chỗ ngay. Đơn đã bắt đầu làm rồi hủy/refund cũng nhả chỗ vì không còn việc phải làm (khác mô hình tuần: không còn "quota đã tiêu").
+9. Revision hoặc dispute không tạo claim mới và được phép làm tổng tạm vượt giới hạn do creator giảm giới hạn trước đó; nghĩa vụ đã nhận luôn được giữ.
+10. Buyer thấy trạng thái, không thấy con số: "Accepting orders" hoặc "Currently at capacity" (kèm CTA post a request/notify), hoặc "Paused". Không hiển thị "2 of 3 slots", không đoán ngày mở lại.
+
+**Hiện trạng code (14/09/2026):** engine đã build (W1-A, migration 0003) vẫn là CapacityPool + weekly CapacityBucket + CapacityReservation. Chuyển sang workload limit là một task riêng: migration (backfill `max_active_units` từ `weekly_units`, map reservation HELD/COMMITTED/CONSUMED sang HELD/ACTIVE/DONE theo trạng thái order), sửa booking/hire/auction/funding/expiry/approve/refund, bỏ job extend_capacity_horizon và filter availability theo bucket trong discovery, viết lại CAP tests. Làm trước UI mới.
 
 ### 6.2. Book Now transaction
 
 ```text
-Client chọn service + slot + gửi brief + idempotency key
+Client chọn service + gửi brief + idempotency key
 → server xác minh user, listing version, price, payout eligibility
-→ lock các bucket theo ID tăng dần và slot
-→ recheck capacity, latest checkout time, không self-book
+→ lock CreatorWorkload row của creator
+→ recheck accepting_orders + held/active <= max, không self-book
 → tạo canonical Order AWAITING_PAYMENT + snapshot + hold
 → tạo PaymentAttempt/ProviderOperation + outbox trong cùng transaction
 → commit
@@ -528,7 +532,7 @@ Client chọn service + slot + gửi brief + idempotency key
 → trả checkout URL/status của cùng order
 ```
 
-Khi nguồn AUCTION hoặc accepted HIRE đã có reservation: chuyển ownership cùng reservation sang order trong transaction, giữ origin reference, không reserve thêm units lần hai. Reservation state chuẩn HELD/EXPIRY_RECONCILING/COMMITTED/CONSUMED/RELEASED; HELD bao gồm auction/offer với origin type. reserved_units = sum(HELD + EXPIRY_RECONCILING), committed_units = sum(COMMITTED + CONSUMED). Mỗi transition cập nhật counters đúng một lần; reconciliation kiểm counters bằng tổng reservations.
+Khi nguồn AUCTION hoặc accepted HIRE đã có claim: chuyển ownership cùng claim sang order trong transaction, giữ origin reference, không claim thêm lần hai. Claim state chuẩn HELD/EXPIRY_RECONCILING/ACTIVE/DONE/RELEASED; HELD bao gồm auction/offer với origin type. held_units = sum(HELD + EXPIRY_RECONCILING), active_units = sum(ACTIVE). Mỗi transition cập nhật counters đúng một lần; reconciliation kiểm counters bằng tổng claims.
 
 Double-click, refresh và timeout phải trả cùng order/intent với cùng key. Cùng key nhưng body khác trả `IDEMPOTENCY_CONFLICT`; không âm thầm dùng giá mới.
 
@@ -540,20 +544,20 @@ DB row lock hoặc conditional update là cơ chế chống oversell. Một phé
 - Remote cancel/status lookup diễn ra ngoài DB lock; sau đó transaction recheck version và payment fact trước khi release.
 - Chỉ release khi có evidence provider xác nhận attempt terminal/cancel thành công và không còn có thể trả tiền. Uncertain queue giữ claim, không phải lý do giải phóng inventory; cần reconcile/operational escalation cho đến khi rõ.
 - Nếu provider chỉ hỗ trợ TTL dài hơn 15 phút, lưu TTL thực tế và hiển thị đúng; không hiển thị 15 phút nhưng provider vẫn thu được tiền 30 phút.
-- Nếu tiền đến sau khi inventory đã release và bán cho người khác: ghi `PAYMENT_RECEIVED_NO_CAPACITY`, giữ accounting đúng, hoàn tiền hoặc đề xuất slot khác với buyer consent. Không cho hai creator commitments vượt quota.
+- Nếu tiền đến sau khi inventory đã release và bán cho người khác: ghi `PAYMENT_RECEIVED_NO_CAPACITY`, giữ accounting đúng, hoàn tiền hoặc đề xuất đặt lại khi creator có chỗ, với buyer consent. Không để claim mới vượt giới hạn.
 - Sweep job xử lý holds bị mắc. Provider outage tạo “payment confirmation pending”; không mở capacity bằng phỏng đoán.
 
 ### 6.4. Lock hierarchy toàn hệ thống
 
-Một helper transaction phải áp dụng thứ tự lock thống nhất cho booking/hire/bid/close/funding/expiry/approve/refund. Pre-read immutable relation IDs để biết resource set; sau khi lock phải đọc lại và revalidate version. Thứ tự: (1) aggregate Request/RewardPool/Auction theo stable typed key; (2) pool asset budgets; (3) CapacityBuckets theo ID; (4) ServiceSlots/Appointment intervals; (5) Order; (6) FundingIntent/PaymentAttempt/Payment; (7) Compensation/Settlement/Refund; (8) ledger balances/operation records theo key. Transaction không lấy ngược resource ở tier trước.
+Một helper transaction phải áp dụng thứ tự lock thống nhất cho booking/hire/bid/close/funding/expiry/approve/refund. Pre-read immutable relation IDs để biết resource set; sau khi lock phải đọc lại và revalidate version. Thứ tự: (1) aggregate Request/RewardPool/Auction theo stable typed key; (2) pool asset budgets; (3) CreatorWorkload theo creator ID; (4) Appointment intervals (ACCESS); (5) Order; (6) FundingIntent/PaymentAttempt/Payment; (7) Compensation/Settlement/Refund; (8) ledger balances/operation records theo key. Transaction không lấy ngược resource ở tier trước.
 
 Có thể dùng transaction-level advisory locks cho aggregate chưa có row, rồi row locks/constraints theo cùng thứ tự; khóa phải từ server-generated stable ID, không user-controlled arbitrary global lock. Bounded deadlock/serialization retry với cùng idempotency key, tối đa 3 lần trước retryable conflict. Không gọi provider khi giữ DB lock. Test các race liên module, không chỉ race từng endpoint.
 
 ### 6.5. Thời gian và lịch hẹn
 
-Creator timezone dùng để tạo week bucket; week bắt đầu thứ Hai 00:00 địa phương, được materialize thành UTC start/end. Test DST 23/25 giờ, người mua timezone khác và creator đổi timezone. Booking cũ giữ nguyên instants. Timezone mới có effective boundary tương lai; không regenerate bucket có HELD/COMMITTED/CONSUMED, và exclusion constraint không cho hai buckets cùng pool overlap.
+Workload không phụ thuộc timezone. Timezone creator dùng cho hiển thị deadline và lịch hẹn ACCESS; lưu UTC instants, test DST 23/25 giờ và người mua khác timezone. Đổi timezone không đổi instants của order cũ.
 
-Đối với ACCESS: appointment start/end có duration+buffer; dùng PostgreSQL exclusion constraint hoặc equivalent transactional interval lock chống overlap. Weekly capacity vẫn áp dụng nếu creator muốn; chỉ weekly counter không ngăn hai cuộc gọi trùng giờ.
+Đối với ACCESS: appointment start/end có duration+buffer; dùng PostgreSQL exclusion constraint hoặc equivalent transactional interval lock chống overlap. Workload limit vẫn áp dụng cho số buổi đã nhận; riêng counter không ngăn hai cuộc gọi trùng giờ, nên interval check là bắt buộc.
 
 ---
 
@@ -816,9 +820,9 @@ Bảng gồm sample preview, niche, quote, turnaround, earliest start, completed
 
 ### 10.1. Điều kiện tạo
 
-Creator chọn service slot thật, starting price > 0, minimum increment > 0, start/end, optional Buy Now > starting price. Money asset cố định. Auction duration tối đa đề xuất 7 ngày; thời gian end + winner window phải còn đủ trước latest feasible work start của slot.
+Creator chọn service, starting price > 0, minimum increment > 0, start/end, optional Buy Now > starting price, và phải còn chỗ trong workload. Money asset cố định. Auction duration tối đa đề xuất 7 ngày vì auction giữ một chỗ suốt thời gian chạy.
 
-Auction giữ capacity từ SCHEDULED đến hết LIVE và winner payment. Owner không edit price/scope/slot/end sau valid bid đầu tiên; cancellation khi đã có bid chỉ qua moderation/exception có reason và notification. Trước bid có thể cancel, rồi tạo auction mới nếu cần đổi material terms.
+Auction giữ một workload claim từ SCHEDULED đến hết LIVE và winner payment. Owner không edit price/scope/end sau valid bid đầu tiên; cancellation khi đã có bid chỉ qua moderation/exception có reason và notification. Trước bid có thể cancel, rồi tạo auction mới nếu cần đổi material terms.
 
 ### 10.2. States
 
@@ -970,14 +974,14 @@ Mỗi page có loading, empty, error, unauthorized, not found và success states
 | `/` | Proposition cho startup AI/SaaS/DevTools thuê creator X, first SKU, curated real services, cách giao dịch và phí công khai | 1 |
 | `/explore` | Curated/simple list ban đầu; advanced search ở Phase 5 | 1/5 |
 | `/creators/[handle]` | Bio, niche, samples, real reputation, availability/services | 1 |
-| `/services/[id-or-slug]` | Scope, sample, price, capacity, Book CTA | 1 |
+| `/services/[id-or-slug]` | Scope, sample, price, trạng thái nhận đơn, Book CTA | 1 |
 | `/sign-up`, `/sign-in` | Buyer/creator intent, email verification, safe return URL | 0/1 |
 | `/auth/callback`, `/reset-password` | Session callback, reset recovery | 0 |
 | `/onboarding` | Role intent, profile, timezone; progressive setup | 1 |
-| `/creator` | Actionable upcoming work, incomplete setup, available capacity | 1 |
+| `/creator` | Actionable upcoming work, incomplete setup, số đơn đang làm / giới hạn, nút Pause new orders | 1 |
 | `/creator/profile`, `/creator/portfolio` | Owner editing, previews, moderation state | 1 |
 | `/creator/services/new`, `/creator/services/[id]/edit` | Listing form, pricing mode gated | 1/3 |
-| `/creator/capacity` | Week pools, reservations, next slots, conflicts | 1 |
+| `/creator/capacity` | Giới hạn đơn cùng lúc, units per service, đơn/hold đang giữ chỗ, Pause | 1 |
 | `/creator/payments` | Provider onboarding/capabilities; no raw banking data | 1 |
 | `/creator/orders`, `/creator/earnings` | Work queue, gross/fees 0/third-party/net/payout | 1 |
 | `/buyer` | Orders needing brief/review/payment, request overview later | 1/2 |
@@ -1000,8 +1004,8 @@ Slug biến đổi không được làm mất order reference; dùng canonical I
 ### 12.3. Chi tiết bắt buộc trong các flow
 
 - Sign-up không bắt nối X/crypto wallet; buyer checkout return path an toàn, không open redirect.
-- Creator onboarding có checklist: profile → 3 samples → service → capacity → payout readiness. Save draft được; publish chỉ khi rule đạt.
-- Capacity hiển thị thật, ví dụ “2 of 3 slots available this week”, timezone và next start. Sold out có hành động xem ngày khác hoặc tạo request nếu Phase 2 bật.
+- Creator onboarding có checklist: profile → samples → service → payout readiness. Workload tự đặt mặc định 3 đơn cùng lúc, không chặn publish; creator chỉnh sau. Save draft được; publish chỉ khi rule đạt.
+- Buyer thấy trạng thái nhận đơn ("Accepting orders" / "Currently at capacity" / "Paused"), không thấy số suất. Khi hết chỗ có hành động post a request (Phase 2) hoặc xem creator khác.
 - Checkout có checkbox/record consent cho scope, cancellation và auto-approval policy version. Tách rõ platform fee với gas/processor fee; không để người dùng nhầm lẫn giữa các loại phí.
 - Order timeline phân biệt work accepted, transfer released và payout arrived. Buyer không thấy private finance detail không thuộc họ.
 - Buyer compare không lẫn quote giá thấp với “Best”; creator mới có thể được chọn nhờ sample.
@@ -1042,13 +1046,12 @@ Idempotency scope: actor + operation type + logical resource + key. Lưu request
 
 | Command/endpoint tương đương | Input quan trọng | Quy tắc chính |
 |---|---|---|
-| `POST /services` | scope, price, asset, capacity pool | Owner creator, tạo draft |
+| `POST /services` | scope, price, asset, units_per_order | Owner creator, tạo draft |
 | `PATCH /services/:id` | editable fields + expectedVersion | Không đổi terms đơn cũ |
 | `POST /services/:id/publish` | expectedVersion | Profile/sample/capacity/readiness hợp lệ |
 | `POST /services/:id/pause` | reason/version | Dừng sale mới, giữ order cũ |
-| `POST /capacity/buckets` | pool/start/end/total | Owner, no overlapping duplicate bucket |
-| `PATCH /capacity/buckets/:id` | newTotal/version | Không nhỏ hơn commitments |
-| `POST /bookings` | service/version, slot, brief, key | Price snapshot server, reserve + pending order |
+| `PATCH /workload` | max_active_units / accepting_orders / version | Owner; giảm giới hạn không hủy đơn đang có, chỉ chặn claim mới |
+| `POST /bookings` | service/version, brief, key | Price snapshot server, workload claim + pending order |
 | `POST /orders/:id/checkout` | provider option, key | Existing snapshot/hold; no duplicate charge |
 | `POST /orders/:id/start` | expectedVersion | Creator, funded, brief-ready, work start |
 | `POST /orders/:id/deliver` | assets/note, expectedVersion, key | Valid deliverable, correct creator/state |
@@ -1064,7 +1067,7 @@ Idempotency scope: actor + operation type + logical resource + key. Lưu request
 | `POST /applications/:id/select` | quoteVersion, key | Request owner, budget/count reservation |
 | `POST /hire-offers/:id/accept` | termsVersion, key | Target creator, capacity hold |
 | `POST /hire-offers/:id/decline` | reason | Target creator, release offer budget |
-| `POST /auctions` / `:id/schedule` | slot/prices/times | Creator, capacity lock |
+| `POST /auctions` / `:id/schedule` | service/prices/times | Creator, workload claim |
 | `POST /auctions/:id/bids` | amountAtomic, key | Server minimum/time, seller denied |
 | `POST /auctions/:id/buy-now` | version, key | Before first bid, exclusive sale intent |
 | `POST /assets/upload-intents` | purpose/size/mime/orderId? | Owner + allowlist + quota |
@@ -1084,7 +1087,7 @@ Read endpoints có pagination/DTO allowlist và authorization tương ứng. API
 ```text
 AUTH_REQUIRED / EMAIL_UNVERIFIED / FORBIDDEN / ACCOUNT_SUSPENDED
 INVALID_INPUT / VERSION_CONFLICT / IDEMPOTENCY_CONFLICT
-CAPACITY_UNAVAILABLE / SLOT_EXPIRED / CAPACITY_REDUCTION_CONFLICT
+CAPACITY_UNAVAILABLE / NOT_ACCEPTING_ORDERS / HOLD_EXPIRED
 BRIEF_INCOMPLETE / ORDER_STATE_CONFLICT / REVISION_LIMIT_REACHED
 QUOTE_EXPIRED / QUOTE_CHANGED / REQUEST_CLOSED / BUDGET_EXCEEDED
 AUCTION_NOT_LIVE / AUCTION_ENDED / BID_TOO_LOW / BUY_NOW_UNAVAILABLE
@@ -1094,7 +1097,7 @@ UNSUPPORTED_ASSET / WRONG_NETWORK / ASSET_QUARANTINED
 FEATURE_DISABLED / RATE_LIMITED / TEMPORARILY_UNAVAILABLE
 ```
 
-Mỗi error có hành động UI rõ: sửa field, refresh, chọn slot khác, chờ reconcile, liên hệ support. Không retry tự động một command non-idempotent. Không tự retry BID với giá cao hơn mà người dùng chưa đồng ý.
+Mỗi error có hành động UI rõ: sửa field, refresh, chọn creator khác hoặc post a request, chờ reconcile, liên hệ support. Không retry tự động một command non-idempotent. Không tự retry BID với giá cao hơn mà người dùng chưa đồng ý.
 
 ---
 
@@ -1235,10 +1238,10 @@ Không hứa hoàn tất theo số ngày trước khi audit repo. Agent ước l
 2. P1A-02: Sample upload/link, owner permissions, public/private visibility, moderation states.
 3. P1A-03: Service CRUD có version/snapshot, CREATE/PUBLISH/ACCESS data structures; Phase 1 UI ưu tiên CREATE.
 4. P1A-04: First SKU template 8–12 posts, CTA/hooks/revision/48h như nguồn.
-5. P1A-05: CapacityPool/Bucket/Slot/reserve/commit/release/consume, multi-service shared pool.
+5. P1A-05: CreatorWorkload + WorkloadClaim hold/activate/release/done, units_per_order, pause; mọi service của creator chia sẻ một giới hạn.
 6. P1A-06: Profile/service public, real reputation empty state, curated explore, share links và OG.
 7. P1A-07: Publish validation, pause/archive, conflict UX, owner-only management.
-8. P1A-08: Test capacity with real DB concurrent requests, timezone and shared pool.
+8. P1A-08: Test workload with real DB concurrent requests, multi-service sharing, giảm giới hạn và pause.
 
 **Deliverables:** creator có thể publish service thật vào DB, buyer xem đầy đủ và thấy availability thật.
 
@@ -1301,7 +1304,7 @@ Không hứa hoàn tất theo số ngày trước khi audit repo. Agent ước l
 
 **Tasks:**
 
-1. P3-01: Auction schema, exclusive slot reservation, schedule form, terms snapshot.
+1. P3-01: Auction schema, workload claim cho auction, schedule form, terms snapshot.
 2. P3-02: placeBid transactional validation+sequence+idempotency, public sanitized history.
 3. P3-03: Auction detail polling/server time, minimum price, user statuses và error recovery.
 4. P3-04: Close job+sweep, winner+pending order+24h deadline, no-bid/default release.
@@ -1358,7 +1361,7 @@ Không hứa hoàn tất theo số ngày trước khi audit repo. Agent ước l
 2. P6-02: PUBLISH listing: đúng channel account, format, publish time/window, disclosure, minimum live duration nếu có, evidence URL.
 3. P6-03: ACCESS: duration, timezone, meeting link private, buffer, cancel/no-show policy snapshot và interval conflict check.
 4. P6-04: Niche/category expansion data-driven, giữ common order/payment/reputation layer.
-5. P6-05: DIGITAL subphase: versioned asset, private download entitlement, license scope, rights text, limited/exclusive inventory nếu có. Không dùng weekly capacity giả cho file bán nhiều lần.
+5. P6-05: DIGITAL subphase: versioned asset, private download entitlement, license scope, rights text, limited/exclusive inventory nếu có. Không dùng workload limit cho file bán nhiều lần.
 6. P6-06: Exclusive license dùng stock/entitlement transaction, quantity 1 và no double sale; non-exclusive có policy downloads/version updates.
 7. P6-07: Platform-specific public evidence moderation/reporting; không cần deep API integration hoặc tự đăng bài lên mạng xã hội.
 8. P6-08: Regression Book/Request/Auction/payment/rights/privacy, mobile/accessibility và docs final.
@@ -1489,18 +1492,18 @@ Không phát hành với P0/P1 còn mở. P2 cần ghi owner/workaround/plan và
 | SUP-04 | Service có funded orders | Pause/archive | Sale mới dừng, order cũ và evidence còn nguyên |
 | SUP-05 | CREATE listing | Buyer checkout | Hiểu bàn giao cho buyer; không tự thêm nghĩa vụ publish |
 | SUP-06 | X API unavailable | Profile/service share flow | Hoạt động qua link/sample, không phụ thuộc deep integration |
-| CAP-01 | Một suất, 20 concurrent requests | Reserve cùng lúc bằng real connections | Chính xác một active claim, không negative capacity |
-| CAP-02 | Hai service dùng shared pool một unit | Book đồng thời hai service | Tổng chỉ một claim dù service ID khác |
+| CAP-01 | Creator còn đúng một chỗ, 20 concurrent requests | Book cùng lúc bằng real connections | Chính xác một claim mới, counters không vượt giới hạn |
+| CAP-02 | Hai service cùng creator, giới hạn một đơn | Book đồng thời hai service | Tổng chỉ một claim dù service ID khác; units_per_order được cộng đúng |
 | CAP-03 | Held checkout đã hết thời gian, provider terminal cancelled | Expiry worker chạy lặp | Release đúng một lần, order không hồi sinh qua refresh |
-| CAP-04 | Hold tới hạn, provider status UNKNOWN | Sweep/checkout khác | Claim được giữ, case cần reconcile; không bán vượt |
-| CAP-05 | Provider success tới sau hold đã safely released vì inconsistency | Slot đã bán cho buyer khác | Payment exception + refund/rebook consent, không tạo commitment thứ hai |
-| CAP-06 | Một completed job trong tuần capacity một | Refresh availability tuần đó | Quota đã tiêu vẫn consumed, không tự mở lại |
-| CAP-07 | Hai committed units | Giảm total capacity xuống một | Reject hoặc future-only change; không mất obligation |
-| CAP-08 | Creator đổi timezone hoặc DST boundary | Tạo week buckets | Không interval overlap/duplicate; booking instants cũ giữ nguyên |
-| CAP-09 | Auction đang giữ một slot | Close hoặc Buy Now tạo order | Chuyển cùng reservation, không reserved thêm unit |
-| CAP-10 | Accepted hire đã giữ capacity | Payment funding/expiry workers tranh nhau | Một đúng transition, budget/count/capacity nhất quán |
+| CAP-04 | Hold tới hạn, provider status UNKNOWN | Sweep/checkout khác | Claim được giữ, case cần reconcile; không nhận vượt |
+| CAP-05 | Provider success tới sau hold đã safely released và chỗ đã được người khác lấy | Funding arrives | Payment exception + refund/rebook consent, không tạo claim vượt giới hạn |
+| CAP-06 | Creator đầy chỗ, một đơn được APPROVED | Refresh trạng thái | Chỗ được nhả đúng một lần, creator nhận đơn mới được |
+| CAP-07 | Hai đơn đang làm | Creator giảm giới hạn xuống một | Hai đơn giữ nguyên; claim mới bị chặn tới khi còn dưới một |
+| CAP-08 | Creator bật Pause new orders | Book/hire/schedule auction mới | Bị chặn với NOT_ACCEPTING_ORDERS; đơn và auction đang chạy không bị ảnh hưởng |
+| CAP-09 | Auction đang giữ một chỗ | Close hoặc Buy Now tạo order | Chuyển cùng claim, không claim thêm |
+| CAP-10 | Accepted hire đã giữ chỗ | Payment funding/expiry workers tranh nhau | Một đúng transition, budget/count/workload nhất quán |
 | CAP-11 | ACCESS session có buffer | Hai appointment overlap | DB/invariant chặn; cuộc khác ngoài buffer được đặt |
-| CAP-12 | Cancellation sau work tiêu tốn capacity | Refund confirmed | Không tự trả quota công việc đã dùng |
+| CAP-12 | Đơn đang làm bị hủy/refund | Refund confirmed | Chỗ được nhả đúng một lần; reconciliation counters khớp tổng claims |
 
 ### 18.3. Order, delivery và reviews
 
@@ -1563,7 +1566,7 @@ Không phát hành với P0/P1 còn mở. P2 cần ghi owner/workaround/plan và
 | REQ-03 | Creator A muốn xem quote B | API compare/application read | Denied; request owner đọc đúng scope |
 | REQ-04 | Quote expired/updated hoặc availability stale | Buyer select | Explicit reconfirm/error, không silent price/capacity change |
 | REQ-05 | Target 2/budget 150, 3 offers cạnh tranh | Buyer selects concurrently | Active holds+commitments <= target/budget/per cap |
-| REQ-06 | Bespoke quote không service_id | Creator accepts capacity plan | Explicit pool/bucket/units, valid reservation trước checkout |
+| REQ-06 | Bespoke quote không service_id | Creator accepts hire | Explicit units, workload claim hợp lệ trước checkout |
 | REQ-07 | Offer 24h sắp hết, creator accept và buyer pay | Offer expiry + webhook race | Accepted offer không bị expiry cũ release budget; checkout timer tiếp quản |
 | REQ-08 | Hai funded hires, một hire lỗi | Close/cancel request hoặc fail một đơn | Đơn khác không biến mất, aggregate cập nhật đúng |
 | REQ-09 | Buyer select cùng quote hai lần | Retry idempotent/concurrent | Một offer/order thành công, no duplicate charge |
@@ -1574,7 +1577,7 @@ Không phát hành với P0/P1 còn mở. P2 cần ghi owner/workaround/plan và
 
 | ID | Given | When | Then / PASS |
 |---|---|---|---|
-| AUC-01 | Slot còn thật và payout ready | Schedule auction | Exclusive capacity claim, terms/prices/time snapshot |
+| AUC-01 | Creator còn chỗ và payout ready | Schedule auction | Workload claim riêng cho auction, terms/prices/time snapshot |
 | AUC-02 | Same auction, same minimum amount, concurrent buyers | Place bids | Một accepted mức đó, bid sau nhận min mới, DB sequence deterministic |
 | AUC-03 | starts_at chưa tới hoặc db_now==ends_at, job chậm | Place bid/Buy Now | Rejected theo server time |
 | AUC-04 | Seller hoặc suspended/unverified user | Bid | Denied, không alter highest |
@@ -1587,7 +1590,7 @@ Không phát hành với P0/P1 còn mở. P2 cần ghi owner/workaround/plan và
 | AUC-11 | Buy Now checkout expired | Retry/reload/relist | Auction cũ không âm thầm LIVE; relist ID mới nếu đủ capacity |
 | AUC-12 | LIVE chưa từng bid, chưa intent | Creator cancel concurrent first bid | Một outcome hợp lệ theo lock; nếu bid commit trước thì cancel bị chặn |
 | AUC-13 | UI mất mạng/sleep/reconnect | Resume | Fetch server snapshot/version, không giữ winning giả |
-| AUC-14 | Winner paid rất muộn sau slot đã release | Funding arrives | Exception/refund safe, không chiếm slot của buyer khác |
+| AUC-14 | Winner paid rất muộn sau claim đã release | Funding arrives | Exception/refund safe, không claim vượt giới hạn |
 
 ### 18.7. Crypto và multiasset rewards
 
@@ -1621,7 +1624,7 @@ Không phát hành với P0/P1 còn mở. P2 cần ghi owner/workaround/plan và
 | XPL-01 | Creator thêm social URL thủ công | Public profile | Self-reported label, không “verified” giả |
 | XPL-02 | PUBLISH service bán suất đăng | Deliver/approve | Channel/time/disclosure/proof theo snapshot, không chỉ file draft |
 | XPL-03 | ACCESS khác timezone, DST, buffer | Book/attend/cancel/no-show | Instant/lịch không trùng, policy riêng được áp đúng |
-| XPL-04 | DIGITAL non-exclusive | Two buyers purchase | Entitlement riêng, asset private, no weekly quota giả |
+| XPL-04 | DIGITAL non-exclusive | Two buyers purchase | Entitlement riêng, asset private, không chiếm workload |
 | XPL-05 | DIGITAL exclusive stock 1 | Two concurrent purchases | Một entitlement/sale hợp lệ, không double exclusive license |
 | XPL-06 | Private download quyền cũ/refunded theo policy | Download | Access đúng entitlement/version/refund rule, no public asset leak |
 | OPS-01 | Job crash giữa remote success và DB write | Restart/reconcile | Exactly-once semantic effect, no duplicate charge/transfer |
@@ -1629,7 +1632,7 @@ Không phát hành với P0/P1 còn mở. P2 cần ghi owner/workaround/plan và
 | OPS-03 | Release có schema additive | Deploy/rollback app | App trước/sau compatible, financial writes không mất |
 | OPS-04 | Payment incident | Tắt checkout kill switch | New charge dừng, webhook/reconcile/refund obligations vẫn hoạt động |
 | OPS-05 | Operator mới đọc docs | Reproduce smoke/retry failed op | Làm được không SQL force state, evidence/audit rõ |
-| OPS-06 | Seed, internal smoke, failed và real completed orders | Weekly report | Chỉ real eligible orders tính đúng một lần; platform revenue zero |
+| OPS-06 | Seed, internal smoke, failed và real completed orders | Weekly report | Chỉ real eligible orders tính đúng một lần; platform revenue khớp fee snapshot |
 | OPS-07 | Mobile 360 px, long text, keyboard-only | Full booking/delivery/review | Không overflow/action mất, focus/error accessible |
 | OPS-08 | Missing legal entity/provider/budget/authority | Live release check | Blocker cụ thể, artifacts sẵn; không tự claim live pass |
 
@@ -1771,8 +1774,8 @@ Mỗi runbook trong repo phải có: signal/alert, severity, quyền cần có, 
 
 1. Tìm reservation state, expiry, payment attempt và request/auction origin.
 2. UNKNOWN/provider unavailable giữ claim; xác minh terminal rồi release bằng domain command.
-3. So sánh bucket counters với reservation sums.
-4. Nếu mismatch do bug: dừng new bookings pool liên quan, chạy diagnostic/reconcile có audit; không bật lại trước invariant pass.
+3. So sánh workload counters với tổng claims theo state.
+4. Nếu mismatch do bug: pause creator liên quan, chạy diagnostic/reconcile có audit; không bật lại trước invariant pass.
 5. Accepted hire/auction transferred reservation không được expire bằng timer cũ.
 
 ### 20.5. Auction kết thúc nhưng chưa có winner
@@ -1861,7 +1864,7 @@ Bảng này giúp agent chứng minh không bỏ yêu cầu khi chia phase. Tron
 | 4 | Ba cơ chế giao dịch | 7,9,10 | 1–3 / ORD, REQ, AUC |
 | 5 | Common order/fund/deliver/release/rating | 7,8 | 1 onward / ORD, PAY, REV |
 | 6 | CREATE/PUBLISH/ACCESS/DIGITAL | 1.3, 12, 16.9 | 1,6 / SUP, XPL |
-| 7 | Availability thật, capacity giảm khi book | 5.2,6 | 1 onward / CAP |
+| 7 | Không nhận quá số đơn làm được; giữ chỗ khi book | 5.2,6 | 1 onward / CAP (workload limit từ 14/09/2026) |
 | 8 | Creator profile và trust signals | 1,7.6,12 | 1 / SUP, REV |
 | 9 | X/AI/SaaS wedge, không X API dependency | 1.4,12,16.9 | 1,6 / SUP-06, XPL |
 | 10 | SaaS Launch Thread SKU | 1.4,16.2 | 1 / SUP, ORD |
@@ -1901,7 +1904,7 @@ Agent phải giữ rõ provenance, để người review biết đâu là ý tư
 1. **User override (14/09/2026):** bỏ cam kết 0% platform fee; mức phí và bên chịu phí chưa quyết. Định vị: startup AI/SaaS/DevTools thuê creator X viết về tech.
 2. **Build decision:** Supabase Auth được chọn thay vì để hai lựa chọn auth; Inngest được chọn cho jobs.
 3. **Build decision:** Supabase Storage ban đầu thay R2/S3, có interface chuyển sau.
-4. **Build decision:** Shared capacity pool, immutable snapshots, private app schema/server DAL, ledger/inbox/outbox là cơ chế bảo đảm giao dịch đúng.
+4. **Build decision:** Workload limit (số đơn đang làm cùng lúc, chia sẻ giữa các service; thay suất/tuần từ 14/09/2026), immutable snapshots, private app schema/server DAL, ledger/inbox/outbox là cơ chế bảo đảm giao dịch đúng.
 5. **Build decision:** Canonical pending order được tạo trước funding cho mọi source, thay sơ đồ tạo order muộn của auction.
 6. **Build decision:** One standard revision, review 72h, expiry/timer/cancel defaults và zero-bid Buy Now policy được xác định để agent không đoán.
 7. **Build decision:** Bên chịu phí bên thứ ba không tự suy từ mô hình phí nền tảng; sandbox CREATOR_AT_COST, production explicit fee-payer/cap/reserve gate.
@@ -1980,9 +1983,9 @@ Agent tiếp nối phải đọc BUILD_STATUS + HANDOFF + ADRs mới, `git statu
 
 Chuẩn bị script reproducible theo đúng capability:
 
-1. Creator mới đăng ký, tạo profile/samples/service, mở một capacity pool thật trong test DB.
+1. Creator mới đăng ký, tạo profile/samples/service, đặt giới hạn đơn cùng lúc thật trong test DB.
 2. Buyer đặt dịch vụ, thấy fee zero, nộp brief, thanh toán qua sandbox, creator giao, buyer yêu cầu sửa/approve, settlement thành công, review.
-3. Buyer khác tranh last slot, chứng minh conflict không oversell.
+3. Buyer khác tranh chỗ cuối cùng của creator, chứng minh không nhận vượt giới hạn.
 4. Buyer đăng request tuyển hai creator; so sánh, chọn/confirm, hai orders riêng, budget đúng.
 5. Creator tạo auction; hai bidder tham gia; close + winner funding; thử no-bid/default và Buy Now race bằng tests.
 6. Testnet crypto fund pool, allocate hai creators, release cash/token riêng, retry failure component, refund unused.
