@@ -2,7 +2,7 @@
 
 **Phiên bản:** 1.1 · **Ngày biên soạn:** 13/09/2026 · **Cập nhật:** 14/09/2026 (bỏ cam kết phí 0%, chốt định vị, capacity = số đơn đang làm cùng lúc) · **Ngôn ngữ làm việc:** tiếng Việt.
 
-**Yêu cầu đã chốt:** xây sản phẩm theo `creator_capacity_marketplace_plan.md`. **Phí nền tảng chưa chốt** (xem §8.1); định vị ban đầu: startup AI/SaaS/DevTools thuê creator X viết về tech (xem §1.2.1). File này là đặc tả để giao việc cho coding agent, không phải báo cáo sản phẩm đã được xây hoặc kiểm thử.
+**Yêu cầu đã chốt:** xây sản phẩm theo `creator_capacity_marketplace_plan.md`. **Phí nền tảng chưa chốt** (xem §8.1); định vị: **web3 là chính** (dự án web3 thuê creator crypto-native trên X), AI/SaaS/DevTools là phụ (xem §1.2.1). File này là đặc tả để giao việc cho coding agent, không phải báo cáo sản phẩm đã được xây hoặc kiểm thử.
 
 **Cách dùng:** đưa toàn bộ file này cho agent có quyền truy cập repository. Yêu cầu agent thực hiện lần lượt các phase, cập nhật bằng chứng vào repository và tiếp tục qua các phase độc lập khi một tích hợp bên ngoài chưa sẵn sàng. Không chỉ yêu cầu agent “tham khảo”.
 
@@ -106,14 +106,36 @@ Creator đăng **dịch vụ + khả năng nhận việc thực tế**. Buyer đ
 
 Một user có thể đồng thời là buyer và creator. Quyền admin/moderator/finance không được tự chọn trong onboarding. Chuyển tab “Buyer / Creator” không thay đổi quyền server.
 
-### 1.2.1. Định vị và khách hàng mục tiêu (chốt 14/09/2026)
+### 1.2.1. Định vị và khách hàng mục tiêu (cập nhật 14/09/2026)
 
-- **Bên mua:** startup và công ty AI / SaaS / DevTools cần nội dung khi ra mắt sản phẩm.
-- **Bên bán:** creator trên X viết về tech: thread writer, researcher, copywriter, consultant bán sản phẩm giao được.
+**Thị trường chính: web3.**
+- **Bên mua:** dự án web3 cần nội dung khi ra mắt/tăng trưởng: protocol, L1/L2, DeFi, ví, infra, game, dự án chuẩn bị mainnet/TGE.
+- **Bên bán:** creator crypto-native trên X: researcher, thread writer, analyst, copywriter, KOL.
+- **Việc điển hình:** thread giải thích dự án, research/deep dive, nội dung launch/mainnet/TGE, nội dung testnet campaign, bài tài trợ trên kênh KOL (PUBLISH), AMA/Space (ACCESS).
+
+**Thị trường phụ: AI / SaaS / DevTools** — startup cần nội dung launch, thuê creator X viết về tech. Dùng cùng sản phẩm, không làm thông điệp dẫn đầu.
+
+**Chung cho cả hai:**
 - **Bốn loại sản phẩm (§1.3):** CREATE = bài viết/nội dung; PUBLISH = lượt đăng trên kênh creator; ACCESS = thời gian tư vấn theo lịch; DIGITAL = sản phẩm số bán nhiều lần.
 - **Ba cách mua:** Book Now, Request/Campaign nhiều creator, Auction.
-- **Thông điệp chính:** thuê creator X cho launch AI/SaaS, thuê cả đội trong một campaign, điều khoản chốt lúc mua, uy tín thật không chạy theo follower. Không dùng "0% fee" hay "lịch trống thật" làm thông điệp (creator mới luôn trống; lịch trên sàn không phản ánh việc ngoài sàn).
-- **Ngoài phạm vi:** bán tín hiệu giao dịch/khuyến nghị đầu tư; lời hứa lợi nhuận. Crypto pool là mở rộng cho campaign, không phải thông điệp dẫn đầu.
+
+**USP để marketing** (trạng thái tại 14/09/2026; không quảng bá mục chưa có như đã có):
+
+| # | USP | Trạng thái |
+|---|---|---|
+| 1 | Chỉ creator crypto-native / tech trên X, hiểu sản phẩm và có người đọc thật | Định vị; cần tuyển creator |
+| 2 | Campaign creator/KOL: một brief thuê cả đội, ngân sách chung, mỗi người một order | Đã có (local) |
+| 3 | Quỹ thưởng: nạp USDC/token/whitelist một lần, trả từng creator khi bài được duyệt, rút phần chưa dùng | Logic đã có, chỉ trên devnet giả lập |
+| 4 | Bằng chứng bài đăng: post URL, thời điểm, disclosure tài trợ | Chưa có (P6/XPL-02) |
+| 5 | Uy tín minh bạch: mẫu bài và lịch sử giao đúng hạn, không xếp theo follower; dưới 3 đánh giá hiện "New" | Đã có (local) |
+| 6 | Điều khoản chốt lúc mua, hạn giao tính khi đủ tiền + brief, giải ngân khi duyệt, có dispute | Đã có (mock payments) |
+| 7 | Creator chỉ nhận đơn trong giới hạn đang làm được, có Pause | Đã chốt spec (§6), chưa code |
+| 8 | Đấu giá chỗ nhận việc của creator đông khách | Đã có (local) |
+
+- **Tagline tham khảo:** "Run creator campaigns on X for your web3 launch — fund once in USDC, pay each creator on approval." Phụ: "Hire one creator or a whole launch team — scope locked, paid on approval."
+- **Không dùng làm thông điệp:** "0% fee"; "lịch trống thật"; "escrow"/"trustless"/"guaranteed"; crypto/Arc "đã live" khi mới devnet/testnet; số liệu, khách hàng, đánh giá chưa có thật.
+- **Quy tắc bắt buộc cho web3:** bài tài trợ phải có disclosure; cấm hứa lợi nhuận, tín hiệu giao dịch/khuyến nghị đầu tư, shill trá hình và fake engagement; token reward không gắn giá USD bảo đảm. Crypto là rail thanh toán và reward quan trọng nhưng người mua vẫn trả được bằng thẻ; không bắt tạo ví.
+- **Chưa chốt (cần chủ sản phẩm quyết):** có đôn crypto thật (Arc testnet, contract, custody) lên trước P6 không; có kiểm duyệt dự án trước khi cho mở campaign không.
 
 ### 1.3. Taxonomy
 
@@ -125,6 +147,8 @@ Một user có thể đồng thời là buyer và creator. Quyền admin/moderat
 Social network là thuộc tính của listing/profile. Category không được chỉ gồm X/TikTok/Instagram. Follower count là tín hiệu phụ; sample, niche, lịch giao, lịch sử hoàn thành phải được ưu tiên.
 
 ### 1.4. Seed offer cho Phase 1
+
+SKU mẫu cho thị trường chính nên là bản web3 tương đương (ví dụ thread giải thích protocol/launch), cùng khung dưới đây. `SaaS Launch Thread` giữ làm SKU cho thị trường phụ.
 
 `SaaS Launch Thread`, category CREATE, dành cho AI/SaaS/DevTools:
 
@@ -162,7 +186,7 @@ Mục này lấp những chỗ nguồn chưa quy định. Ghi chúng vào ADR/co
 | Giá fiat ban đầu | USD; một currency trên mỗi order/auction/request |
 | Ai chịu phí bên thứ ba | Mặc định thiết kế: creator chịu chi phí xử lý thực tế có disclosure, không markup; capability gate phải xác nhận provider hỗ trợ cách hạch toán này trước live |
 | Buyer surcharge | Tắt; không tự cộng phí xử lý lên buyer |
-| UI language | English cho thị trường X/AI/SaaS; copy tách message catalog để thêm Vietnamese mà không rewrite |
+| UI language | English cho thị trường X/web3 (chính) và AI/SaaS (phụ); copy tách message catalog để thêm Vietnamese mà không rewrite |
 | Múi giờ | Lưu UTC; creator chọn IANA timezone; UI hiển thị timezone cho mốc hẹn |
 | Checkout hold | 15 phút, nhưng việc hoàn trả inventory chỉ xảy ra sau khi payment attempt đã được xác minh terminal, xem mục capacity |
 | Brief | Thu tối thiểu trước checkout; brief đã chốt là một snapshot của order |
@@ -971,7 +995,7 @@ Mỗi page có loading, empty, error, unauthorized, not found và success states
 
 | Route đề xuất | Nội dung/CTA | Phase |
 |---|---|---|
-| `/` | Proposition cho startup AI/SaaS/DevTools thuê creator X, first SKU, curated real services, cách giao dịch và phí công khai | 1 |
+| `/` | Landing: proposition cho dự án web3 (chính) và startup AI/SaaS (phụ) thuê creator X, first SKU, curated real services, cách giao dịch và phí công khai | 1 |
 | `/explore` | Curated/simple list ban đầu; advanced search ở Phase 5 | 1/5 |
 | `/creators/[handle]` | Bio, niche, samples, real reputation, availability/services | 1 |
 | `/services/[id-or-slug]` | Scope, sample, price, trạng thái nhận đơn, Book CTA | 1 |
@@ -1367,7 +1391,7 @@ Không hứa hoàn tất theo số ngày trước khi audit repo. Agent ước l
 8. P6-08: Regression Book/Request/Auction/payment/rights/privacy, mobile/accessibility và docs final.
 9. P6-09: Buyer bank funding extension qua provider-managed method khi eligible: pending settlement, funding failure/return, bounded inventory reservation riêng, deadline đủ dài, no work before verified funding. Default off đến khi có policy thời hạn cụ thể phù hợp rail và tests BNK; không tái dùng hold thẻ 15 phút cho chuyển khoản nhiều ngày. Không thu screenshot chuyển khoản làm bằng chứng funded.
 
-**Deliverables:** marketplace mở rộng kênh và loại hàng, brand/architecture không Web3-only.
+**Deliverables:** marketplace mở rộng kênh và loại hàng. Web3 là thị trường chính nhưng brand/architecture không Web3-only: người mua fiat vẫn dùng được, không bắt tạo ví.
 
 **Exit:** XPL suite PASS. DIGITAL là late subphase từ mục “Later” của nguồn: agent lập task và thực hiện sau core khi tiếp tục full plan, không làm điều kiện chặn first release. Nếu rights/cancellation digital production chưa chốt, sandbox hoàn tất và flag live off.
 
@@ -1866,7 +1890,7 @@ Bảng này giúp agent chứng minh không bỏ yêu cầu khi chia phase. Tron
 | 6 | CREATE/PUBLISH/ACCESS/DIGITAL | 1.3, 12, 16.9 | 1,6 / SUP, XPL |
 | 7 | Không nhận quá số đơn làm được; giữ chỗ khi book | 5.2,6 | 1 onward / CAP (workload limit từ 14/09/2026) |
 | 8 | Creator profile và trust signals | 1,7.6,12 | 1 / SUP, REV |
-| 9 | X/AI/SaaS wedge, không X API dependency | 1.4,12,16.9 | 1,6 / SUP-06, XPL |
+| 9 | X wedge: web3 chính, AI/SaaS phụ; không X API dependency | 1.4,12,16.9 | 1,6 / SUP-06, XPL |
 | 10 | SaaS Launch Thread SKU | 1.4,16.2 | 1 / SUP, ORD |
 | 11 | Crypto vertical, multi-creator campaign | 9,11 | 2,4 / REQ, CRY |
 | 12 | Card/bank/USDC, creator payout | 8,11,19 | 1,4 / PAY, CRY; bank payment enable theo capability |
@@ -1901,7 +1925,7 @@ Bank payment cho buyer là later payment-method enablement: chỉ bật sau khi 
 
 Agent phải giữ rõ provenance, để người review biết đâu là ý tưởng gốc và đâu là phương án triển khai:
 
-1. **User override (14/09/2026):** bỏ cam kết 0% platform fee; mức phí và bên chịu phí chưa quyết. Định vị: startup AI/SaaS/DevTools thuê creator X viết về tech.
+1. **User override (14/09/2026):** bỏ cam kết 0% platform fee; mức phí và bên chịu phí chưa quyết. Định vị: web3 là chính (dự án web3 thuê creator crypto-native trên X), AI/SaaS/DevTools là phụ.
 2. **Build decision:** Supabase Auth được chọn thay vì để hai lựa chọn auth; Inngest được chọn cho jobs.
 3. **Build decision:** Supabase Storage ban đầu thay R2/S3, có interface chuyển sau.
 4. **Build decision:** Workload limit (số đơn đang làm cùng lúc, chia sẻ giữa các service; thay suất/tuần từ 14/09/2026), immutable snapshots, private app schema/server DAL, ledger/inbox/outbox là cơ chế bảo đảm giao dịch đúng.
