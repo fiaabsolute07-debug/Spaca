@@ -4,12 +4,14 @@ import { adminCommands } from '@/modules/admin/commands';
 import { auctionCommands } from '@/modules/auctions/commands';
 import { catalogCommands } from '@/modules/catalog/commands';
 import { cryptoCommands } from '@/modules/crypto/commands';
+import { moderationCommands } from '@/modules/moderation/commands';
 import { orderCommands } from '@/modules/orders/commands';
 import { poolCommands } from '@/modules/pools/commands';
+import { publishCommands } from '@/modules/publish/commands';
 import { requestCommands } from '@/modules/requests/commands';
 import { rewardCommands } from '@/modules/rewards/commands';
 
-const modules = [catalogCommands, orderCommands, requestCommands, auctionCommands, rewardCommands, cryptoCommands, poolCommands, adminCommands];
+const modules = [catalogCommands, orderCommands, requestCommands, auctionCommands, rewardCommands, cryptoCommands, poolCommands, publishCommands, moderationCommands, adminCommands];
 
 export const commandHandlers: Readonly<Record<string, CommandHandler>> = (() => {
   const merged: Record<string, CommandHandler> = {};

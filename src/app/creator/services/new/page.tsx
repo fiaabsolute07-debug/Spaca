@@ -1,4 +1,6 @@
-import { CommandForm, Field } from '@/components/ui';
+import Link from 'next/link';
+import { CommandForm, Field, row, rows, str } from '@/components/ui';
+import { getDashboardData } from '@/lib/read-model';
 import { Notices } from '@/components/notices';
 import { PageHeading } from '@/components/page-heading';
 import { CategoryField } from '@/components/category-field';
@@ -18,6 +20,7 @@ export default async function NewServicePage({
   } = await requireActorOrLoginPrompt(route, query);
   if (!actor) return prompt;
   const notices = <Notices query={query} />;
+  const accounts = rows(row(row(await getDashboardData(actor)).profile).social_accounts);
   return <main className="container">
     {notices}
     <PageHeading
@@ -46,14 +49,35 @@ export default async function NewServicePage({
           required
           placeholder="What the buyer receives, what is out of scope, and what a complete brief includes."
         />
+        <h3>If you chose PUBLISH</h3>
+        <p className="muted">
+          PUBLISH means you post on your own channel. Buyers see the account, format, disclosure and how long the post stays up.
+          {accounts.length === 0 && <> <Link className="text-link" href="/settings/profile">Link an account first ›</Link></>}
+        </p>
+        <div className="form-grid">
+          <Field name="publish_account_id" label="Posting account">
+            <select name="publish_account_id" defaultValue="">
+              <option value="">Not a PUBLISH service</option>
+              {accounts.map(account => <option key={str(account.id)} value={str(account.id)}>{account.handle ? `@${str(account.handle)}` : str(account.url)} · {str(account.platform)}</option>)}
+            </select>
+          </Field>
+          <Field name="publish_format" label="Post format">
+            <select name="publish_format" defaultValue="POST">
+              {[['POST', 'Post'], ['THREAD', 'Thread'], ['QUOTE_POST', 'Quote post'], ['VIDEO', 'Video'], ['NEWSLETTER_ISSUE', 'Newsletter issue'], ['ARTICLE', 'Article']].map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+            </select>
+          </Field>
+          <Field name="min_live_hours" label="Keeps the post live for (hours)" type="number" value="72" />
+          <Field name="disclosure_text" label="Sponsorship disclosure" value="#ad" />
+        </div>
         <h3>Work samples</h3>
+        <p className="muted">One strong sample is enough to publish. Add up to two more if you have them.</p>
         <div className="form-grid">
           <Field name="sample_url_1" label="Sample URL 1" required />
           <Field name="sample_title_1" label="Sample title 1" required />
-          <Field name="sample_url_2" label="Sample URL 2" required />
-          <Field name="sample_title_2" label="Sample title 2" required />
-          <Field name="sample_url_3" label="Sample URL 3" required />
-          <Field name="sample_title_3" label="Sample title 3" required />
+          <Field name="sample_url_2" label="Sample URL 2" />
+          <Field name="sample_title_2" label="Sample title 2" />
+          <Field name="sample_url_3" label="Sample URL 3" />
+          <Field name="sample_title_3" label="Sample title 3" />
         </div>
         <p className="muted">
           The draft is created first. Publishing is a separate action so you can review

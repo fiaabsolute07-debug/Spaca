@@ -63,15 +63,26 @@ export async function workloadDrift(): Promise<number> {
 
 export const key = (label: string) => `it-${runId}-${label}-${randomUUID().slice(0, 8)}`;
 
+/** A unique X handle (≤15 chars) for PUBLISH fixtures; accounts are unique across the marketplace. */
+export const xHandle = () => `t${randomUUID().replaceAll('-', '').slice(0, 13)}`;
+
+export async function linkXAccount(command: (actor: TestUser, fields: Record<string, string>) => Promise<JsonResult>, creator: TestUser, handle = xHandle()): Promise<{ accountId: string; handle: string }> {
+  const linked = await command(creator, { command: 'add_social_account', idempotency_key: key('social'), platform: 'X', account: `https://x.com/${handle}` });
+  if (linked.status !== 200) throw new Error(`add_social_account failed: ${JSON.stringify(linked.body)}`);
+  return { accountId: String(linked.body.id), handle: handle.toLowerCase() };
+}
+
 /** Local wall-clock ISO without zone; the command parser appends `Z`. */
 export const commandInstant = (date: Date) => date.toISOString().slice(0, 19);
 
 export async function createPublishedService(
   command: (actor: TestUser, fields: Record<string, string>) => Promise<JsonResult>,
   creator: TestUser,
-  options: { capacity?: number; price?: string; taxonomy?: string; unitsPerOrder?: number } = {},
-): Promise<{ serviceId: string; creatorId: string }> {
+  options: { capacity?: number; price?: string; taxonomy?: string; unitsPerOrder?: number; minLiveHours?: number } = {},
+): Promise<{ serviceId: string; creatorId: string; publishHandle?: string }> {
+  const channel = options.taxonomy === 'PUBLISH' ? await linkXAccount(command, creator) : null;
   const created = await command(creator, {
+    ...(channel ? { publish_account_id: channel.accountId, publish_format: 'THREAD', min_live_hours: String(options.minLiveHours ?? 48), disclosure_text: '#ad' } : {}),
     command: 'create_service',
     idempotency_key: key('create-service'),
     title: `IT service ${runId}`,
@@ -94,5 +105,5 @@ export async function createPublishedService(
   // `capacity` is the creator's active-order limit, shared by all of their services.
   const limited = await command(creator, { command: 'set_workload_limit', idempotency_key: key('limit'), max_active_units: String(options.capacity ?? 1) });
   if (limited.status !== 200) throw new Error(`set_workload_limit failed: ${JSON.stringify(limited.body)}`);
-  return { serviceId, creatorId: creator.id };
+  return { serviceId, creatorId: creator.id, ...(channel ? { publishHandle: channel.handle } : {}) };
 }

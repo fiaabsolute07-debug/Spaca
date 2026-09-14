@@ -1,6 +1,6 @@
 import { afterAll, describe, expect, it, vi } from 'vitest';
 import { createHash, randomUUID } from 'node:crypto';
-import { RUN_DB, ORIGIN, callRoute, commandInstant, createUser, key, runId, sessionState, type TestUser } from './harness';
+import { RUN_DB, ORIGIN, callRoute, commandInstant, createUser, key, runId, sessionState, type TestUser, linkXAccount } from './harness';
 
 vi.mock('next/headers', () => ({
   cookies: async () => {
@@ -42,7 +42,10 @@ async function creatorWithProfile(label: string, niche = NICHE): Promise<TestUse
 }
 
 async function publish(creator: TestUser, input: { title: string; taxonomy?: string; price: string; turnaround: string; capacity?: string }) {
+  // PUBLISH listings need the creator's own posting channel (P6-02).
+  const channel = input.taxonomy === 'PUBLISH' ? await linkXAccount(command, creator) : null;
   const created = await command(creator, {
+    ...(channel ? { publish_account_id: channel.accountId, publish_format: 'POST', min_live_hours: '72', disclosure_text: '#ad' } : {}),
     command: 'create_service', idempotency_key: key('svc'), title: input.title, description: `Scope for ${input.title} with deliverables and exclusions.`,
     taxonomy: input.taxonomy ?? 'CREATE', price: input.price, turnaround_hours: input.turnaround,
     sample_url_1: 'https://example.com/1', sample_title_1: 'Sample one', sample_url_2: 'https://example.com/2', sample_title_2: 'Sample two',

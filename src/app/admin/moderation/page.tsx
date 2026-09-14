@@ -6,15 +6,38 @@ import { AdminCommand, AdminPage, SelectField, operatorRead } from '@/components
 
 export const dynamic = 'force-dynamic';
 
+const REPORT_ACTIONS: Record<string, string[]> = {
+  REQUEST: ['NONE', 'CLOSE_REQUEST', 'SUSPEND_USER'],
+  SERVICE: ['NONE', 'PAUSE_SERVICE', 'SUSPEND_USER'],
+  PROFILE: ['NONE', 'SUSPEND_USER'],
+  SAMPLE: ['NONE', 'REJECT_SAMPLE', 'SUSPEND_USER'],
+  ORDER: ['NONE', 'SUSPEND_USER'],
+  PUBLISH_PROOF: ['NONE', 'SUSPEND_USER'],
+};
+
 export default async function ModerationPage({ searchParams }: PageProps) {
   const query = await searchParams;
   const route = '/admin/moderation';
   const { actor, prompt } = await requireActorOrLoginPrompt(route, query);
   if (!actor) return prompt;
-  const { pending_samples: samples } = await operatorRead(() => getOperatorQueues(actor));
+  const { pending_samples: samples, open_reports: reports } = await operatorRead(() => getOperatorQueues(actor));
 
   return <AdminPage actor={actor} route={route} query={query} title="Moderation"
-    description="Review pending sample metadata and quarantine unsafe assets. Changes require moderator or admin.">
+    description="Resolve content reports, review pending sample metadata and quarantine unsafe assets. Changes require moderator or admin.">
+    <h2>Open reports ({reports.length})</h2>
+    {!reports.length && <p className="muted">No open reports are visible to your roles.</p>}
+    <div className="admin-card-grid">
+      {reports.map(report => <section className="panel" key={str(report.id)}>
+        <h2>{str(report.reason).replaceAll('_', ' ').toLowerCase()}</h2>
+        <Badge>{str(report.target_type)}</Badge>
+        <p className="prewrap">{str(report.details)}</p>
+        <p>Target: {str(report.target_id)}<br />Reported by: {str(report.reporter_name, 'Policy check')}<br />Received: {date(report.created_at)}</p>
+        <AdminCommand command="admin_resolve_report" route={route} values={{ report_id: str(report.id) }} label="Resolve report">
+          <SelectField name="decision" label="Decision" options={['ACTIONED', 'DISMISSED']} />
+          <SelectField name="action" label="Action (when actioned)" options={REPORT_ACTIONS[str(report.target_type)] ?? ['NONE']} />
+        </AdminCommand>
+      </section>)}
+    </div>
     <section className="panel">
       <h2>Quarantine an asset</h2>
       <p>Quarantine removes the file from download access. Enter the asset ID from an operator record.</p>

@@ -204,7 +204,7 @@ Mục này lấp những chỗ nguồn chưa quy định. Ghi chúng vào ADR/co
 | Request quote expiry | 7 ngày hoặc application deadline, chọn mốc sớm hơn; creator có thể chọn ngắn hơn |
 | Giữ chỗ khi buyer chọn quote | Offer chờ creator xác nhận tối đa 24 giờ; chỉ checkout khi capacity đã được xác nhận và giữ |
 | Pagination | 20 items mặc định, tối đa 100; cursor cho danh sách tăng nhanh |
-| Samples khi publish | Ít nhất 3 sample hợp lệ trên profile, ít nhất 1 gắn với service |
+| Samples khi publish | Ít nhất 1 sample hợp lệ (công khai, đã duyệt) gắn với service (chốt 15/09/2026, trước đó là 3) |
 | Seed marketplace | 3–5 creator và dữ liệu fixture rõ `is_test`; production sạch |
 
 Các deadline trên là policy đề xuất, không phải quy định pháp lý. Agent phải snapshot policy version, kiểm thử timer và đưa text cho chủ sản phẩm review trước public launch. Luồng tiền live vẫn phải khớp điều kiện provider thực tế.
@@ -1577,7 +1577,7 @@ Không phát hành với P0/P1 còn mở. P2 cần ghi owner/workaround/plan và
 
 | ID | Given | When | Then / PASS |
 |---|---|---|---|
-| SUP-01 | Profile chưa đủ 3 samples | Publish service | Field errors, giữ draft; đủ sample mới publish |
+| SUP-01 | Service chưa có sample công khai đã duyệt gắn vào | Publish service | Field errors, giữ draft; có 1 sample hợp lệ gắn với service mới publish |
 | SUP-02 | Creator mới chưa có jobs/reviews | Public profile | “New creator”/“—”, không 5 sao/100% on time giả |
 | SUP-03 | Order snapshot V1 | Creator edit service price/scope V2 | Existing order V1, new checkout V2 sau consent |
 | SUP-04 | Service có funded orders | Pause/archive | Sale mới dừng, order cũ và evidence còn nguyên |

@@ -279,3 +279,29 @@ Commands:
 
 What counts: a checkout hold, an accepted offer awaiting payment, and a scheduled/live auction (from scheduling until it ends unsold or its order finishes) hold places. Funded work counts until the order is approved/completed or cancelled/refunded.
 
+
+## W8-PUB additions (2026-09-15): PUBLISH, linked accounts, reports
+
+Reads:
+- `getDashboardData(actor).profile.social_accounts`: `[{ id, platform, handle, url, verification_status }]`.
+- `getCreatorData(handle).social_accounts`: same fields. Always label `SELF_REPORTED` as "Self-reported"; never show "verified" unless `VERIFIED`.
+- Public service rows add `publish_platform, publish_handle, publish_url, publish_format, min_live_hours, disclosure_text` (PUBLISH only). Owner rows add `publish_account_id, publish_format, min_live_hours, disclosure_text`.
+- `getOrderData`:
+  - `publish_terms` (null unless PUBLISH): `{ account_id, platform, handle, channel_url, format, min_live_hours, disclosure_text, editorial_policy_version }`.
+  - `publish_proofs[]`: `{ id, delivery_id, delivery_version, platform, channel_url, post_url, post_id, published_at, disclosure_text, disclosure_attested, link_check: MATCHES_CHANNEL|SAME_PLATFORM, late }`.
+- `getRequestData`:
+  - `request` adds `publish_platform, publish_format, min_live_hours, disclosure_text`.
+  - Applications add `publish_account_id, publish_platform, publish_handle, publish_url, publish_verification`.
+  - Top level adds `my_social_accounts` (the creator's accounts on the request platform).
+- `getOperatorQueues(actor).open_reports` (moderator/admin): `{ id, source, target_type, target_id, reason, details, status, created_at, reporter_name }`.
+
+Commands:
+- `add_social_account`: `platform` (X, INSTAGRAM, TIKTOK, YOUTUBE, NEWSLETTER, WEBSITE), `account` (@handle or link). 409 duplicate.
+- `remove_social_account`: `account_id`. 409 while a published or paused listing posts on it.
+- `create_service` / `update_service` for PUBLISH: `publish_account_id` (required), `publish_format` (POST, THREAD, QUOTE_POST, VIDEO, NEWSLETTER_ISSUE, ARTICLE), `min_live_hours` (0–2160, default 72), `disclosure_text` (2–80, default "#ad"). Samples: one approved public sample linked to the service is enough to publish.
+- `book` on PUBLISH: `accept_publish_terms=on` required (422 otherwise). Briefs breaking the content policy return 422 with the rule.
+- `create_request` / `update_request` for PUBLISH: `publish_platform`, `publish_format`, `min_live_hours`, `disclosure_text`. Platform cannot change after publishing.
+- `apply` on PUBLISH: `publish_account_id` (own account on the request platform).
+- `deliver` on PUBLISH orders: `post_url`, `published_at` (datetime-local, UTC), `disclosure_attested=on`, optional `body`. 422 for another channel or a time before the order started; 400 for missing fields or a future time.
+- `report_content`: `target_type` (REQUEST, ORDER, SERVICE, PROFILE, SAMPLE, PUBLISH_PROOF), `target_id`, `reason` (UNDISCLOSED_PROMOTION, FAKE_ENGAGEMENT, GUARANTEED_RETURNS, DECEPTIVE_SCRIPT, IMPERSONATION, POST_REMOVED_EARLY, SPAM, OTHER), `details` (10+). Redirects back to `return_to`.
+- `admin_resolve_report` (moderator/admin): `report_id`, `decision` ACTIONED|DISMISSED, `action` (NONE, CLOSE_REQUEST, PAUSE_SERVICE, REJECT_SAMPLE, SUSPEND_USER per target), `reason`.

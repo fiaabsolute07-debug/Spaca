@@ -20,6 +20,7 @@ import type { Actor } from '@/lib/auth';
 import { enqueueNotification } from '@/modules/notifications/enqueue';
 import { PaymentFlowError, cancelOpenFunding, openCase, refundReasonFor, requestProviderRefund } from '@/modules/payments/funding';
 import { attachDeliveryAssets, lockDeliveryAssets, parseAssetIds } from '@/modules/storage/service';
+import { checkPublicationProof, publishTermsOf } from '@/modules/publish';
 import {
   MIN_DELIVERY_NOTE_CHARS,
   REVISION_TURNAROUND_HOURS,
@@ -104,6 +105,12 @@ const deliver = withOrder(async ({ tx, actor, form, order, orderId, status, isCr
     }
   }
   const assetIds = parseAssetIds(text(form, 'asset_ids', false, 1000));
+  // XPL-02: a PUBLISH order is delivered by the post itself on the sold channel, not by a draft file.
+  const publish = publishTermsOf(order.terms);
+  const proof = publish
+    ? checkPublicationProof(publish, form, order.work_start_at ? new Date(order.work_start_at) : null, order.delivery_due_at ? new Date(order.delivery_due_at) : null)
+    : null;
+  if (proof) url = proof.postUrl;
   // ORD-07: an empty or token delivery never starts the review clock; files must be finalized and not quarantined.
   if (!url && !assetIds.length && body.length < MIN_DELIVERY_NOTE_CHARS) {
     throw new CommandError(`A delivery needs a file, a link or at least ${MIN_DELIVERY_NOTE_CHARS} characters of delivered content`);
@@ -111,15 +118,21 @@ const deliver = withOrder(async ({ tx, actor, form, order, orderId, status, isCr
   await lockDeliveryAssets(tx, orderId, actor.id, assetIds);
   const version = Number((await latestDelivery(tx, orderId))?.version ?? 0) + 1;
   const [delivery] = await tx<Row[]>`insert into app.deliveries (order_id,body,url,version,validation_status,submitted_by)
-    values (${orderId},${body || (assetIds.length ? '(see attached files)' : '(see link)')},${url},${version},'VALID',${actor.id}) returning id`;
+    values (${orderId},${body || (proof ? '(published post)' : assetIds.length ? '(see attached files)' : '(see link)')},${url},${version},'VALID',${actor.id}) returning id`;
   await attachDeliveryAssets(tx, orderId, String(delivery!.id), assetIds);
+  if (publish && proof) {
+    await tx`insert into app.publish_proofs (order_id,delivery_id,platform,channel_url,post_url,post_id,published_at,disclosure_text,disclosure_attested,link_check,late)
+      values (${orderId},${String(delivery!.id)},${publish.platform},${publish.channel_url},${proof.postUrl},${proof.postId},${proof.publishedAt.toISOString()},
+        ${publish.disclosure_text},true,${proof.linkCheck},${proof.late})`;
+  }
   await resolveReviewHold(tx, orderId, 'SUPERSEDED');
   await expirePendingCancellation(tx, orderId);
   const window = termsOf(order).reviewWindowHours;
   const [updated] = await tx<Row[]>`update app.orders set status='DELIVERED',review_due_at=now() + (${window} * interval '1 hour'),revision_due_at=null,
     version=version+1,updated_at=now() where id=${orderId} returning review_due_at,delivery_due_at`;
   const late = updated!.delivery_due_at ? new Date() > new Date(updated!.delivery_due_at) : false;
-  await orderEvent(tx, orderId, actor.id, 'DELIVERED', { version, late, review_due_at: updated!.review_due_at });
+  await orderEvent(tx, orderId, actor.id, 'DELIVERED', { version, late, review_due_at: updated!.review_due_at,
+    ...(proof ? { post_url: proof.postUrl, published_at: proof.publishedAt.toISOString(), link_check: proof.linkCheck } : {}) });
   await enqueueNotification(tx, orderId, `notify:order.delivered:${orderId}:v${version}`, {
     templateId: 'order.delivered', recipientId: String(order.buyer_id), params: { orderRef: orderId, reviewDeadlineAt: new Date(updated!.review_due_at).toISOString() },
   });

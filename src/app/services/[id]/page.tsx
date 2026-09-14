@@ -4,6 +4,7 @@ import { getActor } from '@/lib/auth';
 import { getServiceData } from '@/lib/read-model';
 import { Badge, CommandForm, Empty, Field, availabilityLabel, money, num, row, rows, str } from '@/components/ui';
 import { Notices } from '@/components/notices';
+import { ReportForm } from '@/components/report-form';
 import type { PageProps } from '@/components/page-props';
 
 export const dynamic = 'force-dynamic';
@@ -60,16 +61,20 @@ export default async function ServicePage({
             {str(s.description)}
           </p>
           <h3>Usage & publishing</h3>
-          <p>
-            {str(s.taxonomy) === 'PUBLISH'
-              ? 'This service involves publishing on the creator’s channel. ' +
-                'Confirm channel, disclosure, and posting scope in the brief.'
-              : str(s.taxonomy) === 'ACCESS'
+          {str(s.taxonomy) === 'PUBLISH' ? <>
+            <p>
+              The creator publishes one {str(s.publish_format).replaceAll('_', ' ').toLowerCase()} on{' '}
+              <a className="text-link" href={str(s.publish_url)} target="_blank" rel="noreferrer">{s.publish_handle ? `@${str(s.publish_handle)}` : str(s.publish_url)}</a>{' '}
+              ({str(s.publish_platform)}, self-reported), labelled “{str(s.disclosure_text)}”, and keeps it live for at least {num(s.min_live_hours)} hours.
+            </p>
+            <p className="muted">You share key points in the brief; the creator writes the post in their own voice. The order is delivered with the post link and the time it went live.</p>
+          </> : <p>
+            {str(s.taxonomy) === 'ACCESS'
                 ? 'You are booking access to the creator’s expertise. ' +
                   'Agree on the meeting schedule in the brief.'
                 : 'Content is delivered for the buyer to use. Posting to the creator’s channel ' +
                   'is not included unless explicitly agreed in the scope.'}
-          </p>
+          </p>}
         </div>
         <div className="panel">
           <h2>A look at their work</h2>
@@ -130,6 +135,11 @@ export default async function ServicePage({
               required
               placeholder="Your product, audience, goals, links, and requirements (at least 20 characters)."
             />
+            {str(s.taxonomy) === 'PUBLISH' && <label className="field">
+              <span>
+                <input type="checkbox" name="accept_publish_terms" required /> The post is labelled “{str(s.disclosure_text)}” and written by the creator in their own words. My brief does not ask to hide the sponsorship or promise returns.
+              </span>
+            </label>}
             <label className="field">
               <span>
                 <input type="checkbox" name="accept_terms" /> I agree that version {str(s.service_version)} of these terms applies, and that a
@@ -153,6 +163,7 @@ export default async function ServicePage({
             Local sandbox: checkout uses simulated funds. Your reservation is time limited.
             Delivery begins after funding and a complete brief.
           </div>
+          {actor && actor.id !== str(s.creator_id) && <ReportForm targetType="SERVICE" targetId={str(s.id)} returnTo={`/services/${str(s.id)}`} label="Report this service" />}
         </div>
       </aside>
     </div>

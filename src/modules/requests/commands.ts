@@ -13,6 +13,9 @@ import { assertFlags } from '@/modules/admin/policy';
 import { enqueueNotification } from '@/modules/notifications/enqueue';
 import { applyPoolFunding } from '@/modules/payments/funding';
 import { allocateHire, poolTermsFor } from '@/modules/pools/service';
+import { assertContentPolicy } from '@/modules/moderation/policy';
+import { DELIVERABLE_BY_TAXONOMY } from '@/modules/catalog/commands';
+import { EDITORIAL_POLICY_VERSION, channelOf, isSocialPlatform, ownedSocialAccount, publishFields } from '@/modules/publish';
 
 const TAXONOMIES = ['CREATE', 'PUBLISH', 'ACCESS', 'DIGITAL'];
 export const HIRE_OFFER_HOURS = 24;
@@ -62,6 +65,14 @@ function deadlines(form: FormData, existing?: Row) {
   return { deadline, applicationDeadline };
 }
 
+/** PUBLISH requests say where and how creators post; each applicant then names their own account on that platform. */
+function requestPublishTerms(taxonomy: string, form: FormData, currentPlatform?: string) {
+  if (taxonomy !== 'PUBLISH') return null;
+  const platform = String(form.get('publish_platform') ?? '').trim() || currentPlatform || 'X';
+  if (!isSocialPlatform(platform)) throw new CommandError('Unsupported posting platform');
+  return { platform, ...publishFields(form) };
+}
+
 const createRequest: CommandHandler = async ({ tx, actor, form }) => {
   if (actor.status !== 'ACTIVE') throw new CommandError('Suspended accounts cannot publish requests', 'ACCOUNT_SUSPENDED');
   await assertFlags(tx, ['REQUESTS_ENABLED']);
@@ -69,11 +80,15 @@ const createRequest: CommandHandler = async ({ tx, actor, form }) => {
   const brief = text(form, 'brief', true, 12000);
   const taxonomy = text(form, 'taxonomy');
   if (!TAXONOMIES.includes(taxonomy)) throw new CommandError('Unsupported request category');
+  assertContentPolicy(title, brief);
   const { budget, cap, target } = budgetFields(form);
   const { deadline, applicationDeadline } = deadlines(form);
   if (applicationDeadline <= new Date()) throw new CommandError('Deadlines must be in the future');
-  const [request] = await tx<Row[]>`insert into app.requests (buyer_id,title,brief,taxonomy,budget_minor,per_creator_cap_minor,target_hires,deadline,application_deadline)
-    values (${actor.id},${title},${brief},${taxonomy},${budget.toString()},${cap?.toString() ?? null},${target},${deadline.toISOString()},${applicationDeadline.toISOString()}) returning id`;
+  const publish = requestPublishTerms(taxonomy, form);
+  const [request] = await tx<Row[]>`insert into app.requests (buyer_id,title,brief,taxonomy,budget_minor,per_creator_cap_minor,target_hires,deadline,application_deadline,
+      publish_platform,publish_format,min_live_hours,disclosure_text)
+    values (${actor.id},${title},${brief},${taxonomy},${budget.toString()},${cap?.toString() ?? null},${target},${deadline.toISOString()},${applicationDeadline.toISOString()},
+      ${publish?.platform ?? null},${publish?.format ?? null},${publish?.minLiveHours ?? null},${publish?.disclosure ?? null}) returning id`;
   return done(String(request!.id), 'Brief published. Creators can now apply.', String(request!.id));
 };
 
@@ -89,6 +104,10 @@ const updateRequest: CommandHandler = async ({ tx, actor, form }) => {
   const { deadline, applicationDeadline } = deadlines(form, request);
   const title = text(form, 'title', false, 160) || String(request.title);
   const brief = text(form, 'brief', false, 12000) || String(request.brief);
+  assertContentPolicy(title, brief);
+  // Posting terms can change for future offers; offers already sent keep their snapshot.
+  const publish = request.taxonomy === 'PUBLISH' && form.has('publish_format') ? requestPublishTerms('PUBLISH', form, String(request.publish_platform)) : null;
+  if (publish && publish.platform !== request.publish_platform) throw new CommandError('The posting platform cannot change after publishing the request');
   const held = BigInt(request.reserved_minor) + BigInt(request.committed_minor);
   const hires = Number(request.reserved_hires) + Number(request.committed_hires);
   if (budget < held || target < hires) {
@@ -96,12 +115,14 @@ const updateRequest: CommandHandler = async ({ tx, actor, form }) => {
   }
   await guardBudget(tx`update app.requests set title=${title},brief=${brief},budget_minor=${budget.toString()},per_creator_cap_minor=${cap?.toString() ?? null},
     target_hires=${target},deadline=${deadline.toISOString()},application_deadline=${applicationDeadline.toISOString()},
+    publish_platform=coalesce(${publish?.platform ?? null},publish_platform),publish_format=coalesce(${publish?.format ?? null},publish_format),
+    min_live_hours=coalesce(${publish?.minLiveHours ?? null}::int,min_live_hours),disclosure_text=coalesce(${publish?.disclosure ?? null},disclosure_text),
     status=case when status='FILLED' and committed_hires < ${target} then 'OPEN' when status='OPEN' and committed_hires >= ${target} then 'FILLED' else status end,
     version=version+1,updated_at=now() where id=${requestId}`);
   return done(requestId, 'Request updated. Existing offers keep their terms.');
 };
 
-async function withdrawOpenOffers(tx: Tx, requestId: string, reason: string) {
+export async function withdrawOpenOffers(tx: Tx, requestId: string, reason: string) {
   const offers = await tx<Row[]>`update app.hire_offers set status='WITHDRAWN',response_reason=${reason},responded_at=now()
     where request_id=${requestId} and status='OFFERED' returning id,application_id`;
   for (const offer of offers) {
@@ -148,6 +169,14 @@ const apply: CommandHandler = async ({ tx, actor, form }) => {
   if (Date.now() + turnaround * 3600_000 > new Date(request.deadline).getTime()) {
     throw new CommandError('That turnaround would finish after the request deadline', 'DOMAIN_RULE');
   }
+  let publishAccountId: string | null = null;
+  if (request.taxonomy === 'PUBLISH') {
+    const accountValue = text(form, 'publish_account_id', false);
+    if (!accountValue) throw new CommandError(`Choose the ${String(request.publish_platform)} account you will post on`);
+    const account = await ownedSocialAccount(tx, actor.id, uuid(form, 'publish_account_id'));
+    if (account.platform !== request.publish_platform) throw new CommandError(`This request posts on ${String(request.publish_platform)}; choose an account on that platform`);
+    publishAccountId = String(account.id);
+  }
   const samples = await tx<Row[]>`select id,title,url,storage_asset_id from app.samples where creator_id=${actor.id} and visibility='PUBLIC' and moderation_status='APPROVED'
     order by created_at desc limit 5`;
   const snapshot = JSON.stringify(samples.map((s) => ({ id: String(s.id), title: s.title, url: s.url ?? null, asset_id: s.storage_asset_id ?? null })));
@@ -157,12 +186,12 @@ const apply: CommandHandler = async ({ tx, actor, form }) => {
   }
   const [application] = existing
     ? await tx<Row[]>`update app.applications set quote_minor=${quote.toString()},turnaround_hours=${turnaround},note=${note},status='SUBMITTED',
-        valid_until=now() + (${validDays} * interval '1 day'),samples_snapshot=${snapshot}::jsonb,version=version+1,updated_at=now()
+        valid_until=now() + (${validDays} * interval '1 day'),samples_snapshot=${snapshot}::jsonb,publish_account_id=${publishAccountId},version=version+1,updated_at=now()
         where id=${String(existing.id)} returning *`
-    : await tx<Row[]>`insert into app.applications (request_id,creator_id,quote_minor,turnaround_hours,note,status,valid_until,samples_snapshot)
-        values (${requestId},${actor.id},${quote.toString()},${turnaround},${note},'SUBMITTED',now() + (${validDays} * interval '1 day'),${snapshot}::jsonb) returning *`;
-  await tx`insert into app.application_versions (application_id,version,quote_minor,turnaround_hours,note,valid_until,samples_snapshot)
-    values (${String(application!.id)},${application!.version},${application!.quote_minor},${turnaround},${note},${application!.valid_until},${snapshot}::jsonb)`;
+    : await tx<Row[]>`insert into app.applications (request_id,creator_id,quote_minor,turnaround_hours,note,status,valid_until,samples_snapshot,publish_account_id)
+        values (${requestId},${actor.id},${quote.toString()},${turnaround},${note},'SUBMITTED',now() + (${validDays} * interval '1 day'),${snapshot}::jsonb,${publishAccountId}) returning *`;
+  await tx`insert into app.application_versions (application_id,version,quote_minor,turnaround_hours,note,valid_until,samples_snapshot,publish_account_id)
+    values (${String(application!.id)},${application!.version},${application!.quote_minor},${turnaround},${note},${application!.valid_until},${snapshot}::jsonb,${publishAccountId})`;
   if (!existing) {
     await enqueueNotification(tx, requestId, `notify:request.application:${application!.id}`, {
       templateId: 'request.application_received', recipientId: String(request.buyer_id), params: { requestRef: requestId },
@@ -210,6 +239,14 @@ const selectApplication: CommandHandler = async ({ tx, actor, form }) => {
     throw new CommandError('This selection would exceed the request budget or the number of creators to hire', 'BUDGET_EXCEEDED');
   }
   const expiresAt = new Date(Math.min(Date.now() + HIRE_OFFER_HOURS * 3600_000, new Date(request.deadline).getTime()));
+  let publish: Record<string, unknown> | null = null;
+  if (request.taxonomy === 'PUBLISH') {
+    if (!application!.publish_account_id) throw new CommandError('This application has no posting account; the creator must re-apply with one', 'QUOTE_CHANGED');
+    const [account] = await tx<Row[]>`select * from app.social_accounts where id=${String(application!.publish_account_id)} and removed_at is null`;
+    if (!account) throw new CommandError('The creator removed the posting account from this application; ask them to re-apply', 'QUOTE_CHANGED');
+    publish = { account_id: String(account.id), ...channelOf(account), format: request.publish_format, min_live_hours: Number(request.min_live_hours),
+      disclosure_text: request.disclosure_text, editorial_policy_version: EDITORIAL_POLICY_VERSION };
+  }
   const terms = {
     schema_version: 1,
     source: 'REQUEST',
@@ -229,6 +266,8 @@ const selectApplication: CommandHandler = async ({ tx, actor, form }) => {
     auto_accept_consent: false,
     request_deadline: new Date(request.deadline).toISOString(),
     cancellation_policy_version: 'v1',
+    deliverable: DELIVERABLE_BY_TAXONOMY[String(request.taxonomy)] ?? 'CONTENT_HANDOFF',
+    ...(publish ? { publish } : {}),
   };
   const [offer] = await tx<Row[]>`insert into app.hire_offers (request_id,application_id,application_version,buyer_id,creator_id,amount_minor,terms_snapshot,expires_at)
     values (${String(request.id)},${applicationId},${shownVersion},${actor.id},${String(application!.creator_id)},${amount.toString()},${JSON.stringify(terms)}::jsonb,${expiresAt.toISOString()})

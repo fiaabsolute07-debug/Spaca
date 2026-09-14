@@ -23,7 +23,7 @@ export async function getOperatorQueues(actor: Actor) {
   const moderation = hasAnyRole(actor, ['moderator', 'admin']);
   if (!finance && !moderation) throw new OperatorAccessError();
 
-  const [cases, disputes, holds, operations, outbox, reconciling, samples, overdue, flags, drift] = await Promise.all([
+  const [cases, disputes, holds, operations, outbox, reconciling, samples, overdue, flags, drift, reports] = await Promise.all([
     finance ? sql<Row[]>`select c.id,c.kind,c.severity,c.status,c.order_id,c.next_action,c.assigned_to,c.created_at,extract(epoch from now()-c.created_at)::int as age_seconds
       from app.reconciliation_cases c where c.status in ('OPEN','ASSIGNED') order by case c.severity when 'HIGH' then 0 when 'MEDIUM' then 1 else 2 end, c.created_at limit 200` : [],
     sql<Row[]>`select d.id,d.order_id,d.status,d.created_at,d.assigned_to,o.status_before_dispute,o.amount_minor,o.currency,extract(epoch from now()-d.created_at)::int as age_seconds
@@ -39,6 +39,8 @@ export async function getOperatorQueues(actor: Actor) {
     sql<Row[]>`select key,enabled,description,changed_by,changed_reason,updated_at from app.feature_flags order by key`,
     // Runbook §20.4: counters must equal the sum of claims; any row here means pause the creator and investigate.
     finance ? sql<Row[]>`select d.*,u.display_name as creator_name from app.workload_counter_drift d join app.users u on u.id=d.creator_id limit 200` : [],
+    moderation ? sql<Row[]>`select r.id,r.source,r.target_type,r.target_id,r.reason,r.details,r.status,r.created_at,u.display_name as reporter_name
+      from app.reports r left join app.users u on u.id=r.reporter_id where r.status in ('OPEN','ASSIGNED') order by r.created_at limit 200` : [],
   ]);
 
   return {
@@ -51,6 +53,7 @@ export async function getOperatorQueues(actor: Actor) {
     reconciling_holds: reconciling,
     workload_drift: drift,
     pending_samples: samples,
+    open_reports: reports,
     overdue_orders: overdue,
     feature_flags: flags,
   };

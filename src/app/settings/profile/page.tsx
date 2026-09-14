@@ -1,5 +1,5 @@
 import { getDashboardData } from '@/lib/read-model';
-import { CommandForm, Field, row, str } from '@/components/ui';
+import { Badge, CommandForm, Field, row, rows, str } from '@/components/ui';
 import { Notices } from '@/components/notices';
 import { PageHeading } from '@/components/page-heading';
 import { requireActorOrLoginPrompt } from '@/components/require-actor';
@@ -38,12 +38,6 @@ export default async function ProfilePage({
           />
           <Field name="handle" label="Public handle" value={str(profile.handle)} required />
           <Field name="niche" label="Niche" value={str(profile.niche)} placeholder="Independent creator" />
-          <Field
-            name="social_url"
-            label="Social or portfolio URL"
-            value={str(profile.social_url)}
-            placeholder="https://…"
-          />
         </div>
         <Field
           name="bio"
@@ -55,5 +49,25 @@ export default async function ProfilePage({
         />
       </CommandForm>
     </div>
+    <section className="panel" aria-labelledby="linked-accounts-heading">
+      <h2 id="linked-accounts-heading">Linked accounts</h2>
+      <p className="muted">Accounts you post on. They show on your profile as self-reported; spaca does not connect to these platforms. PUBLISH services post on one of them.</p>
+      {rows(profile.social_accounts).map(account => <div className="record inline-actions" key={str(account.id)}>
+        <a className="text-link" href={str(account.url)} target="_blank" rel="noreferrer">{account.handle ? `@${str(account.handle)}` : str(account.url)}</a>
+        <Badge>{str(account.platform)}</Badge>
+        <span className="muted">{str(account.verification_status) === 'VERIFIED' ? 'Verified' : 'Self-reported'}</span>
+        <CommandForm command="remove_social_account" label="Remove" variant="secondary" values={{ account_id: str(account.id) }} returnTo={route} />
+      </div>)}
+      <CommandForm command="add_social_account" label="Link account" variant="secondary" returnTo={route}>
+        <div className="form-grid">
+          <Field name="platform" label="Platform">
+            <select name="platform" defaultValue="X">
+              {[['X', 'X'], ['INSTAGRAM', 'Instagram'], ['TIKTOK', 'TikTok'], ['YOUTUBE', 'YouTube'], ['NEWSLETTER', 'Newsletter'], ['WEBSITE', 'Website']].map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+            </select>
+          </Field>
+          <Field name="account" label="Handle or link" required placeholder="@yourname or https://…" />
+        </div>
+      </CommandForm>
+    </section>
   </main>;
 }

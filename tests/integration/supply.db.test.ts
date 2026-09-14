@@ -47,22 +47,27 @@ afterAll(async () => {
 });
 
 describe.skipIf(!RUN_DB)('SUP — listing supply', () => {
-  it('SUP-01: publishing needs three approved public samples and one linked sample; the draft is kept', async () => {
+  it('SUP-01: publishing needs one approved public sample linked to the service; the draft is kept', async () => {
     const creator = await createUser('sup01');
     const created = await command(creator, serviceFields());
     expect(created.status).toBe(200);
     const serviceId = String(created.body.id);
     const refused = await command(creator, { command: 'publish_service', idempotency_key: key('pub'), service_id: serviceId });
     expect(refused.status).toBe(400);
-    expect(String(refused.body.error)).toMatch(/at least 3 approved public work samples/);
+    expect(String(refused.body.error)).toMatch(/at least 1 approved public work sample before/);
     expect(String(refused.body.error)).toMatch(/Link at least one approved sample/);
     const [draft] = await sql`select status,published_version_id from app.services where id=${serviceId}`;
     expect(draft).toMatchObject({ status: 'DRAFT', published_version_id: null });
 
-    for (const n of [1, 2, 3]) {
-      const added = await command(creator, { command: 'add_sample', idempotency_key: key('sample'), title: `Portfolio ${n}`, url: `https://example.com/p${n}`, service_id: serviceId });
-      expect(added.status).toBe(200);
-    }
+    // A sample that is not linked to this service does not satisfy the linked-sample rule.
+    expect((await command(creator, { command: 'add_sample', idempotency_key: key('sample'), title: 'Unlinked portfolio', url: 'https://example.com/unlinked' })).status).toBe(200);
+    await sql`update app.samples set moderation_status='APPROVED' where creator_id=${creator.id}`;
+    const unlinked = await command(creator, { command: 'publish_service', idempotency_key: key('pub'), service_id: serviceId });
+    expect(unlinked.status).toBe(400);
+    expect(String(unlinked.body.error)).not.toMatch(/public work sample/);
+    expect(String(unlinked.body.error)).toMatch(/Link at least one approved sample/);
+    const added = await command(creator, { command: 'add_sample', idempotency_key: key('sample'), title: 'Portfolio thread', url: 'https://example.com/p1', service_id: serviceId });
+    expect(added.status).toBe(200);
     // Samples added later start PENDING and do not count until approved.
     expect((await command(creator, { command: 'publish_service', idempotency_key: key('pub'), service_id: serviceId })).status).toBe(400);
     await sql`update app.samples set moderation_status='APPROVED' where creator_id=${creator.id}`;

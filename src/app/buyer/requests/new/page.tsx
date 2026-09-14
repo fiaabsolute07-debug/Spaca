@@ -48,6 +48,22 @@ export default async function NewRequestPage({
           <Field name="application_deadline" label="Applications close (optional)" type="datetime-local" />
           <Field name="deadline" label="Delivery deadline" type="datetime-local" required />
         </div>
+        <h3>If creators post for you (PUBLISH)</h3>
+        <p className="muted">Each creator posts on their own account, in their own words, with a sponsorship disclosure. Briefs that ask to hide the sponsorship, fake engagement or promise returns are refused.</p>
+        <div className="form-grid">
+          <Field name="publish_platform" label="Platform">
+            <select name="publish_platform" defaultValue="X">
+              {[['X', 'X'], ['INSTAGRAM', 'Instagram'], ['TIKTOK', 'TikTok'], ['YOUTUBE', 'YouTube'], ['NEWSLETTER', 'Newsletter'], ['WEBSITE', 'Website']].map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+            </select>
+          </Field>
+          <Field name="publish_format" label="Post format">
+            <select name="publish_format" defaultValue="POST">
+              {[['POST', 'Post'], ['THREAD', 'Thread'], ['QUOTE_POST', 'Quote post'], ['VIDEO', 'Video'], ['NEWSLETTER_ISSUE', 'Newsletter issue'], ['ARTICLE', 'Article']].map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+            </select>
+          </Field>
+          <Field name="min_live_hours" label="Keep posts live for (hours)" type="number" value="72" />
+          <Field name="disclosure_text" label="Sponsorship disclosure" value="#ad" />
+        </div>
       </CommandForm>
     </div>
   </main>;

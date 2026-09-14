@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { ReportForm } from '@/components/report-form';
 import { notFound } from 'next/navigation';
 import { getActor } from '@/lib/auth';
 import { getRequestData } from '@/lib/read-model';
@@ -41,6 +42,7 @@ function ApplicationCard({ application: a, owner, route }: { application: Row; o
     <ul className="facts">
       <li><span>Quote</span><strong>{money(a.quote_minor)}</strong></li>
       <li><span>Turnaround</span><strong>{num(a.turnaround_hours)} hours</strong></li>
+      {a.publish_url ? <li><span>Posts on</span><strong><a className="text-link" href={str(a.publish_url)} target="_blank" rel="noreferrer nofollow">{a.publish_handle ? `@${str(a.publish_handle)}` : str(a.publish_url)}</a> · {str(a.publish_verification) === 'VERIFIED' ? 'verified' : 'self-reported'}</strong></li> : null}
       {offerStatus && <li><span>Offer</span><strong>{OFFER_LABEL[offerStatus] ?? offerStatus}{liveOffer ? ` · until ${date(a.offer_expires_at)}` : ''}</strong></li>}
     </ul>
     <Samples items={rows(a.samples_snapshot)} />
@@ -122,7 +124,13 @@ export default async function RequestPage({ params, searchParams }: PageProps<{ 
             <li><span>Applications close</span><strong>{date(r.application_deadline)}</strong></li>
             <li><span>Delivery deadline</span><strong>{date(r.deadline)}</strong></li>
             <li><span>Applications</span><strong>{num(r.application_count)}</strong></li>
+            {str(r.taxonomy) === 'PUBLISH' && <>
+              <li><span>Creators post on</span><strong>{str(r.publish_platform)} · {str(r.publish_format).replaceAll('_', ' ').toLowerCase()}</strong></li>
+              <li><span>Disclosure</span><strong>“{str(r.disclosure_text)}”</strong></li>
+              <li><span>Keep live for</span><strong>{num(r.min_live_hours)} hours</strong></li>
+            </>}
           </ul>
+          {actor && !owner && <ReportForm targetType="REQUEST" targetId={str(r.id)} returnTo={route} label="Report this brief" />}
         </div>
         {d.campaign ? <CampaignPanel campaign={row(d.campaign)} /> : null}
         <div className="panel">
@@ -150,6 +158,13 @@ export default async function RequestPage({ params, searchParams }: PageProps<{ 
           <Field name="quote" label="Your quote (USD)" type="number" value={mine ? String(Number(mine.quote_minor) / 100) : undefined} required />
           <Field name="turnaround_hours" label="Delivery time (hours)" type="number" value={mine ? str(mine.turnaround_hours) : '48'} required />
           <Field name="valid_days" label="Quote valid for (days)" type="number" value="7" />
+          {str(r.taxonomy) === 'PUBLISH' && (rows(d.my_social_accounts).length
+            ? <Field name="publish_account_id" label={`Account you will post on (${str(r.publish_platform)})`}>
+              <select name="publish_account_id" required defaultValue={str(mine?.publish_account_id)}>
+                {rows(d.my_social_accounts).map((account) => <option key={str(account.id)} value={str(account.id)}>{account.handle ? `@${str(account.handle)}` : str(account.url)}</option>)}
+              </select>
+            </Field>
+            : <p className="muted">Link your {str(r.publish_platform)} account under <Link className="text-link" href="/settings/profile">Profile › Linked accounts</Link> to apply.</p>)}
           <Field name="note" label="Your approach and relevant samples" type="textarea" value={mine ? str(mine.note) : undefined} required />
           <p className="muted">Your approved public samples are attached as a snapshot. Only the buyer sees your quote.</p>
         </CommandForm> : <p>{open ? 'Your application has an offer in progress.' : 'This request is not accepting applications.'}</p>}

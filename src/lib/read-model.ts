@@ -6,9 +6,9 @@ import { availabilityOf, workloadsFor } from '@/modules/capacity';
 export type ReadRow = Record<string, unknown>;
 const asRows = (value: unknown): ReadRow[] => Array.isArray(value) ? value as ReadRow[] : [];
 
-const SERVICE_COLUMNS_OWNER = sql`s.id,s.title,s.description,s.taxonomy,s.price_minor,s.currency,s.turnaround_hours,s.revision_limit,s.units_per_order,s.status,s.version,s.creator_id,s.published_version_id as service_version_id`;
+const SERVICE_COLUMNS_OWNER = sql`s.id,s.title,s.description,s.taxonomy,s.price_minor,s.currency,s.turnaround_hours,s.revision_limit,s.units_per_order,s.status,s.version,s.creator_id,s.published_version_id as service_version_id,s.publish_account_id,s.publish_format,s.min_live_hours,s.disclosure_text`;
 // Public views always show the published immutable version's terms, never unpublished edits.
-const SERVICE_COLUMNS_PUBLIC = sql`s.id,v.title,v.description,v.taxonomy,v.price_minor,v.currency,v.turnaround_hours,v.revision_limit,v.units_per_order,s.status,s.version,s.creator_id,v.id as service_version_id,v.version as service_version`;
+const SERVICE_COLUMNS_PUBLIC = sql`s.id,v.title,v.description,v.taxonomy,v.price_minor,v.currency,v.turnaround_hours,v.revision_limit,v.units_per_order,s.status,s.version,s.creator_id,v.id as service_version_id,v.version as service_version,v.publish_platform,v.publish_handle,v.publish_url,v.publish_format,v.min_live_hours,v.disclosure_text`;
 
 /**
  * Buyers see a status only, never the counts (§6.1 rule 10): ACCEPTING, AT_CAPACITY or PAUSED for one order of
@@ -75,7 +75,10 @@ export async function getDashboardData(actor: Actor) {
       where a.creator_id=${actor.id} order by a.created_at desc`,
     sql`select r.id,r.buyer_id,r.title,r.brief,r.taxonomy,r.budget_minor,r.per_creator_cap_minor,r.target_hires,r.deadline,r.status,u.display_name as buyer_name,(select count(*) from app.applications a where a.request_id=r.id) as application_count from app.requests r join app.users u on u.id=r.buyer_id where r.buyer_id=${actor.id} order by r.created_at desc`,
     sql`select a.id,a.service_id,a.seller_id,s.title,u.display_name as creator_name,a.starting_price_minor,a.current_price_minor,a.minimum_increment_minor,a.buy_now_price_minor,a.ends_at,a.starts_at,a.status,a.bid_count,a.winner_id from app.auctions a join app.services s on s.id=a.service_id join app.users u on u.id=a.seller_id where a.seller_id=${actor.id} order by a.created_at desc`,
-    sql`select p.handle,p.bio,p.niche,p.avatar_color,p.social_url,u.display_name,u.email from app.users u left join app.profiles p on p.user_id=u.id where u.id=${actor.id}`,
+    sql`select p.handle,p.bio,p.niche,p.avatar_color,p.social_url,u.display_name,u.email,
+      coalesce((select json_agg(json_build_object('id',a.id,'platform',a.platform,'handle',a.handle,'url',a.canonical_url,'verification_status',a.verification_status) order by a.created_at)
+        from app.social_accounts a where a.creator_id=u.id and a.removed_at is null),'[]') as social_accounts
+      from app.users u left join app.profiles p on p.user_id=u.id where u.id=${actor.id}`,
     sql`select count(*) filter (where (buyer_id=${actor.id} or creator_id=${actor.id}) and status='COMPLETED') as completed_orders,count(*) filter (where (buyer_id=${actor.id} or creator_id=${actor.id}) and status not in ('COMPLETED','CANCELLED','REFUNDED')) as active_orders,coalesce(sum(amount_minor) filter (where buyer_id=${actor.id}),0) as gross_minor,coalesce(sum(platform_fee_minor) filter (where buyer_id=${actor.id}),0) as platform_fee_minor from app.orders where buyer_id=${actor.id} or creator_id=${actor.id}`,
   ]);
   const [profileRow] = asRows(profile);
@@ -95,7 +98,7 @@ export async function getOrderData(actor: Actor, id: string) {
     from app.orders o join app.users bu on bu.id=o.buyer_id join app.users cu on cu.id=o.creator_id
     where o.id=${id} and (o.buyer_id=${actor.id} or o.creator_id=${actor.id})`);
   if (!order) return null;
-  const [deliveries, events, messages, reviews, cancellations, holds, assets] = await Promise.all([
+  const [deliveries, events, messages, reviews, cancellations, holds, assets, proofs] = await Promise.all([
     sql`select id,order_id,body,url,version,validation_status,buyer_viewed_at,created_at from app.deliveries where order_id=${id} order by version desc`,
     sql`select id,kind,payload,created_at from app.order_events where order_id=${id} order by created_at asc`,
     sql`select m.id,m.body,m.created_at,u.display_name from app.messages m join app.users u on u.id=m.sender_id where m.order_id=${id} order by m.created_at asc`,
@@ -106,6 +109,8 @@ export async function getOrderData(actor: Actor, id: string) {
         coalesce(json_agg(json_build_object('delivery_id',da.delivery_id,'position',da.position)) filter (where da.delivery_id is not null),'[]') as attachments
       from app.storage_assets a left join app.delivery_assets da on da.asset_id=a.id
       where a.order_id=${id} and a.lifecycle_state <> 'DELETED' group by a.id order by a.created_at`,
+    sql`select p.id,p.delivery_id,d.version as delivery_version,p.platform,p.channel_url,p.post_url,p.post_id,p.published_at,p.disclosure_text,p.disclosure_attested,p.link_check,p.late,p.created_at
+      from app.publish_proofs p join app.deliveries d on d.id=p.delivery_id where p.order_id=${id} order by d.version desc`,
   ]);
   const isBuyer = actor.id === String(order.buyer_id);
   // Crypto checkout (W5-C1): the buyer sees their latest intent; both parties see how the order was paid.
@@ -128,6 +133,8 @@ export async function getOrderData(actor: Actor, id: string) {
     order: { ...order, revision_limit: Number(terms.revision_limit ?? 1), review_window_hours: Number(terms.review_window_hours ?? 72), auto_accept_consent: terms.auto_accept_consent === true } as ReadRow,
     latest_delivery_version: latest ? Number(latest.version) : null,
     deliveries: asRows(deliveries),
+    publish_terms: terms.publish ?? null,
+    publish_proofs: asRows(proofs),
     events: asRows(events),
     messages: asRows(messages),
     reviews: asRows(reviews),
@@ -156,26 +163,31 @@ export async function getServiceData(id: string) {
 export async function getCreatorData(handle: string) {
   const [creator] = asRows(await sql`select u.id,u.display_name,p.handle,p.bio,p.niche,p.avatar_color,(select count(*) from app.orders o where o.creator_id=u.id and o.status='COMPLETED') as completed_jobs,(select round(avg(r.rating)::numeric,1) from app.reviews r where r.creator_id=u.id) as rating,(select count(*) from app.services s where s.creator_id=u.id and s.status='PUBLISHED') as services_count from app.users u join app.profiles p on p.user_id=u.id where p.handle=${handle} and u.status='ACTIVE'`);
   if (!creator) return null;
-  const [services, samples] = await Promise.all([
+  const [services, samples, socialAccounts] = await Promise.all([
     serviceRows({ publicCreatorId: String(creator.id) }),
     sql`select id,creator_id,title,url,description,created_at from app.samples where creator_id=${String(creator.id)} and visibility='PUBLIC' and moderation_status='APPROVED' order by created_at desc limit 24`,
+    // XPL-01: every link is shown with its verification status; manual links read "Self-reported".
+    sql`select id,platform,handle,canonical_url as url,verification_status from app.social_accounts where creator_id=${String(creator.id)} and removed_at is null order by created_at`,
   ]);
-  return { creator, services, samples: asRows(samples) };
+  return { creator, services, samples: asRows(samples), social_accounts: asRows(socialAccounts) };
 }
 
 export async function getRequestData(actor: Actor | null, id: string) {
   const [request] = asRows(await sql`select r.id,r.buyer_id,r.title,r.brief,r.taxonomy,r.budget_minor,r.per_creator_cap_minor,r.target_hires,r.deadline,r.application_deadline,
       r.status,r.version,r.currency,r.reserved_minor,r.committed_minor,r.reserved_hires,r.committed_hires,u.display_name as buyer_name,
+      r.publish_platform,r.publish_format,r.min_live_hours,r.disclosure_text,
       (select count(*) from app.applications a where a.request_id=r.id and a.status <> 'WITHDRAWN')::int as application_count
     from app.requests r join app.users u on u.id=r.buyer_id where r.id=${id} and (r.status in ('OPEN','FILLED','CLOSED') or r.buyer_id=${actor?.id ?? null})`);
   if (!request) return null;
   const owner = !!actor && actor.id === String(request.buyer_id);
   // REQ-03: a creator reads only their own application and offer; the buyer reads all. Anonymous readers see none.
   const applications = actor
-    ? await sql`select a.id,a.creator_id,a.quote_minor,a.note,a.status,a.turnaround_hours,a.version,a.valid_until,a.samples_snapshot,a.created_at,a.updated_at,
+    ? await sql`select a.id,a.creator_id,a.quote_minor,a.note,a.status,a.turnaround_hours,a.version,a.valid_until,a.samples_snapshot,a.created_at,a.updated_at,a.publish_account_id,
           u.display_name as creator_name,p.handle as creator_handle,
+          sa.platform as publish_platform,sa.handle as publish_handle,sa.canonical_url as publish_url,sa.verification_status as publish_verification,
           o.id as offer_id,o.status as offer_status,o.expires_at as offer_expires_at,o.amount_minor as offer_amount_minor,o.order_id as offer_order_id
         from app.applications a join app.users u on u.id=a.creator_id left join app.profiles p on p.user_id=a.creator_id
+        left join app.social_accounts sa on sa.id=a.publish_account_id
         left join lateral (select * from app.hire_offers h where h.application_id=a.id order by h.created_at desc limit 1) o on true
         where a.request_id=${id} and (a.creator_id=${actor.id} or ${owner}) order by a.created_at asc`
     : [];
@@ -202,7 +214,11 @@ export async function getRequestData(actor: Actor | null, id: string) {
     target_hires: request.target_hires,
     hires: hireRows,
   } : null;
-  return { request, applications: asRows(applications), campaign };
+  // A creator applying to PUBLISH work picks one of their own accounts on the request's platform.
+  const myAccounts = actor && !owner && request.taxonomy === 'PUBLISH'
+    ? asRows(await sql`select id,platform,handle,canonical_url as url from app.social_accounts where creator_id=${actor.id} and platform=${String(request.publish_platform)} and removed_at is null order by created_at`)
+    : [];
+  return { request, applications: asRows(applications), campaign, my_social_accounts: myAccounts };
 }
 
 const AUCTION_PUBLIC_STATES = ['SCHEDULED', 'LIVE', 'AWAITING_WINNER_PAYMENT', 'SETTLED', 'NO_BIDS', 'WINNER_DEFAULTED'];

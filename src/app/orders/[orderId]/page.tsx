@@ -2,6 +2,7 @@ import { OrderMessagesPanel } from '@/components/order-workspace/messages-panel'
 import { OrderNextStepPanel } from '@/components/order-workspace/next-step-panel';
 import { OrderTimelinePanel } from '@/components/order-workspace/timeline-panel';
 import { OrderDeliveryPanel } from '@/components/order-workspace/delivery-panel';
+import { ReportForm } from '@/components/report-form';
 import { OrderBriefPanel } from '@/components/order-workspace/brief-panel';
 import { OrderFilesPanel } from '@/components/order-workspace/files-panel';
 import { NetworkBadge } from '@/components/crypto/crypto-payment-panel';
@@ -71,8 +72,9 @@ export default async function OrderPage({
       <div>
         <OrderBriefPanel order={o} />
         <OrderFilesPanel order={o} files={files} buyer={buyer} />
-        <OrderDeliveryPanel order={o} delivery={delivery} files={files} creator={creator} route={route} />
+        <OrderDeliveryPanel order={o} delivery={delivery} files={files} creator={creator} route={route} publishTerms={d.publish_terms} proofs={rows(d.publish_proofs)} />
         <OrderTimelinePanel events={events} />
+        <ReportForm targetType="ORDER" targetId={str(o.id)} returnTo={route} label={`Report a problem with ${creator ? 'the buyer' : 'the creator'}`} />
       </div>
       <aside>
         <OrderNextStepPanel

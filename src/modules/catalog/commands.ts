@@ -20,9 +20,13 @@ import { MAX_ACTIVE_UNITS_LIMIT, claimWorkload, setAcceptingOrders, setMaxActive
 import { isValidTimeZone } from '@/modules/capacity/weeks';
 import { assertFlags } from '@/modules/admin/policy';
 import { lockSampleAsset } from '@/modules/storage/service';
+import { assertContentPolicy } from '@/modules/moderation/policy';
+import { EDITORIAL_POLICY_VERSION, channelOf, ownedSocialAccount, publishFields } from '@/modules/publish';
 
 const TAXONOMIES = ['CREATE', 'PUBLISH', 'ACCESS', 'DIGITAL'];
-export const MIN_PUBLIC_SAMPLES = 3;
+export const DELIVERABLE_BY_TAXONOMY: Record<string, string> = { CREATE: 'CONTENT_HANDOFF', PUBLISH: 'PUBLISHED_POST', ACCESS: 'SESSION', DIGITAL: 'DIGITAL_FILE' };
+/** Decision 2026-09-15: one approved public sample is enough to publish, so new creators onboard quickly. */
+export const MIN_PUBLIC_SAMPLES = 1;
 export const CHECKOUT_HOLD_MINUTES = Number(process.env.CHECKOUT_HOLD_MINUTES ?? 15);
 
 export async function ownedService(tx: Tx, actor: Actor, id: string): Promise<Row> {
@@ -44,12 +48,19 @@ async function snapshotVersion(tx: Tx, service: Row, actor: Actor): Promise<stri
     && latest.title === service.title && latest.description === service.description && latest.taxonomy === service.taxonomy
     && String(latest.price_minor) === String(service.price_minor) && latest.currency === service.currency
     && Number(latest.turnaround_hours) === Number(service.turnaround_hours) && Number(latest.revision_limit) === Number(service.revision_limit)
-    && Number(latest.units_per_order) === Number(service.units_per_order);
+    && Number(latest.units_per_order) === Number(service.units_per_order)
+    && String(latest.publish_account_id ?? '') === String(service.publish_account_id ?? '') && String(latest.publish_format ?? '') === String(service.publish_format ?? '')
+    && String(latest.min_live_hours ?? '') === String(service.min_live_hours ?? '') && String(latest.disclosure_text ?? '') === String(service.disclosure_text ?? '');
   if (unchanged) return String(latest.id);
+  // PUBLISH versions snapshot the channel itself, so a later account change never alters what was sold.
+  const channel = service.publish_account_id ? channelOf(await ownedSocialAccount(tx, String(service.creator_id), String(service.publish_account_id))) : null;
   const [created] = await tx<Row[]>`insert into app.service_versions
-    (service_id,version,title,description,taxonomy,price_minor,currency,turnaround_hours,revision_limit,units_per_order,created_by)
+    (service_id,version,title,description,taxonomy,price_minor,currency,turnaround_hours,revision_limit,units_per_order,
+     publish_account_id,publish_platform,publish_handle,publish_url,publish_format,min_live_hours,disclosure_text,created_by)
     values (${String(service.id)},${Number(latest?.version ?? 0) + 1},${service.title},${service.description},${service.taxonomy},${String(service.price_minor)},
-      ${service.currency},${Number(service.turnaround_hours)},${Number(service.revision_limit)},${Number(service.units_per_order)},${actor.id}) returning id`;
+      ${service.currency},${Number(service.turnaround_hours)},${Number(service.revision_limit)},${Number(service.units_per_order)},
+      ${service.publish_account_id ?? null},${channel?.platform ?? null},${channel?.handle ?? null},${channel?.channel_url ?? null},
+      ${service.publish_format ?? null},${service.min_live_hours ?? null},${service.disclosure_text ?? null},${actor.id}) returning id`;
   return String(created!.id);
 }
 
@@ -59,8 +70,14 @@ async function assertPublishable(tx: Tx, actor: Actor, service: Row) {
       (select count(*)::int from app.service_samples ss join app.samples sm on sm.id=ss.sample_id
         where ss.service_id=${String(service.id)} and sm.visibility='PUBLIC' and sm.moderation_status='APPROVED') as linked_samples`;
   const errors: string[] = [];
-  if (Number(counts!.public_samples) < MIN_PUBLIC_SAMPLES) errors.push(`Add at least ${MIN_PUBLIC_SAMPLES} approved public work samples before publishing`);
+  if (Number(counts!.public_samples) < MIN_PUBLIC_SAMPLES) errors.push(`Add at least ${MIN_PUBLIC_SAMPLES} approved public work sample${MIN_PUBLIC_SAMPLES === 1 ? '' : 's'} before publishing`);
   if (Number(counts!.linked_samples) < 1) errors.push('Link at least one approved sample to this service');
+  if (service.taxonomy === 'PUBLISH') {
+    const [account] = service.publish_account_id
+      ? await tx<Row[]>`select 1 from app.social_accounts where id=${String(service.publish_account_id)} and creator_id=${actor.id} and removed_at is null` : [];
+    if (!account) errors.push('Choose the linked account this service posts on');
+    if (!service.publish_format || service.min_live_hours == null || !service.disclosure_text) errors.push('Set the post format, minimum live time and disclosure');
+  }
   if (errors.length) throw new CommandError(errors.join('. '), 'INVALID_INPUT');
 }
 
@@ -112,10 +129,13 @@ const createService: CommandHandler = async ({ tx, actor, form }) => {
   const price = money(text(form, 'price'), 'price');
   const turnaround = integer(text(form, 'turnaround_hours'), 'turnaround_hours', 1, 8760);
   const units = unitsPerOrder(form);
+  const publish = await publishTermsFromForm(tx, actor, taxonomy, form);
 
   // Every service of this creator shares one active-order limit (CAP-02); the service only sizes its orders.
-  const [service] = await tx<Row[]>`insert into app.services (creator_id,title,description,taxonomy,price_minor,currency,turnaround_hours,revision_limit,units_per_order,status)
-    values (${actor.id},${title},${description},${taxonomy},${price.toString()},'USD',${turnaround},1,${units ?? 1},'DRAFT') returning id`;
+  const [service] = await tx<Row[]>`insert into app.services (creator_id,title,description,taxonomy,price_minor,currency,turnaround_hours,revision_limit,units_per_order,
+      publish_account_id,publish_format,min_live_hours,disclosure_text,status)
+    values (${actor.id},${title},${description},${taxonomy},${price.toString()},'USD',${turnaround},1,${units ?? 1},
+      ${publish?.accountId ?? null},${publish?.format ?? null},${publish?.minLiveHours ?? null},${publish?.disclosure ?? null},'DRAFT') returning id`;
   const serviceId = String(service!.id);
 
   for (let n = 1; n <= 3; n++) {
@@ -130,6 +150,15 @@ const createService: CommandHandler = async ({ tx, actor, form }) => {
   }
   return { path: '/creator/services', message: 'Draft service created', id: serviceId };
 };
+
+/** PUBLISH listings name the creator's own linked account and the posting terms buyers agree to (P6-02). */
+async function publishTermsFromForm(tx: Tx, actor: Actor, taxonomy: string, form: FormData) {
+  if (taxonomy !== 'PUBLISH') return null;
+  const accountValue = String(form.get('publish_account_id') ?? '').trim();
+  if (!accountValue) throw new CommandError('Choose the linked account this service posts on. Add one under Profile → Linked accounts.');
+  const account = await ownedSocialAccount(tx, actor.id, uuid(form, 'publish_account_id'));
+  return { accountId: String(account.id), ...publishFields(form) };
+}
 
 /** Optional order weight: how many units of the creator's limit one order of this service uses (default 1). */
 function unitsPerOrder(form: FormData): number | null {
@@ -149,8 +178,12 @@ const updateService: CommandHandler = async ({ tx, actor, form }) => {
   const turnaround = integer(text(form, 'turnaround_hours'), 'turnaround_hours', 1, 8760);
   if (title.length < 3 || description.length < 20) throw new CommandError('Title needs 3+ characters and scope 20+ characters');
   const units = unitsPerOrder(form);
+  const publish = form.has('publish_account_id') ? await publishTermsFromForm(tx, actor, String(service.taxonomy), form) : null;
   const [updated] = await tx<Row[]>`update app.services set title=${title},description=${description},price_minor=${price.toString()},turnaround_hours=${turnaround},
-    units_per_order=coalesce(${units}::int,units_per_order),version=version+1,updated_at=now() where id=${String(service.id)} returning *`;
+    units_per_order=coalesce(${units}::int,units_per_order),
+    publish_account_id=coalesce(${publish?.accountId ?? null}::uuid,publish_account_id),publish_format=coalesce(${publish?.format ?? null},publish_format),
+    min_live_hours=coalesce(${publish?.minLiveHours ?? null}::int,min_live_hours),disclosure_text=coalesce(${publish?.disclosure ?? null},disclosure_text),
+    version=version+1,updated_at=now() where id=${String(service.id)} returning *`;
   if (updated!.status === 'PUBLISHED' || updated!.status === 'PAUSED') {
     // Live terms change only through a new immutable version; sold orders keep theirs (SUP-03).
     const versionId = await snapshotVersion(tx, updated!, actor);
@@ -209,6 +242,7 @@ const book: CommandHandler = async ({ tx, actor, form }) => {
   const serviceId = text(form, 'service_id');
   const brief = text(form, 'brief', true, 12000);
   if (brief.length < 20) throw new CommandError('Share a brief of at least 20 characters', 'BRIEF_INCOMPLETE');
+  assertContentPolicy(brief);
   const [service] = await tx<Row[]>`select s.id,s.creator_id,s.status,s.published_version_id,u.status as creator_status
     from app.services s join app.users u on u.id=s.creator_id where s.id=${serviceId} for share of s`;
   if (!service || service.status !== 'PUBLISHED' || !service.published_version_id) throw new CommandError('Service is no longer available', 'NOT_FOUND');
@@ -221,6 +255,15 @@ const book: CommandHandler = async ({ tx, actor, form }) => {
   }
 
   const units = Number(version!.units_per_order);
+  const publish = version!.taxonomy === 'PUBLISH' ? {
+    account_id: String(version!.publish_account_id), platform: String(version!.publish_platform), handle: version!.publish_handle ?? null,
+    channel_url: String(version!.publish_url), format: String(version!.publish_format), min_live_hours: Number(version!.min_live_hours),
+    disclosure_text: String(version!.disclosure_text), editorial_policy_version: EDITORIAL_POLICY_VERSION,
+  } : null;
+  // MOD-02: a PUBLISH buyer agrees that the post carries the disclosure and that the creator writes it in their own voice.
+  if (publish && !['on', 'true'].includes(String(form.get('accept_publish_terms') ?? ''))) {
+    throw new CommandError(`Confirm the posting terms: the post is labelled "${publish.disclosure_text}" and written by the creator in their own words`, 'DOMAIN_RULE');
+  }
   const terms = {
     schema_version: 1,
     source: 'BOOK',
@@ -238,6 +281,9 @@ const book: CommandHandler = async ({ tx, actor, form }) => {
     auto_accept_consent: form.get('accept_terms') === 'on' || form.get('accept_terms') === 'true',
     cancellation_policy_version: 'v1',
     capacity: { model: 'ACTIVE_ORDER_LIMIT', units },
+    // SUP-05: CREATE hands content to the buyer; only PUBLISH carries a posting obligation.
+    deliverable: DELIVERABLE_BY_TAXONOMY[String(version!.taxonomy)] ?? 'CONTENT_HANDOFF',
+    ...(publish ? { publish } : {}),
   };
   // The claim locks the creator's workload and refuses the order when paused or at the limit; the transaction then rolls back.
   const expiresAt = new Date(Date.now() + CHECKOUT_HOLD_MINUTES * 60_000);

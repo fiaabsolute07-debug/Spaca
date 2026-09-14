@@ -8,6 +8,8 @@ import type { PageProps } from '@/components/page-props';
 
 export const dynamic = 'force-dynamic';
 
+const PLATFORM_NAMES: Record<string, string> = { X: 'X', INSTAGRAM: 'Instagram', TIKTOK: 'TikTok', YOUTUBE: 'YouTube', NEWSLETTER: 'Newsletter', WEBSITE: 'Website' };
+
 export default async function CreatorPage({
   params,
   searchParams
@@ -35,6 +37,14 @@ export default async function CreatorPage({
         title={str(c.display_name)}
         description={str(c.bio)}
       />
+      {rows(d.social_accounts).length > 0 && <ul className="social-links">
+        {rows(d.social_accounts).map(account => <li key={str(account.id)}>
+          <a className="text-link" href={str(account.url)} target="_blank" rel="noreferrer nofollow">
+            {account.handle ? `@${str(account.handle)}` : str(account.url).replace('https://', '')}
+          </a>
+          <span className="muted"> · {PLATFORM_NAMES[str(account.platform)] ?? str(account.platform)} · {str(account.verification_status) === 'VERIFIED' ? 'Verified' : 'Self-reported'}</span>
+        </li>)}
+      </ul>}
       <div className="inline-actions">
         <Badge>
           {num(c.completed_jobs)}
