@@ -541,6 +541,8 @@ Capacity là **giới hạn số đơn đang làm cùng lúc** (work-in-progress
 9. Revision hoặc dispute không tạo claim mới và được phép làm tổng tạm vượt giới hạn do creator giảm giới hạn trước đó; nghĩa vụ đã nhận luôn được giữ.
 10. Buyer thấy trạng thái, không thấy con số: "Accepting orders" hoặc "Currently at capacity" (kèm CTA post a request/notify), hoặc "Paused". Không hiển thị "2 of 3 slots", không đoán ngày mở lại.
 
+**Quyết định 15/09/2026 (user, thay thế phương án B ở trên):** bỏ giới hạn số đơn đang làm cùng lúc — creator nhận không giới hạn, chỉ giữ nút tạm dừng nhận đơn mới; bỏ đặt lịch ACCESS (lịch rảnh, slot, appointment, cancel notice, no-show) — buyer và creator tự thỏa thuận giờ trong tin nhắn đơn hàng. Migration `drizzle/0017_no_order_limit_no_scheduling.sql`; CAP-01/02/07/11 và XPL-03 ghi REMOVED trong `docs/ACCEPTANCE.md`.
+
 **Hiện trạng code (15/09/2026):** engine đã chuyển sang giới hạn đơn đang làm (W7-CAP, migration 0012, evidence `docs/evidence/claude-W7-CAP.md`): `creator_workloads` + `workload_claims`, trigger chặn claim vượt giới hạn/khi pause, trigger đơn nhả chỗ khi APPROVED/COMPLETED/CANCELLED/REFUNDED, buyer chỉ thấy `availability_status`. `units_per_order` nằm trên services/service_versions thay vì bảng `ServiceWorkloadRule` riêng. Còn mở: CAP-04/05/10 races, CAP-11 (ACCESS, P6).
 
 ### 6.2. Book Now transaction

@@ -3,12 +3,13 @@
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 
-type Purpose = 'DELIVERY' | 'BRIEF' | 'DISPUTE' | 'SAMPLE';
+type Purpose = 'DELIVERY' | 'BRIEF' | 'DISPUTE' | 'SAMPLE' | 'DIGITAL';
 type Item = { key: string; name: string; state: 'uploading' | 'ready' | 'failed'; id?: string; message?: string };
 
 const EXTENSION_TYPES: Record<string, string> = {
   png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', pdf: 'application/pdf',
   docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', mp4: 'video/mp4', m4v: 'video/mp4', mov: 'video/quicktime', webm: 'video/webm',
+  zip: 'application/zip',
 };
 export const ACCEPTED_FILES = '.png,.jpg,.jpeg,.gif,.webp,.pdf,.docx,.mp4,.m4v,.mov,.webm';
 
@@ -52,7 +53,9 @@ export function FileUploadField({ purpose, orderId, name = 'asset_ids', label, h
   const update = (key: string, patch: Partial<Item>) => setItems((current) => current.map((item) => (item.key === key ? { ...item, ...patch } : item)));
 
   async function send(file: File, key: string) {
-    const mime = file.type || EXTENSION_TYPES[file.name.split('.').pop()?.toLowerCase() ?? ''] || 'application/octet-stream';
+    const extension = file.name.split('.').pop()?.toLowerCase() ?? '';
+    // Browsers label zips inconsistently (application/x-zip-compressed); the server checks the signature anyway.
+    const mime = (extension === 'zip' ? EXTENSION_TYPES.zip : file.type) || EXTENSION_TYPES[extension] || 'application/octet-stream';
     try {
       const intent = await fetch('/api/assets/upload-intents', {
         method: 'POST',
@@ -83,7 +86,7 @@ export function FileUploadField({ purpose, orderId, name = 'asset_ids', label, h
   return <div className="field file-field" ref={wrapper}>
     <span>{label}</span>
     {!refreshOnReady && <input type="hidden" name={name} value={ready.join(',')} />}
-    <input type="file" multiple={maxFiles > 1} accept={ACCEPTED_FILES} onChange={(event) => { choose(event.target.files); event.target.value = ''; }} />
+    <input type="file" multiple={maxFiles > 1} accept={purpose === 'DIGITAL' ? `${ACCEPTED_FILES},.zip` : ACCEPTED_FILES} onChange={(event) => { choose(event.target.files); event.target.value = ''; }} />
     {help && <small>{help}</small>}
     {items.length > 0 && <ul className="file-list" aria-live="polite">
       {items.map((item) => <li key={item.key} className={`file-item file-${item.state}`}>

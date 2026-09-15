@@ -55,22 +55,31 @@ const scoped = (column: ReturnType<typeof sql>, options: JobScope) => (options.o
 /** Releases expired checkout holds only after any open provider payment is cancelled (master §6.3). */
 export async function expireCheckoutHolds(options: JobScope = {}): Promise<JobReport> {
   const { result, tally } = report('expire_checkout_holds');
-  const candidates = await sql<Row[]>`select c.order_id from app.workload_claims c join app.orders o on o.id=c.order_id
-    where c.state in ('HELD','EXPIRY_RECONCILING') and c.expires_at < now() and o.status='AWAITING_PAYMENT' and ${scoped(sql`o.id`, options)}
-    order by c.expires_at asc limit ${options.limit ?? 50}`;
+  // Holds are workload claims, or entitlements for DIGITAL purchases (which use no creator capacity).
+  const candidates = await sql<Row[]>`select order_id from (
+      select c.order_id,c.expires_at from app.workload_claims c join app.orders o on o.id=c.order_id
+        where c.state in ('HELD','EXPIRY_RECONCILING') and c.expires_at < now() and o.status='AWAITING_PAYMENT' and ${scoped(sql`o.id`, options)}
+      union all
+      select e.order_id,e.expires_at from app.digital_entitlements e join app.orders o on o.id=e.order_id
+        where e.state in ('HELD','EXPIRY_RECONCILING') and e.expires_at < now() and o.status='AWAITING_PAYMENT' and ${scoped(sql`o.id`, options)}
+    ) holds order by expires_at asc limit ${options.limit ?? 50}`;
   for (const candidate of candidates) {
     const orderId = String(candidate.order_id);
     try {
       tally(await sql.begin(async (tx) => {
         const [order] = await tx<Row[]>`select * from app.orders where id=${orderId} and status='AWAITING_PAYMENT' for update`;
-        const [claim] = await tx<Row[]>`select * from app.workload_claims where order_id=${orderId} and state in ('HELD','EXPIRY_RECONCILING') and expires_at < now() for update`;
+        const [workloadClaim] = await tx<Row[]>`select *,'workload_claims' as hold_table from app.workload_claims where order_id=${orderId} and state in ('HELD','EXPIRY_RECONCILING') and expires_at < now() for update`;
+        const [entitlement] = workloadClaim ? [] : await tx<Row[]>`select *,0 as units,'digital_entitlements' as hold_table from app.digital_entitlements
+          where order_id=${orderId} and state in ('HELD','EXPIRY_RECONCILING') and expires_at < now() for update`;
+        const claim = workloadClaim ?? entitlement;
         if (!order || !claim) return 'SKIPPED_STATE_CHANGED';
         try {
           if (mockPaymentsEnabled()) await cancelOpenFunding(tx, orderId);
         } catch (error) {
           if (!(error instanceof PaymentFlowError)) throw error;
           if (claim.state === 'HELD') {
-            await tx`update app.workload_claims set state='EXPIRY_RECONCILING' where id=${String(claim.id)}`;
+            if (claim.hold_table === 'digital_entitlements') await tx`update app.digital_entitlements set state='EXPIRY_RECONCILING' where id=${String(claim.id)}`;
+            else await tx`update app.workload_claims set state='EXPIRY_RECONCILING' where id=${String(claim.id)}`;
             await openCase(tx, orderId, null, 'HOLD_EXPIRED_PAYMENT_UNRESOLVED', 'MEDIUM', error.message);
             await tx`insert into app.order_events (order_id,actor_id,kind,payload) values (${orderId},${null},'HOLD_RECONCILING',${JSON.stringify({ reason: error.message })}::jsonb)`;
           }
@@ -376,9 +385,10 @@ export async function cleanupStorage(options: JobScope & { orphanGraceSeconds?: 
     }
   }
   const orphanGrace = ageFilter(options.orphanGraceSeconds ?? 24 * 3600);
-  const orphans = await sql<Row[]>`select a.id from app.storage_assets a where a.lifecycle_state='READY' and a.purpose in ('DELIVERY','SAMPLE')
+  const orphans = await sql<Row[]>`select a.id from app.storage_assets a where a.lifecycle_state='READY' and a.purpose in ('DELIVERY','SAMPLE','DIGITAL')
     and a.created_at < now() - (${orphanGrace} * interval '1 second') and ${scoped(sql`a.order_id`, options)}
     and not exists (select 1 from app.delivery_assets d where d.asset_id=a.id) and not exists (select 1 from app.samples s where s.storage_asset_id=a.id)
+    and not exists (select 1 from app.digital_releases r where r.asset_id=a.id)
     order by a.created_at limit ${limit}`;
   for (const orphan of orphans) {
     try {

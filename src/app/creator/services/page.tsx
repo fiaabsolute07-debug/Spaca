@@ -4,7 +4,7 @@ import { Badge, CommandForm, Empty, Field, availabilityLabel, money, num, row, r
 import { Notices } from '@/components/notices';
 import { PageHeading } from '@/components/page-heading';
 import { requireActorOrLoginPrompt } from '@/components/require-actor';
-import { AvailabilityEditor } from '@/components/access/availability-editor';
+import { FileUploadField } from '@/components/files/file-upload-field';
 import type { PageProps } from '@/components/page-props';
 
 export const dynamic = 'force-dynamic';
@@ -24,8 +24,6 @@ export default async function CreatorServicesPage({
   const workload = row(d.workload);
   const status = availabilityLabel(workload.availability_status);
   const inFlight = num(workload.in_flight_units);
-  const limit = num(workload.max_active_units);
-  const availability = row(d.availability);
   return <main className="container">
     {notices}
     <div className="section-heading">
@@ -36,35 +34,19 @@ export default async function CreatorServicesPage({
       />
       <Link className="button button-dark" href="/creator/services/new">New service</Link>
     </div>
-    <section className="panel" aria-labelledby="order-limit-heading">
+    <section className="panel" aria-labelledby="new-orders-heading">
       <div className="inline-actions">
-        <h2 id="order-limit-heading">Order limit</h2>
+        <h2 id="new-orders-heading">New orders</h2>
         <span className={status.className}>{status.label}</span>
       </div>
       <p className="muted">
-        All your services share one limit. Checkouts, accepted offers and auctions count until the order is approved or cancelled.
-        {" "}{inFlight} of {limit} in use.
+        {inFlight} {inFlight === 1 ? 'order' : 'orders'} in progress. Pause to stop new orders, hires and auctions; work in progress continues.
       </p>
       <div className="order-limit-actions">
-        <CommandForm command="set_workload_limit" label="Save limit" variant="secondary" returnTo={route}>
-          <Field name="max_active_units" label="Orders at a time" type="number" value={String(limit)} required />
-        </CommandForm>
         {workload.accepting_orders === false
           ? <CommandForm command="set_accepting_orders" label="Resume new orders" values={{ accepting: 'true' }} returnTo={route} />
           : <CommandForm command="set_accepting_orders" label="Pause new orders" variant="secondary" values={{ accepting: 'false' }} returnTo={route} />}
       </div>
-    </section>
-    <section className="panel" id="availability" aria-labelledby="availability-heading">
-      <h2 id="availability-heading">Session availability</h2>
-      <p className="muted">
-        For ACCESS services. Buyers pick a start inside these hours, at least 12 hours ahead. Sessions already booked keep their times when you change this.
-      </p>
-      <CommandForm command="set_availability" label="Save availability" variant="secondary" returnTo={route}>
-        <AvailabilityEditor
-          timeZone={availability.time_zone ? str(availability.time_zone) : null}
-          windows={rows(availability.windows).map((w) => ({ weekday: num(w.weekday), startMinute: num(w.startMinute), endMinute: num(w.endMinute) }))}
-        />
-      </CommandForm>
     </section>
     {rows(d.services).length ? <div className="cards">
       {rows(d.services).map(s => <div className="panel" key={str(s.id)}>
@@ -89,6 +71,20 @@ export default async function CreatorServicesPage({
             {str(s.taxonomy)}
           </span>
         </div>
+        {str(s.taxonomy) === 'DIGITAL' && <div className="digital-releases">
+          <p className="muted">
+            {s.digital_license === 'EXCLUSIVE' ? 'Exclusive license' : 'Non-exclusive license'}
+            {s.digital_stock ? ` · ${num(s.digital_stock)} ${num(s.digital_stock) === 1 ? 'copy' : 'copies'}` : ' · unlimited copies'}
+            {` · ${num(row(s.licenses).active)} sold, ${num(row(s.licenses).held)} in checkout`}
+          </p>
+          {rows(s.releases).length
+            ? <ul className="release-list">{rows(s.releases).map((release) => <li key={str(release.version)}>Version {num(release.version)} · {str(release.filename)}</li>)}</ul>
+            : <p className="notice">Upload the product file before publishing.</p>}
+          {str(s.status) !== 'ARCHIVED' && <CommandForm command="add_digital_release" label={rows(s.releases).length ? 'Add new version' : 'Add product file'} variant="secondary" values={{ service_id: str(s.id) }} returnTo={route}>
+            <FileUploadField purpose="DIGITAL" label="Product file" maxFiles={1} help="One file per version: zip up to 100 MB, PDF/DOCX 25 MB, images 10 MB, video 250 MB. Private until purchased." />
+            <Field name="notes" label="What changed (optional)" />
+          </CommandForm>}
+        </div>}
         <div className="inline-actions">
           <Link className="text-link" href={`/services/${str(s.id)}`}>Open public page ›</Link>
           {str(s.status) === 'DRAFT' && <CommandForm

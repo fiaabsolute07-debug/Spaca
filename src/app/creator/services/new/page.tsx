@@ -63,16 +63,23 @@ export default async function NewServicePage({
           <Field name="disclosure_text" label="Sponsorship disclosure" value="#ad" />
         </div>
         <h3>If you chose ACCESS</h3>
-        <p className="muted">
-          ACCESS is a live session at a time the buyer picks from your weekly availability.{' '}
-          <Link className="text-link" href="/creator/services#availability">Set your availability ›</Link>
-        </p>
+        <p className="muted">ACCESS is a live session. After payment you and the buyer agree the time and meeting link in the order messages.</p>
         <div className="form-grid">
           <SelectField name="access_session_minutes" label="Session length" defaultValue="60" options={[30, 45, 60, 90, 120].map((m) => ({ value: String(m), label: `${m} minutes` }))} />
-          <SelectField name="access_buffer_minutes" label="Break after each session" defaultValue="15" options={[0, 5, 10, 15, 30, 60].map((m) => ({ value: String(m), label: m === 0 ? 'No break' : `${m} minutes` }))} />
-          <Field name="access_cancel_notice_hours" label="Free cancellation until (hours before)" type="number" value="24" />
-          <Field name="access_no_show_minutes" label="No-show after (minutes)" type="number" value="10" />
         </div>
+        <h3>If you chose DIGITAL</h3>
+        <p className="muted">
+          DIGITAL sells files you already made (templates, code, presets). It does not use your order limit. Save the draft, upload the file on My services, then publish.
+        </p>
+        <div className="form-grid">
+          <SelectField name="digital_license" label="License" defaultValue="NON_EXCLUSIVE"
+            options={[{ value: 'NON_EXCLUSIVE', label: 'Non-exclusive (sell many copies)' }, { value: 'EXCLUSIVE', label: 'Exclusive (one buyer only)' }]} />
+          <SelectField name="digital_updates" label="Buyers get" defaultValue="LATEST"
+            options={[{ value: 'LATEST', label: 'Every new version' }, { value: 'PURCHASED_VERSION', label: 'Only the version they bought' }]} />
+          <Field name="digital_stock" label="Copies for sale (empty = unlimited)" type="number" />
+          <Field name="digital_download_limit" label="Downloads per purchase" type="number" value="10" />
+        </div>
+        <Field name="digital_rights_text" label="What buyers may do with the files" type="textarea" placeholder="For example: use in personal and client projects; do not resell or share the files." />
         <h3>Work samples</h3>
         <p className="muted">One strong sample is enough to publish. Add up to two more if you have them.</p>
         <div className="form-grid">

@@ -38,7 +38,7 @@ type Claims = UploadClaims | DownloadClaims;
 
 const LOCAL_SIGNING_FALLBACK = 'local_dev_only_storage_signing_fixture';
 const KEY_PATTERN = /^[a-z]+\/[0-9a-f-]{36}\/[0-9a-f-]{36}\.[a-z0-9]{2,5}$/;
-const BUCKETS = new Set<string>(['public-portfolio', 'private-briefs', 'private-deliverables', 'private-disputes', 'private-quarantine']);
+const BUCKETS = new Set<string>(['public-portfolio', 'private-briefs', 'private-deliverables', 'private-disputes', 'private-products', 'private-quarantine']);
 
 export function localStorageEnabled(): boolean {
   return process.env.NODE_ENV !== 'production' && (process.env.STORAGE_PROVIDER ?? 'local') === 'local';

@@ -57,7 +57,7 @@ async function createSale(tx: Tx, auction: Row, sale: { buyerId: string; amountM
   const terms = { ...snapshot, schema_version: 1, source: 'AUCTION', auction_id: String(auction.id), sale_kind: sale.kind, price_minor: sale.amountMinor, platform_fee_bps: 0, auto_accept_consent: false };
   const [claim] = await tx<Row[]>`select * from app.workload_claims where auction_id=${String(auction.id)} for update`;
   if (!claim || !['HELD', 'EXPIRY_RECONCILING'].includes(String(claim.state))) {
-    throw new CommandError('The auction slot is no longer held; the sale cannot proceed', 'CAPACITY_UNAVAILABLE');
+    throw new CommandError('The auction slot is no longer held; the sale cannot proceed', 'ORDER_STATE_CONFLICT');
   }
   const brief = sale.kind === 'WINNER' ? 'Winning bid: confirm the final brief in the order workspace.' : 'Buy Now purchase: confirm the final brief in the order workspace.';
   const [order] = await tx<Row[]>`insert into app.orders (buyer_id,creator_id,service_id,service_version_id,source,source_ref,title,status,amount_minor,platform_fee_minor,currency,brief,terms,delivery_due_at)
@@ -105,6 +105,8 @@ const createAuction: CommandHandler = async ({ tx, actor, form }) => {
   await assertFlags(tx, ['AUCTIONS_ENABLED']);
   const service = await ownedService(tx, actor, text(form, 'service_id'));
   if (String(service.status) !== 'PUBLISHED' || !service.published_version_id) throw new CommandError('Only a published service can be auctioned', 'DOMAIN_RULE');
+  // Sessions need a booked time and digital products a stock-checked license; neither is sold through auctions yet.
+  if (['ACCESS', 'DIGITAL'].includes(String(service.taxonomy))) throw new CommandError('ACCESS and DIGITAL services cannot be auctioned', 'DOMAIN_RULE');
   const starting = money(text(form, 'starting_price'), 'starting_price');
   const increment = money(text(form, 'minimum_increment'), 'minimum_increment');
   const buyValue = text(form, 'buy_now_price', false);
@@ -135,7 +137,7 @@ const createAuction: CommandHandler = async ({ tx, actor, form }) => {
     starts_at: starts.toISOString(),
     ends_at: ends.toISOString(),
     winner_payment_hours: WINNER_PAYMENT_HOURS,
-    capacity: { model: 'ACTIVE_ORDER_LIMIT', units },
+    capacity: { model: 'ACTIVE_ORDERS', units },
   };
   const status = starts <= now ? 'LIVE' : 'SCHEDULED';
   const [auction] = await tx<Row[]>`insert into app.auctions (service_id,service_version_id,seller_id,title,starting_price_minor,minimum_increment_minor,buy_now_price_minor,starts_at,ends_at,status,terms_snapshot)

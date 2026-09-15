@@ -49,23 +49,23 @@ try {
       select id,'bench'||n,'Independent creator focused on launches, video and newsletters #'||n,
         (array['launch writing','video editing','podcast production','newsletter','ux copy','illustration','community','tutorials','reviews','brand strategy'])[1 + (n % 10)]
       from bench_creators`;
-    // Every tenth creator is at their limit and every twentieth paused, so the availability filter has work to do.
-    await tx`insert into app.creator_workloads (creator_id,max_active_units,accepting_orders,active_units)
-      select id,5,(n % 20 <> 0),case when n % 10 = 0 then 5 else (n % 5) end from bench_creators`;
+    // Every twentieth creator paused new orders, so the availability filter has work to do.
+    await tx`insert into app.creator_workloads (creator_id,accepting_orders,active_units)
+      select id,(n % 20 <> 0),(n % 5) from bench_creators`;
     await tx`create temp table bench_services on commit drop as
       select gen_random_uuid() as id, p.id as creator_id, g,
         'Bench ' || (array['launch','story','video','podcast','thread','newsletter','review','tutorial','design','copy'])[1 + (g % 10)] || ' '
           || (array['package','sprint','series','audit','kit','plan','campaign','session','pack','draft'])[1 + ((g / 7) % 10)] || ' ' || g as title,
         (array['CREATE','PUBLISH','ACCESS','DIGITAL'])[1 + (g % 4)] as taxonomy, (5000 + (g * 37) % 200000)::bigint as price_minor, (12 + (g % 20) * 12) as turnaround_hours
       from generate_series(1, 5000) g join bench_creators p on p.n = 1 + (g % 1000)`;
-    // ACCESS listings carry session terms (drizzle/0015); other categories leave them null.
-    await tx`insert into app.services (id,creator_id,title,description,taxonomy,price_minor,currency,turnaround_hours,status,access_session_minutes,access_buffer_minutes,access_cancel_notice_hours,access_no_show_minutes)
+    // ACCESS listings state their session length; other categories leave it null.
+    await tx`insert into app.services (id,creator_id,title,description,taxonomy,price_minor,currency,turnaround_hours,status,access_session_minutes)
       select id,creator_id,title,'Scope for '||title||' including deliverables, revisions and usage notes.',taxonomy,price_minor,'USD',turnaround_hours,'DRAFT',
-        case when taxonomy='ACCESS' then 60 end,case when taxonomy='ACCESS' then 15 end,case when taxonomy='ACCESS' then 24 end,case when taxonomy='ACCESS' then 10 end from bench_services`;
+        case when taxonomy='ACCESS' then 60 end from bench_services`;
     await tx`insert into app.service_versions (service_id,version,title,description,taxonomy,price_minor,currency,turnaround_hours,revision_limit,created_by,created_at,
-        access_session_minutes,access_buffer_minutes,access_cancel_notice_hours,access_no_show_minutes)
+        access_session_minutes)
       select id,1,title,'Scope for '||title||' including deliverables, revisions and usage notes.',taxonomy,price_minor,'USD',turnaround_hours,1,creator_id,now() - (g * interval '1 minute'),
-        case when taxonomy='ACCESS' then 60 end,case when taxonomy='ACCESS' then 15 end,case when taxonomy='ACCESS' then 24 end,case when taxonomy='ACCESS' then 10 end from bench_services`;
+        case when taxonomy='ACCESS' then 60 end from bench_services`;
     await tx`update app.services s set status='PUBLISHED',published_version_id=v.id from app.service_versions v where v.service_id=s.id and s.id in (select id from bench_services)`;
     await tx`create temp table bench_auctions on commit drop as
       select gen_random_uuid() as id, s.id as service_id, s.creator_id, s.title, series.n as g from generate_series(1, 500) as series(n) join bench_services s on s.g = series.n * 10`;
@@ -126,7 +126,7 @@ try {
       ['selective full-text match uses the GIN index', `select v.id from app.service_versions v where v.search_document @@ to_tsquery('simple','4242')`, (p) => p.includes('service_versions_search_idx')],
       ['highest valid bid uses the ranking index', `select id from app.bids where auction_id=(select id from app.auctions where status='LIVE' limit 1) and status='ACCEPTED' order by amount_minor desc, sequence asc limit 1`, (p) => p.includes('bids_ranking_idx')],
       ['ending soon uses the partial ends_at index', `select id from app.auctions where status in ('SCHEDULED','LIVE') and ends_at > now() and ends_at <= now() + interval '48 hours' order by ends_at, id limit 13`, (p) => p.includes('auctions_ending_idx') || p.includes('auctions_due_idx') || p.includes('auctions_public_idx')],
-      ['workload lookup uses the creator key', `select accepting_orders,held_units,active_units,max_active_units from app.creator_workloads where creator_id=(select creator_id from app.services where status='PUBLISHED' limit 1)`, (p) => p.includes('creator_workloads_pkey')],
+      ['workload lookup uses the creator key', `select accepting_orders,held_units,active_units from app.creator_workloads where creator_id=(select creator_id from app.services where status='PUBLISHED' limit 1)`, (p) => p.includes('creator_workloads_pkey')],
       ['open claims per creator use the claims index', `select count(*) from app.workload_claims where creator_id=(select id from app.users limit 1) and state in ('HELD','EXPIRY_RECONCILING')`, (p) => p.includes('workload_claims_creator_state_idx') && !seqScanOn(p, 'workload_claims')],
       ['recent views use a service_views index', `select service_id, count(*) from app.service_views where view_date > current_date - 7 and service_id=(select id from app.services where status='PUBLISHED' limit 1) group by service_id`, (p) => /service_views_(pkey|recent_idx)/.test(p) && !seqScanOn(p, 'service_views')],
       // Control: proves seqScanOn detects a seq scan, so the negative checks cannot pass vacuously.

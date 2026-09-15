@@ -302,7 +302,7 @@ const acceptOffer: CommandHandler = async ({ tx, actor, form }) => {
   if (actor.status !== 'ACTIVE') throw new CommandError('Suspended accounts cannot accept new work', 'ACCOUNT_SUSPENDED');
   await assertFlags(tx, ['REQUESTS_ENABLED', 'CHECKOUT_CREATION_ENABLED']);
   const terms = offer.terms_snapshot as Record<string, unknown>;
-  const capacityPlan = { model: 'ACTIVE_ORDER_LIMIT', units: 1 };
+  const capacityPlan = { model: 'ACTIVE_ORDERS', units: 1 };
   const campaignPool = await poolTermsFor(tx, String(request.id));
   const orderTerms = { ...terms, offer_id: String(offer.id), capacity: capacityPlan,
     ...(campaignPool ? { pool: { pool_id: campaignPool.poolId, template_version: campaignPool.templateVersion, rewards: campaignPool.items } } : {}) };

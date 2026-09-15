@@ -24,10 +24,9 @@ export type CommandErrorCode =
   | 'ACCOUNT_SUSPENDED'
   | 'VERSION_CONFLICT'
   | 'IDEMPOTENCY_CONFLICT'
-  | 'CAPACITY_UNAVAILABLE'
   | 'NOT_ACCEPTING_ORDERS'
   | 'SLOT_EXPIRED'
-  | 'SLOT_TAKEN'
+  | 'SOLD_OUT'
   | 'BRIEF_INCOMPLETE'
   | 'ORDER_STATE_CONFLICT'
   | 'REVISION_LIMIT_REACHED'
@@ -62,9 +61,8 @@ export function statusForCode(code: CommandErrorCode): number {
       return 404;
     case 'VERSION_CONFLICT':
     case 'IDEMPOTENCY_CONFLICT':
-    case 'CAPACITY_UNAVAILABLE':
     case 'NOT_ACCEPTING_ORDERS':
-    case 'SLOT_TAKEN':
+    case 'SOLD_OUT':
     case 'ORDER_STATE_CONFLICT':
     case 'QUOTE_CHANGED':
     case 'BUY_NOW_UNAVAILABLE':

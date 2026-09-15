@@ -317,13 +317,8 @@ Commands:
 - Pool refunds (`refund_pool_unused`) return `state: REFUND_PENDING`; the escrow sends them to the wallet that funded the pool.
 - Crypto order events: `SETTLEMENT_RELEASED` (rail CRYPTO, tx_hash), `REFUND_CONFIRMED`, `ESCROW_FROZEN` / `ESCROW_UNFROZEN` (disputes), `SETTLEMENT_FAILED`, `REFUND_FAILED`.
 
-## P6-ACCESS additions (2026-09-15): time-slot sessions
+## 2026-09-15 removals: order limit and ACCESS scheduling (drizzle/0017)
 
-- Service fields (create/update, ACCESS only): `access_session_minutes` (15–480, multiple of 15; default 60), `access_buffer_minutes` (0–120; 15), `access_cancel_notice_hours` (0–168; 24), `access_no_show_minutes` (5–60; 10). Public reads return them from the published version.
-- `set_availability`: `time_zone` (IANA) plus either `windows` (JSON `[{weekday 1–7, start "HH:MM", end "HH:MM"|"24:00"}]`) or the plain form `day_<n>_on=on`, `day_<n>_start`, `day_<n>_end` (23:59 = midnight). 400 for overlaps or invalid zones. `getDashboardData().availability = { time_zone, windows[{weekday,startMinute,endMinute}] }`.
-- `GET /api/services/[id]/slots?from=<ISO>&days=<1–14>` → `{ session_minutes, slots: [ISO UTC] }`; 404 unless a published ACCESS service; 503 while `ACCESS_BOOKING_ENABLED` is off. `getServiceData().access = { time_zone, booking_enabled }`.
-- `book` on ACCESS adds `starts_at` (ISO with zone). Errors: 422 `SLOT_EXPIRED` (missing, not offered, too soon), 409 `SLOT_TAKEN` (someone holds an overlapping time), 422 `FEATURE_DISABLED`. Order `terms.access = { session_minutes, buffer_minutes, cancel_notice_hours, no_show_minutes, time_zone, starts_at, ends_at, policy_version: 'access-v1' }`; `delivery_due_at` = end + 24 h.
-- `getOrderData().appointment` (participants only): `state` HELD/BOOKED/COMPLETED/NO_SHOW_BUYER/NO_SHOW_CREATOR/CANCELLED, `starts_at`, `ends_at`, `buffer_minutes`, `creator_time_zone`, `cancel_notice_hours`, `no_show_minutes`, `meeting_url`, `outcome_at`.
-- Commands: `set_meeting_link` (creator; `order_id`, `meeting_url` https), `mark_session` (creator; `order_id`, `outcome` COMPLETED after the start | NO_SHOW_BUYER after grace, `note` 20+) → DELIVERED, `report_creator_no_show` (buyer; `order_id`, `body` 10+, after grace) → DISPUTED.
-- Session orders refuse `start` and `deliver` (422). Buyer `cancel` of a FUNDED session inside the notice → 422; `request_cancellation` is accepted for FUNDED sessions.
-- Events: `MEETING_LINK_SET` (no URL in payload), `SESSION_COMPLETED`, `SESSION_NO_SHOW_BUYER`, `SESSION_NO_SHOW_CREATOR_REPORTED`.
+- No limit on orders at once. `set_workload_limit` and `max_active_units` are gone; `availability_status` is `ACCEPTING` or `PAUSED` (DIGITAL adds `SOLD_OUT`). `AT_CAPACITY` and the `CAPACITY_UNAVAILABLE` error no longer exist. `set_accepting_orders` (pause/resume) stays; `getDashboardData().workload` keeps `held_units`, `active_units`, `in_flight_units`, `accepting_orders`.
+- ACCESS: no availability, slots API, appointments, meeting link, `mark_session` or `report_creator_no_show`. A service has `access_session_minutes` only; `book` needs no `starts_at`; order `terms.access = { session_minutes, scheduling: 'AGREED_IN_MESSAGES' }`. ACCESS orders use the normal start/deliver/approve flow and messages to agree the time.
+- The W7-CAP section above describes the removed limit; read it with this note.

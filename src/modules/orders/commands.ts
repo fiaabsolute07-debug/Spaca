@@ -21,7 +21,7 @@ import { enqueueNotification } from '@/modules/notifications/enqueue';
 import { PaymentFlowError, cancelOpenFunding, openCase, refundReasonFor, requestProviderRefund, setCryptoEscrowFrozen } from '@/modules/payments/funding';
 import { attachDeliveryAssets, lockDeliveryAssets, parseAssetIds } from '@/modules/storage/service';
 import { checkPublicationProof, publishTermsOf } from '@/modules/publish';
-import { accessTermsOf, appointmentFor, insideCancelNotice } from '@/modules/access';
+import { digitalTermsOf } from '@/modules/digital';
 import {
   MIN_DELIVERY_NOTE_CHARS,
   REVISION_TURNAROUND_HOURS,
@@ -83,7 +83,7 @@ const start = withOrder(async ({ tx, actor, order, orderId, status, isCreator })
   if (!isCreator) throw new CommandError('Only the creator can start work', 'FORBIDDEN');
   if (status !== 'FUNDED') throw new CommandError(status === 'AWAITING_PAYMENT' ? 'Payment is not confirmed yet' : 'Only a funded order can start', 'ORDER_STATE_CONFLICT');
   if (!order.brief_ready_at) throw new CommandError('The buyer has not completed the brief yet', 'BRIEF_INCOMPLETE');
-  if (accessTermsOf(order.terms)) throw new CommandError('A session starts at its booked time; record the outcome after it starts', 'DOMAIN_RULE');
+  if (digitalTermsOf(order.terms)) throw new CommandError('Digital products are delivered automatically when payment is confirmed', 'DOMAIN_RULE');
   // The due date was fixed at max(funded_at, brief_ready_at); starting late never moves it (ORD-04).
   const [updated] = await tx<Row[]>`update app.orders set status='IN_PROGRESS',version=version+1,updated_at=now() where id=${orderId} returning work_start_at,delivery_due_at`;
   await orderEvent(tx, orderId, actor.id, 'WORK_STARTED', { work_start_at: updated!.work_start_at, delivery_due_at: updated!.delivery_due_at });
@@ -94,8 +94,7 @@ const deliver = withOrder(async ({ tx, actor, form, order, orderId, status, isCr
   if (!isCreator) throw new CommandError('Only the creator can deliver', 'FORBIDDEN');
   if (status === 'FUNDED') throw new CommandError('Start work before delivering', 'ORDER_STATE_CONFLICT');
   if (!['IN_PROGRESS', 'REVISION_REQUESTED'].includes(status)) throw new CommandError('This order is not accepting deliveries', 'ORDER_STATE_CONFLICT');
-  // XPL-03: a session is delivered by recording its outcome (mark_session), not by a file or link.
-  if (accessTermsOf(order.terms) && status === 'IN_PROGRESS') throw new CommandError('Record the session outcome instead of a delivery', 'DOMAIN_RULE');
+  if (digitalTermsOf(order.terms)) throw new CommandError('Digital products are delivered as released files; add a new version to the product instead', 'DOMAIN_RULE');
   const body = text(form, 'body', false, 12000);
   const urlValue = text(form, 'url', false, 1000);
   let url: string | null = null;
@@ -146,6 +145,7 @@ const deliver = withOrder(async ({ tx, actor, form, order, orderId, status, isCr
 const revision = withOrder(async ({ tx, actor, form, order, orderId, status, isBuyer }) => {
   if (!isBuyer) throw new CommandError('Only the buyer can request a revision', 'FORBIDDEN');
   if (status !== 'DELIVERED') throw new CommandError('A revision can only be requested on a delivered version', 'ORDER_STATE_CONFLICT');
+  if (digitalTermsOf(order.terms)) throw new CommandError('Digital products are sold as released. Cancel before downloading, or open a dispute if the files are not as described.', 'DOMAIN_RULE');
   const delivery = await assertCurrentDelivery(tx, orderId, deliveryVersionOf(form));
   if (order.review_due_at && new Date() > new Date(order.review_due_at)) throw new CommandError('The review window has closed; open a dispute or contact support', 'DOMAIN_RULE');
   const { revisionLimit } = termsOf(order);
@@ -205,11 +205,6 @@ const cancel = withOrder(async ({ tx, actor, order, orderId, status, isBuyer, is
   if (!['AWAITING_PAYMENT', 'FUNDED'].includes(status)) {
     throw new CommandError('Work has started; request a cancellation with an agreed refund instead', 'ORDER_STATE_CONFLICT');
   }
-  // XPL-03: inside the session's cancellation notice the buyer needs the creator's agreement; the creator can always cancel with a full refund.
-  const appointment = accessTermsOf(order.terms) && status === 'FUNDED' ? await appointmentFor(tx, orderId) : undefined;
-  if (isBuyer && appointment && insideCancelNotice(appointment)) {
-    throw new CommandError(`Sessions can be cancelled up to ${Number(appointment.cancel_notice_hours)} hours before they start. Request a cancellation so the creator can agree to a refund.`, 'DOMAIN_RULE');
-  }
   if (status === 'AWAITING_PAYMENT') await cancelOpenFunding(tx, orderId);
   // CANCELLED releases the hold or active claim through the order status trigger (drizzle/0012).
   await tx`update app.orders set status='CANCELLED',cancelled_at=now(),payment_status=case when payment_status='SUCCEEDED' then 'REFUND_PENDING' else payment_status end,
@@ -232,8 +227,7 @@ const cancel = withOrder(async ({ tx, actor, order, orderId, status, isBuyer, is
 /** ORD-13/15: after work starts, cancellation needs the counterparty to accept a fixed refund amount. */
 const requestCancellation = withOrder(async ({ tx, actor, form, order, orderId, status, isBuyer, isCreator }) => {
   if (!isBuyer && !isCreator) throw new CommandError('Only order participants can request a cancellation', 'FORBIDDEN');
-  const lateSession = status === 'FUNDED' && accessTermsOf(order.terms) !== null;
-  if (!['IN_PROGRESS', 'DELIVERED', 'REVISION_REQUESTED'].includes(status) && !lateSession) {
+  if (!['IN_PROGRESS', 'DELIVERED', 'REVISION_REQUESTED'].includes(status)) {
     throw new CommandError(status === 'FUNDED' || status === 'AWAITING_PAYMENT' ? 'Work has not started; cancel directly instead' : 'This order cannot be cancelled now', 'ORDER_STATE_CONFLICT');
   }
   const refundValue = text(form, 'refund_amount');
@@ -276,8 +270,7 @@ const respondCancellation: CommandHandler = async ({ tx, actor, form }) => {
   }
   if (actor.id !== String(request.counterparty_id)) throw new CommandError('Only the other party can respond', 'FORBIDDEN');
   // Consent covers the order as it was; any later delivery/revision/dispute invalidates the request (ORD-15).
-  const cancellable = ['IN_PROGRESS', 'DELIVERED', 'REVISION_REQUESTED'].includes(String(order.status)) || (order.status === 'FUNDED' && accessTermsOf(order.terms) !== null);
-  if (Number(order.version) !== Number(request.order_version) || !cancellable) {
+  if (Number(order.version) !== Number(request.order_version) || !['IN_PROGRESS', 'DELIVERED', 'REVISION_REQUESTED'].includes(String(order.status))) {
     throw new CommandError('The order changed after this request was made. Ask for a new cancellation request.', 'VERSION_CONFLICT');
   }
   if (decision === 'reject') {

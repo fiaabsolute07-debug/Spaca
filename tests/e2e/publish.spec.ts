@@ -14,11 +14,6 @@ test('a PUBLISH order is delivered with the post link on the sold X channel and 
   await expect(accounts.getByRole('link', { name: `@${handle}`, exact: true })).toBeVisible();
   await expect(accounts.getByText('Self-reported').first()).toBeVisible();
 
-  await visit(page, '/creator/services');
-  const limit = page.getByRole('region', { name: 'Order limit' });
-  await limit.getByLabel('Orders at a time').fill('100');
-  await submit(page, limit.getByRole('button', { name: 'Save limit', exact: true }));
-
   await visit(page, '/creator/services/new');
   await page.getByLabel('Service title', { exact: true }).fill(title);
   await chooseOption(page, page, 'What are you offering?', 'Publish · a post on your channel');

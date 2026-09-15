@@ -2,23 +2,25 @@ import { sql } from './db';
 import { formatAtomic, usdMinorToAtomic } from '@/modules/crypto/registry';
 import type { Actor } from './auth';
 import { availabilityOf, workloadsFor } from '@/modules/capacity';
-import { availabilityFor } from '@/modules/access';
+import { digitalAvailability, downloadableReleases } from '@/modules/digital';
 import { isFlagEnabled } from '@/modules/admin/policy';
 
 export type ReadRow = Record<string, unknown>;
 const asRows = (value: unknown): ReadRow[] => Array.isArray(value) ? value as ReadRow[] : [];
 
-const SERVICE_COLUMNS_OWNER = sql`s.id,s.title,s.description,s.taxonomy,s.price_minor,s.currency,s.turnaround_hours,s.revision_limit,s.units_per_order,s.status,s.version,s.creator_id,s.published_version_id as service_version_id,s.publish_account_id,s.publish_format,s.min_live_hours,s.disclosure_text,s.access_session_minutes,s.access_buffer_minutes,s.access_cancel_notice_hours,s.access_no_show_minutes`;
+const SERVICE_COLUMNS_OWNER = sql`s.id,s.title,s.description,s.taxonomy,s.price_minor,s.currency,s.turnaround_hours,s.revision_limit,s.units_per_order,s.status,s.version,s.creator_id,s.published_version_id as service_version_id,s.publish_account_id,s.publish_format,s.min_live_hours,s.disclosure_text,s.access_session_minutes,s.digital_license,s.digital_rights_text,s.digital_stock,s.digital_updates,s.digital_download_limit`;
 // Public views always show the published immutable version's terms, never unpublished edits.
-const SERVICE_COLUMNS_PUBLIC = sql`s.id,v.title,v.description,v.taxonomy,v.price_minor,v.currency,v.turnaround_hours,v.revision_limit,v.units_per_order,s.status,s.version,s.creator_id,v.id as service_version_id,v.version as service_version,v.publish_platform,v.publish_handle,v.publish_url,v.publish_format,v.min_live_hours,v.disclosure_text,v.access_session_minutes,v.access_buffer_minutes,v.access_cancel_notice_hours,v.access_no_show_minutes`;
+const SERVICE_COLUMNS_PUBLIC = sql`s.id,v.title,v.description,v.taxonomy,v.price_minor,v.currency,v.turnaround_hours,v.revision_limit,v.units_per_order,s.status,s.version,s.creator_id,v.id as service_version_id,v.version as service_version,v.publish_platform,v.publish_handle,v.publish_url,v.publish_format,v.min_live_hours,v.disclosure_text,v.access_session_minutes,v.digital_license,v.digital_rights_text,v.digital_stock,v.digital_updates,v.digital_download_limit`;
 
 /**
- * Buyers see a status only, never the counts (§6.1 rule 10): ACCEPTING, AT_CAPACITY or PAUSED for one order of
- * this service. The creator's own numbers come from getDashboardData().workload.
+ * Buyers see a status only, never counts: ACCEPTING or PAUSED (SOLD_OUT for DIGITAL). There is no limit on orders
+ * at once (drizzle/0017). The creator's own numbers come from getDashboardData().workload.
  */
 async function withAvailability(rows: ReadRow[]): Promise<ReadRow[]> {
   const workloads = await workloadsFor(sql, rows.map((row) => String(row.creator_id)));
-  return rows.map((row) => ({ ...row, availability_status: availabilityOf(workloads.get(String(row.creator_id)), Number(row.units_per_order ?? 1)) }));
+  // DIGITAL listings use no creator capacity: they are available until their stock or exclusive license is taken.
+  const stock = await digitalAvailability(sql, rows.filter((row) => row.taxonomy === 'DIGITAL').map((row) => String(row.id)));
+  return rows.map((row) => ({ ...row, availability_status: row.taxonomy === 'DIGITAL' ? stock.get(String(row.id)) ?? 'ACCEPTING' : availabilityOf(workloads.get(String(row.creator_id))) }));
 }
 
 async function serviceRows(options: { ownerId?: string; publicCreatorId?: string } = {}) {
@@ -46,7 +48,20 @@ async function serviceRows(options: { ownerId?: string; publicCreatorId?: string
     current.push(sample);
     sampleMap.set(key, current);
   }
-  const rows = asRows(services).map((service): ReadRow => ({ ...service, samples: sampleMap.get(String(service.id)) ?? [] }));
+  // The owner sees each DIGITAL product's releases and how many licenses are live.
+  const digitalIds = actorId ? asRows(services).filter((service) => service.taxonomy === 'DIGITAL').map((service) => String(service.id)) : [];
+  const releases = digitalIds.length ? asRows(await sql`select r.service_id,r.version,r.notes,r.created_at,a.filename,a.size_bytes from app.digital_releases r
+    join app.storage_assets a on a.id=r.asset_id where r.service_id = any(${digitalIds}::uuid[]) order by r.version desc`) : [];
+  const sales = digitalIds.length ? asRows(await sql`select service_id,count(*) filter (where state='ACTIVE')::int as active,count(*) filter (where state in ('HELD','EXPIRY_RECONCILING'))::int as held
+    from app.digital_entitlements where service_id = any(${digitalIds}::uuid[]) group by service_id`) : [];
+  const rows = asRows(services).map((service): ReadRow => ({
+    ...service,
+    samples: sampleMap.get(String(service.id)) ?? [],
+    ...(service.taxonomy === 'DIGITAL' && actorId ? {
+      releases: releases.filter((r) => String(r.service_id) === String(service.id)),
+      licenses: sales.find((s) => String(s.service_id) === String(service.id)) ?? { active: 0, held: 0 },
+    } : {}),
+  }));
   return withAvailability(rows);
 }
 
@@ -85,13 +100,11 @@ export async function getDashboardData(actor: Actor) {
   ]);
   const [profileRow] = asRows(profile);
   const [statsRow] = asRows(stats);
-  const availability = await availabilityFor(sql, actor.id);
   const serviceList = asRows(services);
   const workload = (await workloadsFor(sql, [actor.id])).get(actor.id)!;
   const inFlight = Number(workload.held_units) + Number(workload.active_units);
   return { orders: asRows(orders), services: serviceList, applications: asRows(applications), requests: asRows(requests), auctions: asRows(auctions), profile: profileRow ?? {}, stats: statsRow ?? {},
-    workload: { ...workload, in_flight_units: inFlight, availability_status: availabilityOf(workload) },
-    availability: { time_zone: availability.timeZone ?? actor.timezone ?? null, windows: availability.windows } };
+    workload: { ...workload, in_flight_units: inFlight, availability_status: availabilityOf(workload) } };
 }
 
 export async function getOrderData(actor: Actor, id: string) {
@@ -118,8 +131,13 @@ export async function getOrderData(actor: Actor, id: string) {
   ]);
   const isBuyer = actor.id === String(order.buyer_id);
   // XPL-03: the session and its private meeting link are read only by the two parties (this query is already scoped to them).
-  const [appointment] = asRows(await sql`select state,starts_at,ends_at,buffer_minutes,creator_time_zone,cancel_notice_hours,no_show_minutes,meeting_url,outcome_at
-    from app.appointments where order_id=${id}`);
+  // XPL-06: the buyer sees which releases their license includes; files are fetched only through the entitlement route.
+  const [entitlement] = asRows(await sql`select * from app.digital_entitlements where order_id=${id}`);
+  const digital = entitlement ? {
+    entitlement: { id: entitlement.id, state: entitlement.state, license: entitlement.license, release_version: entitlement.release_version, updates_policy: entitlement.updates_policy,
+      download_limit: entitlement.download_limit, download_count: entitlement.download_count, first_downloaded_at: entitlement.first_downloaded_at },
+    releases: (await downloadableReleases(sql, entitlement)).map((r) => ({ version: r.version, notes: r.notes, created_at: r.created_at, filename: r.filename, size_bytes: r.size_bytes, available: r.lifecycle_state === 'READY' })),
+  } : null;
   // Crypto checkout (W5-C1): the buyer sees their latest intent; both parties see how the order was paid.
   const [cryptoIntent] = isBuyer ? asRows(await sql`select i.id,i.status,i.status_reason,i.chain_id,i.network_mode,i.amount_atomic,i.recipient,i.reference,i.escrow_ref,i.expires_at,
       a.symbol,a.decimals,a.kind as asset_kind,a.contract_address as token_address,n.name as network_name,
@@ -142,7 +160,7 @@ export async function getOrderData(actor: Actor, id: string) {
     deliveries: asRows(deliveries),
     publish_terms: terms.publish ?? null,
     publish_proofs: asRows(proofs),
-    appointment: appointment ?? null,
+    digital,
     events: asRows(events),
     messages: asRows(messages),
     reviews: asRows(reviews),
@@ -162,11 +180,12 @@ export async function getServiceData(id: string) {
     left join app.profiles p on p.user_id=s.creator_id where s.id=${id} and s.status='PUBLISHED' and u.status='ACTIVE'`);
   if (!rows[0]) return null;
   const [service] = await withAvailability(rows);
-  const access = service!.taxonomy === 'ACCESS' ? { time_zone: (await availabilityFor(sql, String(service!.creator_id))).timeZone, booking_enabled: await isFlagEnabled(sql, 'ACCESS_BOOKING_ENABLED') } : null;
+  const [latestRelease] = service!.taxonomy === 'DIGITAL' ? asRows(await sql`select version,created_at from app.digital_releases where service_id=${id} order by version desc limit 1`) : [];
+  const digitalInfo = service!.taxonomy === 'DIGITAL' ? { latest_version: latestRelease?.version ?? null, updated_at: latestRelease?.created_at ?? null, purchases_enabled: await isFlagEnabled(sql, 'DIGITAL_PRODUCTS_ENABLED') } : null;
   // The service page shows the samples the creator linked to this service (service_samples), not their whole portfolio.
   const samples = await sql`select sm.id,sm.creator_id,sm.title,sm.url,sm.description,sm.created_at from app.service_samples ss join app.samples sm on sm.id=ss.sample_id
     where ss.service_id=${id} and sm.visibility='PUBLIC' and sm.moderation_status='APPROVED' order by sm.created_at desc limit 12`;
-  return { service: service!, access, creator: { id: service!.creator_id, display_name: service!.creator_name, bio: service!.bio, niche: service!.niche, handle: service!.handle, avatar_color: service!.avatar_color }, samples: asRows(samples) };
+  return { service: service!, digital: digitalInfo, creator: { id: service!.creator_id, display_name: service!.creator_name, bio: service!.bio, niche: service!.niche, handle: service!.handle, avatar_color: service!.avatar_color }, samples: asRows(samples) };
 }
 
 export async function getCreatorData(handle: string) {

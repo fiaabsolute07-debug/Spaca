@@ -43,7 +43,7 @@ describe.skipIf(!RUN_DB)('TEST_PLAN 1 — authorization and isolation', () => {
     expect(crossOrigin.status).toBe(403);
   });
 
-  it('keeps orders, services and order limits scoped to their owners', async () => {
+  it('keeps orders, services and pausing scoped to their owners', async () => {
     const creator = await createUser('authz-creator');
     const otherCreator = await createUser('authz-creator2');
     const buyer = await createUser('authz-buyer');
@@ -59,9 +59,9 @@ describe.skipIf(!RUN_DB)('TEST_PLAN 1 — authorization and isolation', () => {
     expect(await getOrderData({ id: buyer.id, email: buyer.email, display_name: 'x', roles: ['buyer'], is_test: true, status: 'ACTIVE', timezone: 'UTC' }, orderId)).not.toBeNull();
 
     expect((await command(otherCreator, { command: 'pause_service', idempotency_key: key('p'), service_id: serviceId })).status).toBe(403);
-    // The limit command only ever changes the caller's own workload.
-    expect((await command(otherCreator, { command: 'set_workload_limit', idempotency_key: key('c'), max_active_units: '99', creator_id: creator.id })).status).toBe(200);
-    expect((await workloadCounters(creator.id)).max_active_units).toBe(2);
+    // Pausing only ever changes the caller's own workload, whatever creator_id is posted.
+    expect((await command(otherCreator, { command: 'set_accepting_orders', idempotency_key: key('c'), accepting: 'false', creator_id: creator.id })).status).toBe(200);
+    expect((await workloadCounters(creator.id)).accepting_orders).toBe(true);
     expect((await command(creator, { command: 'book', idempotency_key: key('self'), service_id: serviceId, brief })).status).toBe(400);
   });
 
@@ -100,22 +100,15 @@ describe.skipIf(!RUN_DB)('TEST_PLAN 1 — authorization and isolation', () => {
 
 describe.skipIf(!RUN_DB)('TEST_PLAN 2 — capacity race', () => {
   // CAP-01/02/07/08 with real concurrent connections: tests/integration/supply.db.test.ts.
-  it('twenty concurrent buyers on a one-order creator: exactly one claim and a 409 for the rest', async () => {
+  it('twenty concurrent buyers: every booking gets its own claim and the counters match (no limit on orders at once)', async () => {
     const creator = await createUser('race-creator');
-    const { serviceId } = await createPublishedService(command, creator, { capacity: 1 });
+    const { serviceId } = await createPublishedService(command, creator);
     const buyers = await Promise.all(Array.from({ length: 20 }, (_, i) => createUser(`race-buyer-${i}`)));
     const results = await Promise.all(buyers.map((buyer) => book(buyer, serviceId)));
-    const winners = results.filter((r) => r.status === 200);
-    const losers = results.filter((r) => r.status !== 200);
-    expect(winners).toHaveLength(1);
-    expect(losers).toHaveLength(19);
-    for (const loser of losers) {
-      expect(loser.status).toBe(409);
-      expect(String(loser.body.error)).toMatch(/at capacity/);
-    }
-    expect(await workloadCounters(creator.id)).toMatchObject({ held_units: 1, active_units: 0 });
+    expect(results.filter((r) => r.status === 200)).toHaveLength(20);
+    expect(await workloadCounters(creator.id)).toMatchObject({ held_units: 20, active_units: 0 });
     const [{ count }] = await sql`select count(*)::int as count from app.workload_claims where creator_id=${creator.id}`;
-    expect(count).toBe(1);
+    expect(count).toBe(20);
   });
 });
 

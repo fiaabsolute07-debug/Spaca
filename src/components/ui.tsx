@@ -144,7 +144,8 @@ export function CommandForm({
 export function availabilityLabel(status: unknown): { label: string; className: string; accepting: boolean } {
   if (status === 'ACCEPTING') return { label: 'Accepting orders', className: 'status-dot status-good', accepting: true };
   if (status === 'PAUSED') return { label: 'Paused', className: 'status-dot', accepting: false };
-  return { label: 'Currently at capacity', className: 'status-dot', accepting: false };
+  if (status === 'SOLD_OUT') return { label: 'Sold out', className: 'status-dot', accepting: false };
+  return { label: 'Not available', className: 'status-dot', accepting: false };
 }
 
 export function ServiceCard({

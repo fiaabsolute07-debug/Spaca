@@ -5,7 +5,7 @@ import { OrderDeliveryPanel } from '@/components/order-workspace/delivery-panel'
 import { ReportForm } from '@/components/report-form';
 import { OrderBriefPanel } from '@/components/order-workspace/brief-panel';
 import { OrderFilesPanel } from '@/components/order-workspace/files-panel';
-import { OrderSessionPanel } from '@/components/order-workspace/session-panel';
+import { OrderDigitalPanel } from '@/components/order-workspace/digital-panel';
 import { NetworkBadge } from '@/components/crypto/crypto-payment-panel';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
@@ -71,10 +71,10 @@ export default async function OrderPage({
     </div>
     <div className="split">
       <div>
-        {d.appointment ? <OrderSessionPanel order={o} appointment={row(d.appointment)} buyer={buyer} creator={creator} route={route} /> : null}
+        {d.digital ? <OrderDigitalPanel order={o} digital={row(d.digital)} buyer={buyer} route={route} /> : null}
         <OrderBriefPanel order={o} />
         <OrderFilesPanel order={o} files={files} buyer={buyer} />
-        <OrderDeliveryPanel order={o} delivery={delivery} files={files} creator={creator} route={route} publishTerms={d.publish_terms} proofs={rows(d.publish_proofs)} session={Boolean(d.appointment)} />
+        <OrderDeliveryPanel order={o} delivery={delivery} files={files} creator={creator} route={route} publishTerms={d.publish_terms} proofs={rows(d.publish_proofs)} />
         <OrderTimelinePanel events={events} />
         <ReportForm targetType="ORDER" targetId={str(o.id)} returnTo={route} label={`Report a problem with ${creator ? 'the buyer' : 'the creator'}`} />
       </div>
@@ -90,7 +90,7 @@ export default async function OrderPage({
           activeHold={d.active_review_hold ? row(d.active_review_hold) : null}
           cryptoPayment={d.crypto_payment ? row(d.crypto_payment) : null}
           cryptoOptions={rows(d.crypto_options)}
-          appointment={d.appointment ? row(d.appointment) : null}
+          digital={Boolean(d.digital)}
           route={route}
         />
         <OrderMessagesPanel order={o} messages={messages} route={route} />

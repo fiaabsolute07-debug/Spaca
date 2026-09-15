@@ -40,7 +40,7 @@ try {
     }
     await tx`update app.profiles set bio='Brand stories, launch writing, and editorial systems for thoughtful teams.',niche='Launch writing',avatar_color='#e7bda6',social_url='https://example.com/ari'
       where user_id=${creator.id}`;
-    await tx`insert into app.creator_workloads (creator_id,max_active_units) values (${creator.id},5) on conflict (creator_id) do nothing`;
+    await tx`insert into app.creator_workloads (creator_id) values (${creator.id}) on conflict (creator_id) do nothing`;
     const [existingService] = await tx<{ id: string }[]>`select id from app.services where id=${serviceId}`;
     if (!existingService) {
       await tx`insert into app.services (id,creator_id,title,description,taxonomy,price_minor,currency,turnaround_hours,revision_limit,status)

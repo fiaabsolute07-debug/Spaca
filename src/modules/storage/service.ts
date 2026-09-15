@@ -27,7 +27,7 @@ import {
 } from './policy';
 import { getStorageProvider } from './provider';
 
-const ORDER_UPLOAD_STATES: Readonly<Record<Exclude<AssetPurpose, 'SAMPLE'>, readonly string[]>> = {
+const ORDER_UPLOAD_STATES: Readonly<Record<Exclude<AssetPurpose, 'SAMPLE' | 'DIGITAL'>, readonly string[]>> = {
   DELIVERY: ['IN_PROGRESS', 'REVISION_REQUESTED'],
   BRIEF: ['AWAITING_PAYMENT', 'FUNDED'],
   DISPUTE: ['IN_PROGRESS', 'DELIVERED', 'REVISION_REQUESTED', 'DISPUTED'],
@@ -36,10 +36,11 @@ const ORDER_UPLOAD_STATES: Readonly<Record<Exclude<AssetPurpose, 'SAMPLE'>, read
 const notFound = () => new CommandError('File not found or not available to this account', 'NOT_FOUND');
 
 async function assertOrderUpload(tx: Tx, actor: Actor, purpose: AssetPurpose, orderId: string | null) {
-  if (purpose === 'SAMPLE') {
-    if (orderId) throw new CommandError('Portfolio samples are not tied to an order');
-    if (actor.status !== 'ACTIVE') throw new CommandError('Suspended accounts cannot add portfolio samples', 'ACCOUNT_SUSPENDED');
-    if (!actor.roles.includes('creator')) throw new CommandError('Only creators can upload portfolio samples', 'FORBIDDEN');
+  if (purpose === 'SAMPLE' || purpose === 'DIGITAL') {
+    const what = purpose === 'SAMPLE' ? 'portfolio samples' : 'product files';
+    if (orderId) throw new CommandError(`${purpose === 'SAMPLE' ? 'Portfolio samples' : 'Product files'} are not tied to an order`);
+    if (actor.status !== 'ACTIVE') throw new CommandError(`Suspended accounts cannot add ${what}`, 'ACCOUNT_SUSPENDED');
+    if (!actor.roles.includes('creator')) throw new CommandError(`Only creators can upload ${what}`, 'FORBIDDEN');
     return;
   }
   if (!orderId || !UUID_PATTERN.test(orderId)) throw new CommandError('order_id is required for this upload');
@@ -163,7 +164,10 @@ export async function createDownloadUrl(actor: Actor | null, assetId: string) {
   const owner = !!actor && actor.id === String(asset.owner_id);
   let operatorAccess = false;
   let allowed: boolean;
-  if (purpose === 'SAMPLE') {
+  if (purpose === 'DIGITAL') {
+    // Buyers download product files only through their entitlement (src/modules/digital); here only the creator.
+    allowed = owner;
+  } else if (purpose === 'SAMPLE') {
     allowed = owner || (!!actor && hasAnyRole(actor, ['moderator', 'admin'])) || (asset.sample_visibility === 'PUBLIC' && asset.sample_moderation === 'APPROVED' && asset.lifecycle_state === 'READY');
   } else {
     operatorAccess = !participant && !!actor && actor.status === 'ACTIVE' && hasAnyRole(actor, ORDER_OPERATOR_ROLES) && (purpose === 'DISPUTE' || asset.order_status === 'DISPUTED');

@@ -27,11 +27,9 @@ const valuesOf = (form: FormData) =>
 function errorResponse(error: unknown): { status: number; message: string } {
   if (error instanceof CommandError) return { status: statusForCode(error.code), message: error.message };
   if (error instanceof PaymentFlowError) return { status: error.code === 'FORBIDDEN' ? 403 : 400, message: error.message };
-  // The workload claim trigger (drizzle/0012) is the last line against oversell; surface it like the command check.
+  // The workload claim trigger (drizzle/0017) refuses new claims while a creator paused new orders.
   const hint = (error as { hint?: unknown } | null)?.hint;
-  if (hint === 'CAPACITY_UNAVAILABLE' || hint === 'NOT_ACCEPTING_ORDERS') {
-    return { status: 409, message: hint === 'NOT_ACCEPTING_ORDERS' ? 'This creator paused new orders' : 'This creator is at capacity right now' };
-  }
+  if (hint === 'NOT_ACCEPTING_ORDERS') return { status: 409, message: 'This creator paused new orders' };
   console.error('command failed', error);
   return { status: 400, message: 'The command could not be completed. Check the order state and try again.' };
 }

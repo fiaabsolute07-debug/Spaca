@@ -56,11 +56,9 @@ export default async function DashboardPage({
             </strong>
           </div>
           <div className="stat">
-            <span>Order limit in use</span>
+            <span>Orders in progress</span>
             <strong>
               {num(workload.in_flight_units)}
-              {" of "}
-              {num(workload.max_active_units)}
             </strong>
           </div>
         </div>

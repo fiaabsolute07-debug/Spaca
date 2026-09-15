@@ -1,11 +1,10 @@
 /**
  * Service and creator discovery (P5-01/02/05). Only PUBLISHED services of ACTIVE creators, shown with the
- * published immutable version's terms. Availability is a status from the creator's active-order limit (ACCEPTING,
- * AT_CAPACITY, PAUSED), never a count; ranking and ordering use explicit, documented keys with keyset pagination.
+ * published immutable version's terms. Availability is a status (ACCEPTING, PAUSED, or SOLD_OUT for DIGITAL), never a
+ * count; ranking and ordering use explicit, documented keys with keyset pagination.
  */
 import type postgres from 'postgres';
 import { sql } from '@/lib/db';
-import { DEFAULT_MAX_ACTIVE_UNITS } from '@/modules/capacity';
 import { encodeCursor, type CreatorSearch, type ServiceSearch } from './params';
 
 type Row = Record<string, unknown>;
@@ -15,10 +14,12 @@ export type Db = postgres.Sql | postgres.TransactionSql;
 const empty = sql``;
 const iso = (value: unknown): string => (value instanceof Date ? value.toISOString() : new Date(String(value)).toISOString());
 const and = (condition: boolean, fragment: Fragment) => (condition ? sql`and ${fragment}` : empty);
-/** §6.1 rule 10: status for `units` of the creator's limit; creators without a workload row use the defaults. */
-const availabilityStatus = (units: Fragment) => sql`case when coalesce(w.accepting_orders, true) = false then 'PAUSED'
-  when coalesce(w.held_units, 0) + coalesce(w.active_units, 0) + ${units} <= coalesce(w.max_active_units, ${DEFAULT_MAX_ACTIVE_UNITS}) then 'ACCEPTING'
-  else 'AT_CAPACITY' end`;
+/** Buyers see whether the creator takes new orders; there is no limit on orders at once (drizzle/0017). */
+const availabilityStatus = sql`case when coalesce(w.accepting_orders, true) = false then 'PAUSED' else 'ACCEPTING' end`;
+/** DIGITAL listings use no creator capacity; they are sold out once stock or an exclusive license is taken (drizzle/0016). */
+const digitalStatus = sql`case when exists (select 1 from app.digital_entitlements e where e.service_id = s.id and e.license = 'EXCLUSIVE' and e.state in ('HELD','EXPIRY_RECONCILING','ACTIVE'))
+    or (s.digital_stock is not null and (select count(*) from app.digital_entitlements e where e.service_id = s.id and e.state in ('HELD','EXPIRY_RECONCILING','ACTIVE')) >= s.digital_stock)
+  then 'SOLD_OUT' else 'ACCEPTING' end`;
 /** Fixture accounts (is_test) are listed locally so dev/E2E have data, but never shown as real supply in production. */
 export const includeTestData = () => process.env.APP_ENV !== 'production';
 
@@ -32,7 +33,7 @@ export async function searchServices(input: ServiceSearch, db: Db = sql) {
       select s.id, v.id as service_version_id, v.version as service_version, v.title, left(v.description, 280) as summary, v.taxonomy, v.price_minor, v.currency,
         v.turnaround_hours, v.revision_limit, v.created_at as published_at, s.creator_id, u.display_name as creator_name, p.handle, p.niche, p.avatar_color,
         ${query ? sql`round((ts_rank_cd(v.search_document, to_tsquery('simple', ${query})) + 0.5 * ts_rank_cd(coalesce(p.search_document, ''::tsvector), to_tsquery('simple', ${query})))::numeric, 6)` : sql`0::numeric`} as rank,
-        ${availabilityStatus(sql`v.units_per_order`)} as availability_status
+        case when v.taxonomy = 'DIGITAL' then ${digitalStatus} else ${availabilityStatus} end as availability_status
       from app.services s
       join app.service_versions v on v.id = s.published_version_id
       join app.users u on u.id = s.creator_id and u.status = 'ACTIVE' and (${includeTestData()} or not u.is_test)
@@ -89,7 +90,7 @@ export async function searchCreators(input: CreatorSearch, db: Db = sql) {
         svc.services_count, svc.min_price_minor, svc.taxonomies,
         coalesce(done.completed_orders, 0) as completed_orders, coalesce(rev.review_count, 0) as review_count,
         case when coalesce(rev.review_count, 0) >= 3 then round(rev.avg_rating, 2) else null end as avg_rating,
-        coalesce(smp.sample_count, 0) as sample_count, ${availabilityStatus(sql`1`)} as availability_status,
+        coalesce(smp.sample_count, 0) as sample_count, ${availabilityStatus} as availability_status,
         ${query ? sql`round(ts_rank_cd(p.search_document, to_tsquery('simple', ${query}))::numeric, 6)` : sql`0::numeric`} as rank
       from app.users u
       join app.profiles p on p.user_id = u.id

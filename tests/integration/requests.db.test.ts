@@ -199,7 +199,7 @@ describe.skipIf(!RUN_DB)('REQ-06/07/08 — hire, payment and partial failure', (
     const orderId = String(accepted.body.id);
     const [order] = await sql`select service_id,status,amount_minor,platform_fee_minor,terms from app.orders where id=${orderId}`;
     expect(order).toMatchObject({ service_id: null, status: 'AWAITING_PAYMENT', amount_minor: '20000', platform_fee_minor: '0' });
-    expect((order!.terms as Record<string, unknown>).capacity).toMatchObject({ model: 'ACTIVE_ORDER_LIMIT', units: 1 });
+    expect((order!.terms as Record<string, unknown>).capacity).toMatchObject({ model: 'ACTIVE_ORDERS', units: 1 });
     expect((await sql`select state,origin,creator_id from app.workload_claims where order_id=${orderId}`)[0]).toMatchObject({ state: 'HELD', origin: 'OFFER', creator_id: maker.id });
     expect((await sql`select order_id,state from app.request_budget_reservations where offer_id=${offerId}`)[0]).toMatchObject({ order_id: orderId, state: 'HELD' });
 

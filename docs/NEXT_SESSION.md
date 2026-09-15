@@ -1,5 +1,10 @@
 # Bàn giao cho agent/phiên tiếp theo — spaca (cập nhật 2026-09-15, cuối phiên Claude)
 
+> **CẬP NHẬT MỚI NHẤT (sau khi viết file này):** user yêu cầu **bỏ giới hạn số đơn (Order limit, giữ nút Pause)** và **bỏ đặt lịch ACCESS (Session availability)**. Đã làm trong migration `drizzle/0017_no_order_limit_no_scheduling.sql` và commit **cùng với toàn bộ code DIGITAL** (xem §4, §5).
+> Mọi chỗ bên dưới nhắc tới `set_workload_limit`, `max_active_units`, `AT_CAPACITY`, slot/appointment/`mark_session`/`set_availability`, `ACCESS_BOOKING_ENABLED` hay `claude-P6-ACCESS.md` là **lịch sử, không còn trong code**.
+> Tiến độ nghiệm thu hiện tại: **70 PASS / 54 PARTIAL / 11 NOT_RUN / 2 BLOCKED / 5 REMOVED**. REMOVED gồm CAP-01, CAP-02, CAP-07, CAP-11, XPL-03.
+> Test: `vitest` **251 passed + 3 skipped** (gồm DIGITAL 5/5). E2E **14/15** (book-order fail do đơn mock mồ côi, §2.3). **E2E DIGITAL vẫn chưa pass** (§5.3).
+
 > Đọc toàn bộ file này trước khi làm gì. Sau đó đọc theo thứ tự:
 > 1. `docs/MASTER_PROMPT.md`: đặc tả gốc. Roadmap ở §16, bảng acceptance ở §18. Thanh toán Arc ở §11.7, campaign Performance ở §9.6.
 > 2. `docs/ACCEPTANCE.md`: sổ nghiệm thu, mỗi dòng một ID §18.
@@ -17,14 +22,14 @@
 - **Bốn loại hàng:**
   - `CREATE`: nội dung bàn giao cho buyer;
   - `PUBLISH`: creator đăng bài trên kênh của mình;
-  - `ACCESS`: buổi tư vấn theo lịch;
+  - `ACCESS`: buổi tư vấn (thời gian do hai bên tự thỏa thuận trong tin nhắn);
   - `DIGITAL`: file bán sẵn.
 - **Ba cách mua:** Book Now, Request/hire (campaign nhiều creator), Auction (đang tạm hoãn).
 - **Thanh toán:** thẻ qua mock provider; crypto qua escrow non-custodial `SpacaEscrow` trên Arc (mới chạy local/anvil, **chưa deploy testnet** vì ví deployer chưa có USDC testnet).
 - **Stack:** Next.js 16 (webpack) + React 19 + TypeScript, postgres.js, PostgreSQL 18 embedded (local), Vitest, Playwright, Foundry (contracts).
-- **Tiến độ nghiệm thu** (`docs/ACCEPTANCE.md`, 142 ID): **75 PASS / 54 PARTIAL / 11 NOT_RUN / 2 BLOCKED**.
-  - Sau khi xong DIGITAL (đang dở, xem §5), XPL-04/05/06 sẽ thành PASS: 78 PASS, 8 NOT_RUN.
-- **Đang dở:** P6 DIGITAL. Code + migration 0016 + 5/5 DB test đã xong; **E2E digital chưa pass, chưa commit**. Chi tiết ở §5.
+- **Tiến độ nghiệm thu** (`docs/ACCEPTANCE.md`, 142 ID): **70 PASS / 54 PARTIAL / 11 NOT_RUN / 2 BLOCKED / 5 REMOVED**.
+  - Sau khi đóng DIGITAL (§5), XPL-04/05/06 sẽ thành PASS: 73 PASS, 8 NOT_RUN.
+- **Đang dở:** P6 DIGITAL. Code + migration 0016 + 5/5 DB test đã xong và đã commit; **E2E digital chưa pass**, docs DIGITAL chưa viết. Chi tiết ở §5.
 
 ---
 
@@ -48,6 +53,9 @@ Nghĩa là:
 Yêu cầu UI sau đó (đã làm và commit):
 - Logo SVG nền trong suốt, đen/trắng theo giao diện (commit fe8798b).
 - Thay mọi `<select>` xám bằng thư viện đẹp: Radix UI Select (commit ea76a4c).
+- **"xoá cái order limit đi, vô nghĩa"**. User chọn: bỏ giới hạn, giữ Pause. Creator nhận không giới hạn đơn; chỉ còn `set_accepting_orders`. Buyer thấy `ACCEPTING`/`PAUSED`.
+- **"Session availability, để họ tự thương lượng nhé, xoá luôn phần này"**. ACCESS không còn lịch rảnh/slot/appointment. Listing chỉ có `access_session_minutes`. Order `terms.access = { session_minutes, scheduling: 'AGREED_IN_MESSAGES' }`. Đơn ACCESS đi luồng start/deliver/approve bình thường.
+- **Không được** đưa lại giới hạn đơn hay đặt lịch nếu user không yêu cầu.
 
 Tin nhắn cuối: user sắp hết quota và yêu cầu viết file bàn giao này.
 
@@ -102,7 +110,7 @@ node -v   # v24.19.0
 - Migrate DB dev: `./node_modules/.bin/tsx scripts/migrate.ts`. File `drizzle/00NN_*.sql` chạy theo thứ tự, file đã chạy thì "skip".
 - Chuẩn bị DB test (migrate + seed fixture): `./node_modules/.bin/tsx scripts/test-db.ts`.
 - Seed DB dev: `./node_modules/.bin/tsx scripts/seed.ts`.
-- Cả hai DB **đang ở migration 0016** (đã apply `0016_digital_products.sql`).
+- Cả hai DB **đang ở migration 0017** (đã apply `0016_digital_products.sql` và `0017_no_order_limit_no_scheduling.sql`).
 - **Backup cũ nên xóa khi audit xong:** `creator_marketplace_bak_0011`, `creator_marketplace_test_bak_0011`.
 - Muốn chạy SQL ad-hoc: viết file `scripts/.q-tmp.ts` import `postgres`, chạy bằng tsx, rồi xóa file. Không có psql trong PATH.
 
@@ -221,6 +229,7 @@ cd waitlist && ../node_modules/.bin/tsc --noEmit -p tsconfig.json            # w
 
 | Commit | Nội dung chính | Evidence / Acceptance |
 |---|---|---|
+| **(commit mới nhất)** | Bỏ order limit + bỏ đặt lịch ACCESS (migration 0017, xóa `src/modules/access`, slots API, slot picker, availability editor, session panel, test ACCESS). Khung "New orders" chỉ còn số đơn đang làm + Pause. **Kèm toàn bộ code DIGITAL** (migration 0016, `src/modules/digital`, UI, `digital.db.test.ts` 5/5; E2E digital chưa pass). | vitest 251/254 (3 skip), E2E 14/15 |
 | **ea76a4c** | UI: thay 17 `<select>` bằng Radix UI Select (`src/components/select.tsx`). Native select ẩn giữ giá trị cho form POST/GET. Label danh mục "Create · content you deliver"… E2E dùng `chooseOption`. | E2E 10/11 (book-order fail do đơn mồ côi, §2.3) |
 | **fe8798b** | Logo SVG không nền, `currentColor` (đen trên sáng, trắng trên tối). Favicon SVG đổi màu theo `prefers-color-scheme`. Email chào mừng dùng `waitlist/public/email/spaca-icon.svg` (fill tối cố định). **Waitlist trên Vercel chưa redeploy.** | Test email 3/3, E2E public/responsive 5/5 |
 | **96dabf0** | **P6-ACCESS**: migration 0015 (availability windows, appointments có GiST exclusion [start, end+buffer), trigger sync với đơn), `src/modules/access/{time,index,commands}.ts`, `GET /api/services/[id]/slots`, slot picker, form lịch rảnh, Session panel. | `claude-P6-ACCESS.md`; CAP-11, XPL-03 PASS |
@@ -242,7 +251,10 @@ cd waitlist && ../node_modules/.bin/tsc --noEmit -p tsconfig.json            # w
 
 ---
 
-## 5. VIỆC ĐANG DỞ: P6 DIGITAL (XPL-04, XPL-05, XPL-06), chưa commit
+## 5. VIỆC ĐANG DỞ: P6 DIGITAL (XPL-04, XPL-05, XPL-06). Code ĐÃ commit, còn E2E + docs
+
+> Toàn bộ file liệt kê ở §5.2 **đã nằm trong commit mới nhất**, cùng việc bỏ order limit/ACCESS scheduling. Các chỗ "chưa commit" ở §5.2/§5.4 bước 9 là lịch sử. Còn lại: §5.3 (E2E) và §5.4 bước 2–8, sau đó commit docs/test.
+> Bỏ qua mọi nhắc tới access ở §5.2 (vd. `ACCESS_COLUMNS` giờ chỉ còn `access_session_minutes`; `next-step-panel` không còn `appointment`).
 
 ### 5.1 Thiết kế đã chốt (đã code)
 

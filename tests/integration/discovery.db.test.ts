@@ -53,18 +53,7 @@ async function publish(creator: TestUser, input: { title: string; taxonomy?: str
   });
   expect(created.status, JSON.stringify(created.body)).toBe(200);
   const serviceId = String(created.body.id);
-  // ACCESS listings publish only with weekly availability and the ACCESS flag on (drizzle/0015).
-  if (input.taxonomy === 'ACCESS') {
-    expect((await command(creator, { command: 'set_availability', idempotency_key: key('avail'), time_zone: 'UTC', windows: JSON.stringify([{ weekday: 1, start: '09:00', end: '17:00' }]) })).status).toBe(200);
-    await sql`update app.feature_flags set enabled=true where key='ACCESS_BOOKING_ENABLED'`;
-  }
-  try {
-    expect((await command(creator, { command: 'publish_service', idempotency_key: key('pub'), service_id: serviceId })).status).toBe(200);
-  } finally {
-    if (input.taxonomy === 'ACCESS') await sql`update app.feature_flags set enabled=false where key='ACCESS_BOOKING_ENABLED'`;
-  }
-  // `capacity` sets the creator's active-order limit, shared by all of their services.
-  if (input.capacity) expect((await command(creator, { command: 'set_workload_limit', idempotency_key: key('limit'), max_active_units: input.capacity })).status).toBe(200);
+  expect((await command(creator, { command: 'publish_service', idempotency_key: key('pub'), service_id: serviceId })).status).toBe(200);
   return { serviceId };
 }
 
@@ -141,20 +130,20 @@ describe.skipIf(!RUN_DB)('DSC-01/02/05 — service search, filters, pagination a
     const creator = await creatorWithProfile('dsc05');
     const buyer = await createUser('dsc05-buyer');
     const token = `${TOKEN}f`;
-    const soldOut = await publish(creator, { title: `${token} sold out soon`, price: '150', turnaround: '24', capacity: '1' });
+    const soldOut = await publish(creator, { title: `${token} paused creator soon`, price: '150', turnaround: '24' });
     const pausing = await publish(creator, { title: `${token} pausing soon`, price: '160', turnaround: '24' });
     expect(new Set(ids((await services(`q=${token}&available=true`)).body))).toEqual(new Set([soldOut.serviceId, pausing.serviceId]));
 
     await command(creator, { command: 'pause_service', idempotency_key: key('p'), service_id: pausing.serviceId });
     expect(ids((await services(`q=${token}`)).body)).toEqual([soldOut.serviceId]);
-    // One booking fills the creator's single place: the card turns AT_CAPACITY without exposing counts.
-    expect((await command(buyer, { command: 'book', idempotency_key: key('b'), service_id: soldOut.serviceId, brief: 'First booking takes the creator\'s only place.' })).status).toBe(200);
+    // Bookings never fill a creator up; only pausing new orders takes the card out of available results.
+    expect((await command(buyer, { command: 'book', idempotency_key: key('b'), service_id: soldOut.serviceId, brief: 'A booking does not change the card availability.' })).status).toBe(200);
+    expect(ids((await services(`q=${token}&available=true`)).body)).toEqual([soldOut.serviceId]);
+    expect((await command(creator, { command: 'set_accepting_orders', idempotency_key: key('pause'), accepting: 'false' })).status).toBe(200);
     expect(ids((await services(`q=${token}&available=true`)).body)).toEqual([]);
-    expect((await services(`q=${token}`)).body.items[0]).toMatchObject({ id: soldOut.serviceId, availability_status: 'AT_CAPACITY' });
+    expect((await services(`q=${token}`)).body.items[0]).toMatchObject({ id: soldOut.serviceId, availability_status: 'PAUSED' });
     const stale = await command(await createUser('dsc05-late'), { command: 'book', idempotency_key: key('b'), service_id: soldOut.serviceId, brief: 'Booking from a stale listing card should be refused.' });
     expect(stale.status).toBe(409);
-    expect((await command(creator, { command: 'set_accepting_orders', idempotency_key: key('pause'), accepting: 'false' })).status).toBe(200);
-    expect((await services(`q=${token}`)).body.items[0]).toMatchObject({ id: soldOut.serviceId, availability_status: 'PAUSED' });
     expect((await services(`q=${token}&available_before=2000-01-01`)).status).toBe(400);
     expect((await services(`q=${token}&sort=availability`)).status).toBe(400);
   });

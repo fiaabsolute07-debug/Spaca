@@ -153,64 +153,36 @@ describe.skipIf(!RUN_DB)('SUP — listing supply', () => {
   });
 });
 
-describe.skipIf(!RUN_DB)('CAP — active order limit', () => {
+describe.skipIf(!RUN_DB)('CAP — orders in progress and pause (no limit on orders at once)', () => {
   const book = (buyer: TestUser, serviceId: string) => command(buyer, { command: 'book', idempotency_key: key('book'), service_id: serviceId, brief });
   const claimOf = async (orderId: string) => (await sql`select id,state,units,origin,auction_id,order_id from app.workload_claims where order_id=${orderId}`)[0];
 
-  it('CAP-01: with one free place, 20 concurrent bookings on real connections produce exactly one claim', async () => {
+  it('CAP-01/02: concurrent bookings across services all succeed; counters equal the sum of claims, units_per_order included', async () => {
     const creator = await createUser('cap01');
-    const { serviceId } = await createPublishedService(command, creator, { capacity: 2 });
-    const first = await book(await createUser('cap01-first'), serviceId);
-    expect(first.status).toBe(200);
-    const buyers = await Promise.all(Array.from({ length: 20 }, (_, i) => createUser(`cap01-buyer-${i}`)));
-    const results = await Promise.all(buyers.map((buyer) => book(buyer, serviceId)));
-    expect(results.filter((r) => r.status === 200)).toHaveLength(1);
-    for (const loser of results.filter((r) => r.status !== 200)) {
-      expect(loser.status).toBe(409);
-      expect(String(loser.body.error)).toMatch(/at capacity/);
-    }
-    expect(await workloadCounters(creator.id)).toMatchObject({ held_units: 2, active_units: 0, max_active_units: 2 });
-    const [{ count }] = await sql`select count(*)::int as count from app.workload_claims where creator_id=${creator.id}`;
-    expect(count).toBe(2);
-    expect(await workloadDrift()).toBe(0);
-  });
-
-  it('CAP-02: two services of one creator share the limit; units_per_order is counted', async () => {
-    const creator = await createUser('cap02');
-    const first = await createPublishedService(command, creator, { capacity: 3 });
+    const first = await createPublishedService(command, creator);
     const heavy = await command(creator, withSamples(serviceFields({ title: 'Video explainer weighs two', units_per_order: '2' })));
     expect(heavy.status).toBe(200);
     expect((await command(creator, { command: 'publish_service', idempotency_key: key('pub'), service_id: String(heavy.body.id) })).status).toBe(200);
-    const [version] = await sql`select v.units_per_order from app.services s join app.service_versions v on v.id=s.published_version_id where s.id=${String(heavy.body.id)}`;
-    expect(version!.units_per_order).toBe(2);
-
-    const buyers = await Promise.all(Array.from({ length: 10 }, (_, i) => createUser(`cap02-buyer-${i}`)));
+    const buyers = await Promise.all(Array.from({ length: 20 }, (_, i) => createUser(`cap01-buyer-${i}`)));
     const results = await Promise.all(buyers.map((buyer, i) => book(buyer, i % 2 ? first.serviceId : String(heavy.body.id))));
-    const won = results.filter((r) => r.status === 200);
-    const units = await sql`select coalesce(sum(units),0)::int as n from app.workload_claims where creator_id=${creator.id} and state='HELD'`;
-    expect(units[0]!.n).toBeLessThanOrEqual(3);
-    expect(won.length).toBeGreaterThanOrEqual(2);
-    expect((await workloadCounters(creator.id)).held_units).toBe(units[0]!.n);
-
-    // The heavy service reads as at capacity once fewer than two units are free, even while the light one still accepts.
-    const light = await readModel.getServiceData(first.serviceId);
-    const heavyView = await readModel.getServiceData(String(heavy.body.id));
-    const free = 3 - units[0]!.n;
-    expect(light?.service.availability_status).toBe(free >= 1 ? 'ACCEPTING' : 'AT_CAPACITY');
-    expect(heavyView?.service.availability_status).toBe(free >= 2 ? 'ACCEPTING' : 'AT_CAPACITY');
-    expect(light?.service).not.toHaveProperty('held_units');
+    expect(results.filter((r) => r.status === 200)).toHaveLength(20);
+    const [units] = await sql`select coalesce(sum(units),0)::int as n from app.workload_claims where creator_id=${creator.id} and state='HELD'`;
+    expect(units!.n).toBe(30);
+    expect(await workloadCounters(creator.id)).toMatchObject({ held_units: 30, active_units: 0 });
+    const view = await readModel.getServiceData(first.serviceId);
+    expect(view?.service.availability_status).toBe('ACCEPTING');
+    expect(view?.service).not.toHaveProperty('held_units');
     expect(await workloadDrift()).toBe(0);
   });
 
-  it('CAP-06: approving frees the place exactly once and the creator can take a new order', async () => {
+  it('CAP-06: approving marks the claim done exactly once and the counters return to zero', async () => {
     const creator = await createUser('cap06-creator');
     const buyer = await createUser('cap06-buyer');
     const { serviceId } = await createPublishedService(command, creator, { capacity: 1 });
     const orderId = String((await book(buyer, serviceId)).body.id);
     expect((await pay(buyer, orderId)).status).toBe(200);
     expect(await workloadCounters(creator.id)).toMatchObject({ held_units: 0, active_units: 1 });
-    expect((await book(await createUser('cap06-blocked'), serviceId)).status).toBe(409);
-    expect((await readModel.getServiceData(serviceId))?.service.availability_status).toBe('AT_CAPACITY');
+    expect((await readModel.getServiceData(serviceId))?.service.availability_status).toBe('ACCEPTING');
 
     for (const [actor, fields] of [[creator, { command: 'start' }], [creator, { command: 'deliver', body: 'Done — all agreed files are attached.' }], [buyer, { command: 'approve', delivery_version: '1' }]] as const) {
       expect((await command(actor, { idempotency_key: key('step'), order_id: orderId, ...fields })).status).toBe(200);
@@ -224,33 +196,6 @@ describe.skipIf(!RUN_DB)('CAP — active order limit', () => {
     expect(await workloadCounters(creator.id)).toMatchObject({ held_units: 0, active_units: 0 });
     expect((await readModel.getServiceData(serviceId))?.service.availability_status).toBe('ACCEPTING');
     expect((await book(await createUser('cap06-next'), serviceId)).status).toBe(200);
-    expect(await workloadDrift()).toBe(0);
-  });
-
-  it('CAP-07: lowering the limit keeps accepted work and blocks new orders until the creator is below it', async () => {
-    const creator = await createUser('cap07-creator');
-    const { serviceId } = await createPublishedService(command, creator, { capacity: 2 });
-    const funded: { buyer: TestUser; orderId: string }[] = [];
-    for (const n of [1, 2]) {
-      const buyer = await createUser(`cap07-buyer-${n}`);
-      const booked = await book(buyer, serviceId);
-      expect(booked.status).toBe(200);
-      expect((await pay(buyer, String(booked.body.id))).status).toBe(200);
-      funded.push({ buyer, orderId: String(booked.body.id) });
-    }
-    expect((await command(creator, { command: 'set_workload_limit', idempotency_key: key('limit'), max_active_units: '0' })).status).toBe(400);
-    const lowered = await command(creator, { command: 'set_workload_limit', idempotency_key: key('limit'), max_active_units: '1' });
-    expect(lowered.status).toBe(200);
-    expect(String(lowered.body.message)).toMatch(/You have 2 in progress/);
-    expect(await workloadCounters(creator.id)).toMatchObject({ max_active_units: 1, active_units: 2 });
-    for (const { orderId } of funded) expect((await claimOf(orderId))!.state).toBe('ACTIVE');
-    expect((await book(await createUser('cap07-blocked-1'), serviceId)).status).toBe(409);
-
-    // One order finishing leaves 1 of 1 in use: still blocked. The second frees the place.
-    await command(creator, { command: 'cancel', idempotency_key: key('cancel'), order_id: funded[0]!.orderId });
-    expect((await book(await createUser('cap07-blocked-2'), serviceId)).status).toBe(409);
-    await command(creator, { command: 'cancel', idempotency_key: key('cancel'), order_id: funded[1]!.orderId });
-    expect((await book(await createUser('cap07-open'), serviceId)).status).toBe(200);
     expect(await workloadDrift()).toBe(0);
   });
 
@@ -314,7 +259,7 @@ describe.skipIf(!RUN_DB)('CAP — active order limit', () => {
     expect(await workloadDrift()).toBe(0);
   });
 
-  it('the database refuses claims above the limit, claims that skip HELD, deletes and ownership changes', async () => {
+  it('the database refuses claims while paused, claims that skip HELD, deletes and ownership changes', async () => {
     const creator = await createUser('guard-creator');
     const buyer = await createUser('guard-buyer');
     const { serviceId } = await createPublishedService(command, creator, { capacity: 1 });
@@ -322,10 +267,8 @@ describe.skipIf(!RUN_DB)('CAP — active order limit', () => {
     const claim = await claimOf(String(booked.body.id));
     const [otherOrder] = await sql`insert into app.orders (buyer_id,creator_id,source,title,status,amount_minor,currency,brief)
       values (${buyer.id},${creator.id},'BOOK','direct insert','AWAITING_PAYMENT',100,'USD','direct insert used to probe the DB guard') returning id`;
-    await expect(sql`insert into app.workload_claims (creator_id,units,origin,order_id,state) values (${creator.id},1,'BOOK',${String(otherOrder!.id)},'HELD')`).rejects.toThrow(/active order limit/);
     await expect(sql`insert into app.workload_claims (creator_id,units,origin,order_id,state) values (${creator.id},1,'BOOK',${String(otherOrder!.id)},'ACTIVE')`).rejects.toThrow(/must start HELD/);
     await sql`update app.creator_workloads set accepting_orders=false where creator_id=${creator.id}`;
-    await sql`update app.creator_workloads set max_active_units=5 where creator_id=${creator.id}`;
     await expect(sql`insert into app.workload_claims (creator_id,units,origin,order_id,state) values (${creator.id},1,'BOOK',${String(otherOrder!.id)},'HELD')`).rejects.toThrow(/not accepting new orders/);
     await expect(sql`delete from app.workload_claims where id=${String(claim!.id)}`).rejects.toThrow(/cannot be deleted/);
     await expect(sql`update app.workload_claims set creator_id=${buyer.id} where id=${String(claim!.id)}`).rejects.toThrow(/immutable/);

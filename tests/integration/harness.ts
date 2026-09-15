@@ -49,10 +49,10 @@ export async function callRoute(
 }
 
 /** The creator's active-order counters (drizzle/0012); zeros before the creator's first claim. */
-export async function workloadCounters(creatorId: string): Promise<{ held_units: number; active_units: number; max_active_units: number; accepting_orders: boolean }> {
-  const [row] = await sql<{ held_units: number; active_units: number; max_active_units: number; accepting_orders: boolean }[]>`select held_units,active_units,max_active_units,accepting_orders
+export async function workloadCounters(creatorId: string): Promise<{ held_units: number; active_units: number; accepting_orders: boolean }> {
+  const [row] = await sql<{ held_units: number; active_units: number; accepting_orders: boolean }[]>`select held_units,active_units,accepting_orders
     from app.creator_workloads where creator_id=${creatorId}`;
-  return row ?? { held_units: 0, active_units: 0, max_active_units: 3, accepting_orders: true };
+  return row ?? { held_units: 0, active_units: 0, accepting_orders: true };
 }
 
 /** Invariant after every scenario: counters equal the sum of claims for every creator. */
@@ -78,6 +78,7 @@ export const commandInstant = (date: Date) => date.toISOString().slice(0, 19);
 export async function createPublishedService(
   command: (actor: TestUser, fields: Record<string, string>) => Promise<JsonResult>,
   creator: TestUser,
+  // `capacity` is ignored: there is no limit on orders at once since drizzle/0017. Kept so older call sites compile.
   options: { capacity?: number; price?: string; taxonomy?: string; unitsPerOrder?: number; minLiveHours?: number } = {},
 ): Promise<{ serviceId: string; creatorId: string; publishHandle?: string }> {
   const channel = options.taxonomy === 'PUBLISH' ? await linkXAccount(command, creator) : null;
@@ -102,8 +103,5 @@ export async function createPublishedService(
   const serviceId = String(created.body.id);
   const published = await command(creator, { command: 'publish_service', idempotency_key: key('publish'), service_id: serviceId });
   if (published.status !== 200) throw new Error(`publish_service failed: ${JSON.stringify(published.body)}`);
-  // `capacity` is the creator's active-order limit, shared by all of their services.
-  const limited = await command(creator, { command: 'set_workload_limit', idempotency_key: key('limit'), max_active_units: String(options.capacity ?? 1) });
-  if (limited.status !== 200) throw new Error(`set_workload_limit failed: ${JSON.stringify(limited.body)}`);
   return { serviceId, creatorId: creator.id, ...(channel ? { publishHandle: channel.handle } : {}) };
 }

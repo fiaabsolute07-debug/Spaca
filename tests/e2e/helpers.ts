@@ -91,18 +91,10 @@ export async function expectOrderState(page: Page, state: string) {
   await expect(page.getByText(new RegExp(`^(Book|Request|Auction) order · ${label.charAt(0).toUpperCase()}${label.slice(1)}$`))).toBeVisible();
 }
 
-/**
- * Each journey owns a newly published service, through the UI. creator_c's order limit is shared by every journey and
- * persists in the dev DB, so it is raised first; orders left in progress by earlier runs would otherwise block booking.
- */
+/** Each journey owns a newly published service, created through the UI as creator_c. */
 export async function createPublishedService(page: Page, purpose: string) {
   const title = `E2E ${purpose} ${uniqueSuffix()}`;
   await login(page, 'creator_c');
-  await visit(page, '/creator/services');
-  const limit = page.getByRole('region', { name: 'Order limit' });
-  await limit.getByLabel('Orders at a time').fill('100');
-  await submit(page, limit.getByRole('button', { name: 'Save limit', exact: true }));
-  await expect(page.getByText(/You take up to 100 orders at a time/)).toBeVisible();
   await visit(page, '/creator/services/new');
   await page.getByLabel('Service title', { exact: true }).fill(title);
   await chooseOption(page, page, 'What are you offering?', 'Create · content you deliver');

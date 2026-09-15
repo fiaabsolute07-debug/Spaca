@@ -15,6 +15,7 @@ import type postgres from 'postgres';
 import { sql } from '@/lib/db';
 import { activateOrderClaim } from '@/modules/capacity';
 import { recomputeWorkClock } from '@/modules/orders/lifecycle';
+import { fulfillDigitalOrder } from '@/modules/digital';
 import { isFlagEnabled } from '@/modules/admin/policy';
 import { enqueueChainPayout, registerPayoutEffects } from '@/modules/crypto/payouts';
 import { atomicToUsdMinor, escrowReference, usdMinorToAtomic } from '@/modules/crypto/registry';
@@ -104,6 +105,14 @@ async function recordCallFailure(tx: Tx, operationId: string, error: unknown): P
   return { state: unknown || error.retryable ? 'RETRY' : 'REJECTED', operationId, code: error.code };
 }
 
+/** The checkout hold funding converts: the creator's workload claim, or the entitlement of a DIGITAL purchase (XPL-04). */
+async function lockCheckoutHold(tx: Tx, orderId: string): Promise<Row | undefined> {
+  const [claim] = await tx<Row[]>`select id,state from app.workload_claims where order_id=${orderId} for update`;
+  if (claim) return claim;
+  const [entitlement] = await tx<Row[]>`select id,state from app.digital_entitlements where order_id=${orderId} for update`;
+  return entitlement;
+}
+
 /**
  * Creates (or replays) the funding intent for an order the buyer owns. Commits the journal row even
  * when the provider outcome is UNKNOWN, so the next attempt reuses the same operation id.
@@ -116,8 +125,8 @@ export async function ensureFundingIntent(tx: Tx, buyerId: string, orderId: stri
   if (order.status !== 'AWAITING_PAYMENT' || !['PENDING', 'PROCESSING', 'FAILED'].includes(String(order.payment_status))) {
     throw new PaymentFlowError('This order is not awaiting payment', 'INVALID_STATE');
   }
-  const [claim] = await tx<Row[]>`select state from app.workload_claims where order_id=${orderId}`;
-  if (claim?.state !== 'HELD') throw new PaymentFlowError('The capacity hold for this order is no longer active', 'INVALID_STATE');
+  const claim = await lockCheckoutHold(tx, orderId);
+  if (claim?.state !== 'HELD') throw new PaymentFlowError('The reservation for this order is no longer active', 'INVALID_STATE');
 
   // Reuse the latest attempt unless the provider reported it FAILED/CANCELED or rejected it outright.
   const attempts = await tx<Row[]>`select operation_id,status,outcome from app.provider_operations where order_id=${orderId} and kind='funding.create' order by created_at asc`;
@@ -466,7 +475,7 @@ async function applyFundingEvent(tx: Tx, event: VerifiedEvent): Promise<string> 
     }
     const [existing] = await tx<Row[]>`select id from app.ledger_transactions where idempotency_key=${`funding:mock:${event.reference}`}`;
     if (existing) return 'DUPLICATE_FACT';
-    const [claim] = await tx<Row[]>`select * from app.workload_claims where order_id=${orderId} for update`;
+    const claim = await lockCheckoutHold(tx, orderId);
     // EXPIRY_RECONCILING = hold expired while this payment was still unresolved; the verified success wins.
     if (order.payment_status === 'SUCCEEDED' || order.status !== 'AWAITING_PAYMENT' || !['HELD', 'EXPIRY_RECONCILING'].includes(String(claim?.state))) {
       const kind = order.payment_status === 'SUCCEEDED' ? 'DUPLICATE_FUNDING' : 'LATE_FUNDING';
@@ -504,6 +513,8 @@ async function applyFundingEvent(tx: Tx, event: VerifiedEvent): Promise<string> 
       recipientId: String(order.creator_id),
       params: { orderRef: orderId, serviceTitle: String(order.title).slice(0, 120) },
     });
+    // A DIGITAL order is delivered as soon as it is funded (XPL-04).
+    await fulfillDigitalOrder(tx, orderId);
     return 'FUNDED';
   }
 
@@ -750,7 +761,7 @@ export async function applyChainFunding(tx: Tx, fact: ChainFundingFact): Promise
     await openCase(tx, orderId, null, 'AMOUNT_MISMATCH', 'HIGH', 'On-chain deposit amount differs from the order snapshot; refund or top up with operator approval');
     return 'AMOUNT_MISMATCH';
   }
-  const [claim] = await tx<Row[]>`select * from app.workload_claims where order_id=${orderId} for update`;
+  const claim = await lockCheckoutHold(tx, orderId);
   if (order.payment_status === 'SUCCEEDED' || order.status !== 'AWAITING_PAYMENT' || !['HELD', 'EXPIRY_RECONCILING'].includes(String(claim?.state))) {
     const kind = order.payment_status === 'SUCCEEDED' ? 'DUPLICATE_FUNDING' : 'LATE_FUNDING';
     await openCase(tx, orderId, null, kind, 'HIGH', 'An on-chain deposit arrived that the order cannot accept; refund it from the settlement address with operator approval');
@@ -773,6 +784,8 @@ export async function applyChainFunding(tx: Tx, fact: ChainFundingFact): Promise
   await outbox(tx, orderId, `notify:order.new:${orderId}`, {
     templateId: 'order.new', recipientId: String(order.creator_id), params: { orderRef: orderId, serviceTitle: String(order.title).slice(0, 120) },
   });
+  // A DIGITAL order is delivered as soon as it is funded (XPL-04).
+  await fulfillDigitalOrder(tx, orderId);
   return 'FUNDED';
 }
 
