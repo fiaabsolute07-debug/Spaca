@@ -1,6 +1,6 @@
 # Acceptance ledger
 
-As of 2026-09-15, verified baseline **90004fd**, crypto rows from W5-C1/W5-C2, DSC rows from W6-D, CAP rows from W7-CAP (active-order limit), PUBLISH/MOD/SUP-05/06 rows from W8-PUB, CRY rows from W9-ARC. One row per master §18 ID, including unstarted work. Platform fee is enforced at 0 in code; the fee model is undecided. P3 is done-local from W4-A; P4 is in progress by Claude. ACCESS rows from P6-ACCESS, DIGITAL rows (XPL-04..06) from P6-DIGITAL. Counts: **95 PASS, 40 PARTIAL, 0 NOT_RUN, 2 BLOCKED, 5 REMOVED by product decision (142 total)**. 2026-09-15: the order limit and ACCESS scheduling were removed (drizzle/0017).
+As of 2026-09-15, verified baseline **90004fd**, crypto rows from W5-C1/W5-C2, DSC rows from W6-D, CAP rows from W7-CAP (active-order limit), PUBLISH/MOD/SUP-05/06 rows from W8-PUB, CRY rows from W9-ARC. One row per master §18 ID, including unstarted work. Platform fee is enforced at 0 in code; the fee model is undecided. P3 is done-local from W4-A; P4 is in progress by Claude. ACCESS rows from P6-ACCESS, DIGITAL rows (XPL-04..06) from P6-DIGITAL. Counts: **97 PASS, 38 PARTIAL, 0 NOT_RUN, 2 BLOCKED, 5 REMOVED by product decision (142 total)**. 2026-09-15: the order limit and ACCESS scheduling were removed (drizzle/0017).
 
 | Gate | Status | Evidence / remaining work |
 |---|---|---|
@@ -28,15 +28,15 @@ Sources: [P0](evidence/p0-foundation.md), [provider report](CLAUDE_REPORT.md), [
 | CAP | 7 | 1 | 0 | 0 | 4 |
 | ORD | 9 | 7 | 0 | 0 | 0 |
 | REV | 2 | 1 | 0 | 0 | 0 |
-| PAY | 9 | 10 | 0 | 1 | 0 |
+| PAY | 10 | 9 | 0 | 1 | 0 |
 | BNK | 3 | 0 | 0 | 0 | 0 |
 | REQ | 9 | 2 | 0 | 0 | 0 |
 | AUC | 12 | 2 | 0 | 0 | 0 |
 | CRY | 13 | 1 | 0 | 0 | 0 |
 | DSC | 4 | 2 | 0 | 0 | 0 |
 | XPL | 5 | 0 | 0 | 0 | 1 |
-| OPS | 2 | 6 | 0 | 0 | 0 |
-| **Total** | 95 | 40 | 0 | 2 | 5 |
+| OPS | 3 | 5 | 0 | 0 | 0 |
+| **Total** | 97 | 38 | 0 | 2 | 5 |
 
 | ID | Summary (≤12 words) | Status | Environment | Evidence (file + test name or commit) | Gap/next task |
 |---|---|---|---|---|---|
@@ -110,7 +110,7 @@ Sources: [P0](evidence/p0-foundation.md), [provider report](CLAUDE_REPORT.md), [
 | PAY-08 | Preserve successful funding despite older processing or failure events | PARTIAL | local-db+mock | [DB](evidence/claude-db-integration.md): TEST_PLAN 5 PAY-08 reverse order and stale failure; `2e00eca` | No-regression proven; independent payment-dispute lifecycle absent. |
 | PAY-09 | Reject unsigned, tampered or wrong-context provider events | PASS | local-db+mock | [SEC-RACE](evidence/claude-SEC-RACE.md): correctly signed live-mode event refused 400 before the inbox; [DB](evidence/claude-db-integration.md) forged/unsigned/other account | Mock signature scheme only. |
 | PAY-10 | Recover accepted-but-timed-out funding without another charge | PASS | local-db+mock | [DB](evidence/claude-db-integration.md): TEST_PLAN 5 PAY-10 UNKNOWN journal/same-op retry; Reconciliation lookup; `2e00eca` | Mock accepted-then-timeout only; real adapter remains unverified. |
-| PAY-11 | Recover transfer success after database crash without duplicate release | PARTIAL | local-db+mock | [DB](evidence/claude-db-integration.md): Phase 3 Reconciliation; [Provider report](CLAUDE_REPORT.md): PAY-11 timeout/lookup unit tests; `2e00eca` | No remote-transfer-success then DB-crash/restart test; journal boundary pending. |
+| PAY-11 | Recover transfer success after database crash without duplicate release | PASS | local-db+mock | [SEC-RACE](evidence/claude-SEC-RACE.md): provider accepts the release, the worker transaction rolls back; restart re-sends the deterministic operation id → same transfer, released once, one ledger transaction and notification, lost-attempt webhooks duplicate-safe | Provider call still inside the DB transaction (fine for the in-process mock; a real provider needs the journal committed first). |
 | PAY-12 | Keep unavailable payouts actionable without claiming money arrived | PARTIAL | local-db+mock | [W2B](evidence/claude-W2-B.md): `90678f8`, OPS-04 APPROVED/READY held; DB missing capability test | Provider balance shortage and bank payout capabilities still missing. |
 | PAY-13 | Serialize refunds and releases against the same principal | PASS | local-db+mock | [SEC-RACE](evidence/claude-SEC-RACE.md): concurrent full-refund cancellation vs buyer approval + release, 4 staggered rounds with both outcomes required: one command wins, exactly one refund or release operation, principal and ledger net 0 | Mock provider; card rail. |
 | PAY-14 | Bound cumulative refunds and confirm full refund only from facts | PASS | local-db+mock | [SEC-RACE](evidence/claude-SEC-RACE.md): concurrent refunds after release serialize (1 of 3, then remainder vs remainder+0.01), total exactly 65000 from provider-confirmed refunds, ledger 0; [W1B](evidence/claude-W1-B.md) agreed partial refund | Mock provider; card rail. |
@@ -174,7 +174,7 @@ Sources: [P0](evidence/p0-foundation.md), [provider report](CLAUDE_REPORT.md), [
 | XPL-04 | Issue separate private entitlements for nonexclusive digital purchases | PASS | local-db+mock | [P6-DIGITAL](evidence/claude-P6-DIGITAL.md): separate ACTIVE entitlements per buyer while the creator is paused, no workload claim; files only via the buyer's entitlement (others 404, anonymous 401); E2E purchase → delivered → download → other buyer 404 | Local storage and signature checks; no antivirus; Request/hire DIGITAL orders do not create entitlements. |
 | XPL-05 | Allow one concurrent sale of an exclusive digital license | PASS | local-db+mock | [P6-DIGITAL](evidence/claude-P6-DIGITAL.md): 5 concurrent purchases → 1 hold, 4×409; SOLD_OUT in discovery; hold expiry frees it; DB trigger + unique index refuse a raw second entitlement and a switch to non-exclusive while the license is live | Race proven with 5 concurrent requests on local PostgreSQL. |
 | XPL-06 | Enforce versioned private download and refund entitlement rules | PASS | local-db+mock | [P6-DIGITAL](evidence/claude-P6-DIGITAL.md): PURCHASED_VERSION vs LATEST version access (403 outside), download limit 429 with log rows, refund before first download revokes (409 after), refund after download 422, mutual cancellation revokes | Download count is used before URL signing; license text has no legal review. |
-| OPS-01 | Recover worker crashes after remote success without duplicate effects | PARTIAL | local-db+mock | [DB](evidence/claude-db-integration.md): Inbox reprocess simulated crash; Reconciliation lookup; `2e00eca` | Transfer-success/DB-write crash plus restart still absent; journal split required. |
+| OPS-01 | Recover worker crashes after remote success without duplicate effects | PASS | local-db+mock | [SEC-RACE](evidence/claude-SEC-RACE.md): lost attempt's webhook arrives before restart → stored UNMATCHED with a case, not applied; restart re-sends the same operation and reconciliation fetches the provider fact → completed once | Same journal-boundary limit as PAY-11; the UNMATCHED case needs manual closing. |
 | OPS-02 | Restore isolated backups and replay safely with conserved obligations | PASS | local-db | [OPS-02](evidence/claude-OPS-02.md): `pnpm restore:rehearsal` backs up one snapshot (tables + stored files with hashes), restores into an isolated DB and storage root, compares 16 obligation sets and a jobs dry run with the source, 8 hard invariants at 0, replays all processed webhooks as the app role with no change; dev 5,972 rows and test 219,615 rows PASS; injected fault detected | Local logical backup only (no pg_dump/PITR in the embedded database); mock provider memory not restorable; staging restore BLOCKED. |
 | OPS-03 | Deploy and roll back compatible schema changes without financial loss | PARTIAL | local-db+mock | [W1-A](evidence/claude-W1-A.md): FND-02 populated migration upgrade; `dc68490` | No old-app/new-schema or rollback rehearsal; 0003 drops pool counters. |
 | OPS-04 | Stop new charges while preserving reconciliation and refund obligations | PASS | local-db+mock | [W2B](evidence/claude-W2-B.md): `90678f8`, OPS-04 checkout/payout kill switches with webhook/refund/reconcile continuity | Local-only; no staging propagation latency measurement. |

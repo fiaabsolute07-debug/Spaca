@@ -32,3 +32,14 @@ Full `RUN_DB_INTEGRATION=1 vitest run`: 291 passed, 3 skipped (anvil opt-in).
 
 - ESLint cannot run: `typescript-eslint` refuses TypeScript 7.0, which the project uses. A config was tried and removed; fixing it needs a tooling dependency change (for example running lint against a TypeScript 6 API).
 - SEC-07 (script/URL/SSRF in the browser) and SEC-11 (log and bundle secret scan) remain PARTIAL.
+
+## Crash after a remote transfer (PAY-11, OPS-01) — `tests/integration/jobs.db.test.ts`
+
+The worker calls `requestCreatorRelease` (the provider accepts the transfer), then throws before its transaction commits, so the journal row and every other write are rolled back and the order is still READY.
+
+| Row | What ran | Result |
+|---|---|---|
+| PAY-11 | Restart: `release_ready_settlements` runs again. The lost attempt's `release.succeeded` webhook is delivered twice, plus any new ones. | The job re-sends the deterministic operation `release:<order>:full`; the provider answers with the same transfer. Order COMPLETED/RELEASED; provider released 65000 once; one SETTLEMENT_RELEASED ledger transaction and one payout notification; a later job run examines nothing. |
+| OPS-01 | The lost attempt's webhook arrives before the restart (no journal row to match yet). | It is stored as UNMATCHED with an UNMATCHED_RELEASE case, never applied. After the restart the job re-sends the same operation (no second transfer), and reconciliation fetches the transfer status from the provider and completes the order once (released 65000, one ledger transaction, no job errors). |
+
+Limit: recovery relies on deterministic provider operation ids (idempotency keys) and reconciliation. The provider call still runs inside the database transaction, which is harmless for the in-process mock; a real provider needs the journal committed before the call. The UNMATCHED_RELEASE case from the early webhook stays open for an operator to close.

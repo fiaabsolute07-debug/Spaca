@@ -266,6 +266,60 @@ describe.skipIf(!RUN_DB)('reconcile_provider_operations (PAY-10/11/20)', () => {
   });
 });
 
+describe.skipIf(!RUN_DB)('PAY-11 / OPS-01 — remote success, then the database write is lost', () => {
+  const releaseOps = (orderId: string) => sql`select operation_id,status,provider_reference from app.provider_operations where order_id=${orderId} and kind='release.create'`;
+  const fundingRefOf = async (orderId: string) => String((await sql`select provider_reference from app.provider_operations where order_id=${orderId} and kind='funding.create'`)[0]!.provider_reference);
+  /** The worker asks the provider to transfer, then dies before its transaction commits: every row it wrote is gone. */
+  async function crashAfterProviderRelease(orderId: string) {
+    await expect(sql.begin(async (tx) => {
+      const [order] = await tx`select * from app.orders where id=${orderId} for update`;
+      const result = await funding.requestCreatorRelease(tx, order!);
+      expect(result.state).toBe('READY');
+      throw new Error('simulated worker crash after the provider accepted the transfer');
+    })).rejects.toThrow(/simulated worker crash/);
+    expect(await releaseOps(orderId)).toHaveLength(0);
+    expect((await orderRow(orderId)).settlement_status).toBe('READY');
+  }
+
+  it('PAY-11: the restarted job reuses the deterministic operation id, the provider answers with the same transfer, and the creator is paid once', async () => {
+    const { creator, orderId } = await completedOrder('pay11-restart');
+    await crashAfterProviderRelease(orderId);
+    const lostAttemptFacts = provider.takeWebhookDeliveries();
+    expect(lostAttemptFacts.map((d) => d.type)).toEqual(['release.succeeded']);
+
+    expect((await jobs.releaseReadySettlements({ orderId })).outcomes).toEqual({ RELEASE_REQUESTED: 1 });
+    const [op] = await releaseOps(orderId);
+    expect(op).toMatchObject({ operation_id: `release:${orderId}:full`, status: 'SUCCEEDED' });
+    for (const delivery of [...lostAttemptFacts, ...lostAttemptFacts, ...provider.takeWebhookDeliveries()]) await funding.receivePaymentWebhook(delivery.rawBody, delivery.headers);
+
+    expect(await orderRow(orderId)).toMatchObject({ status: 'COMPLETED', settlement_status: 'RELEASED' });
+    const status = await provider.getFundingStatus(await fundingRefOf(orderId));
+    expect(status.releasedSucceeded).toBe(65000n);
+    expect(await count(sql`select count(*)::int as count from app.ledger_transactions where order_id=${orderId} and kind='SETTLEMENT_RELEASED'`)).toBe(1);
+    expect(await count(sql`select count(*)::int as count from app.outbox where semantic_key=${`notify:payout.succeeded:${orderId}`}`)).toBe(1);
+    expect((await jobs.releaseReadySettlements({ orderId })).examined).toBe(0);
+    expect(creator.id).toBeTruthy();
+  });
+
+  it('OPS-01: when the lost attempt\'s webhook arrives before the restart, it is kept as an unmatched fact and reconciliation still completes the order once', async () => {
+    const { orderId } = await completedOrder('ops01-early-webhook');
+    await crashAfterProviderRelease(orderId);
+    for (const delivery of provider.takeWebhookDeliveries()) {
+      expect((await funding.receivePaymentWebhook(delivery.rawBody, delivery.headers)).outcome).toBe('UNMATCHED');
+    }
+    expect(await count(sql`select count(*)::int as count from app.reconciliation_cases where kind='UNMATCHED_RELEASE' and status='OPEN' and next_action like ${'%mock_tr_%'}`)).toBeGreaterThan(0);
+
+    // Restart: the job re-sends the same operation (no second transfer); the fact it needs is fetched from the provider.
+    expect((await jobs.releaseReadySettlements({ orderId })).outcomes).toEqual({ RELEASE_REQUESTED: 1 });
+    await funding.deliverPendingMockWebhooks();
+    const reconcile = await jobs.reconcileProviderOperations({ orderId, minAgeSeconds: 0 });
+    expect(await orderRow(orderId)).toMatchObject({ status: 'COMPLETED', settlement_status: 'RELEASED' });
+    expect((await provider.getFundingStatus(await fundingRefOf(orderId))).releasedSucceeded).toBe(65000n);
+    expect(await count(sql`select count(*)::int as count from app.ledger_transactions where order_id=${orderId} and kind='SETTLEMENT_RELEASED'`)).toBe(1);
+    expect(reconcile.outcomes.ERROR ?? 0).toBe(0);
+  });
+});
+
 describe.skipIf(!RUN_DB)('reprocess_webhook_inbox', () => {
   it('re-applies a verified event that was persisted but never processed', async () => {
     const { buyer, orderId } = await bookedOrder('reprocess');
