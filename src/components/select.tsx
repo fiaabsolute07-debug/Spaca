@@ -2,7 +2,7 @@
 
 import * as RadixSelect from '@radix-ui/react-select';
 import { Check, ChevronDown, ChevronUp } from 'lucide-react';
-import { useId, useState } from 'react';
+import { useId, useRef, useState } from 'react';
 
 export type SelectOption = { value: string; label: string; disabled?: boolean };
 
@@ -22,19 +22,23 @@ type SelectProps = {
   labelledBy?: string;
   ariaLabel?: string;
   variant?: 'field' | 'pill';
+  /** Submit the surrounding form as soon as a choice is made (filters). */
+  autoSubmit?: boolean;
 };
 
 /**
  * spaca select (Radix UI Select): a styled listbox with keyboard and screen-reader support. A visually hidden native
  * <select> carries the value, so plain POST/GET forms submit it (even before hydration) and `required` still validates.
  */
-export function Select({ name, options, defaultValue, required = false, placeholder, disabled = false, labelledBy, ariaLabel, variant = 'field' }: SelectProps) {
+export function Select({ name, options, defaultValue, required = false, placeholder, disabled = false, labelledBy, ariaLabel, variant = 'field', autoSubmit = false }: SelectProps) {
   const [value, setValue] = useState(defaultValue ?? (placeholder ? '' : options[0]?.value ?? ''));
   const selected = options.find((option) => option.value === value);
   const hasEmptyOption = options.some((option) => option.value === '');
+  const nativeRef = useRef<HTMLSelectElement>(null);
 
   return <span className={`select select-${variant}`}>
     <select
+      ref={nativeRef}
       className="select-native"
       name={name}
       value={value}
@@ -47,7 +51,14 @@ export function Select({ name, options, defaultValue, required = false, placehol
       {!hasEmptyOption && <option value="" />}
       {options.map((option) => <option key={option.value} value={option.value} disabled={option.disabled}>{option.label}</option>)}
     </select>
-    <RadixSelect.Root value={toRadix(value)} onValueChange={(next) => setValue(fromRadix(next))} disabled={disabled}>
+    <RadixSelect.Root value={toRadix(value)} onValueChange={(next) => {
+      const chosen = fromRadix(next);
+      setValue(chosen);
+      if (autoSubmit && nativeRef.current) {
+        nativeRef.current.value = chosen;
+        nativeRef.current.form?.requestSubmit();
+      }
+    }} disabled={disabled}>
       <RadixSelect.Trigger className="select-trigger" aria-labelledby={labelledBy} aria-label={ariaLabel} data-empty={selected ? undefined : ''}>
         <RadixSelect.Value>{selected?.label ?? placeholder ?? ''}</RadixSelect.Value>
         <RadixSelect.Icon className="select-icon"><ChevronDown size={16} strokeWidth={2} aria-hidden /></RadixSelect.Icon>

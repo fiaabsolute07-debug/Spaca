@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 
-type Purpose = 'DELIVERY' | 'BRIEF' | 'DISPUTE' | 'SAMPLE' | 'DIGITAL';
+type Purpose = 'DELIVERY' | 'BRIEF' | 'DISPUTE' | 'SAMPLE' | 'DIGITAL' | 'AVATAR';
 type Item = { key: string; name: string; state: 'uploading' | 'ready' | 'failed'; id?: string; message?: string };
 
 const EXTENSION_TYPES: Record<string, string> = {

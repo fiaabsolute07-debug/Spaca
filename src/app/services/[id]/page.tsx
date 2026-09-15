@@ -5,6 +5,7 @@ import { getServiceData } from '@/lib/read-model';
 import { Badge, CommandForm, Empty, Field, availabilityLabel, money, num, row, rows, str } from '@/components/ui';
 import { Notices } from '@/components/notices';
 import { ReportForm } from '@/components/report-form';
+import { Avatar } from '@/components/avatar';
 import type { PageProps } from '@/components/page-props';
 
 export const dynamic = 'force-dynamic';
@@ -51,9 +52,7 @@ export default async function ServicePage({
             {str(s.title)}
           </h1>
           <Link className="creator-line" href={`/creators/${str(c.handle)}`}>
-            <span className="avatar small">
-              {str(c.display_name, 'C')[0]}
-            </span>
+            <Avatar name={c.display_name ?? s.creator_name} assetId={c.avatar_asset_id} size={28} />
             {"By "}
             {str(c.display_name ?? s.creator_name)}
             {" ›"}

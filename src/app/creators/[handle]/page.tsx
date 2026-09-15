@@ -1,4 +1,5 @@
 import { notFound } from 'next/navigation';
+import { Avatar } from '@/components/avatar';
 
 import { getCreatorData } from '@/lib/read-model';
 import { Badge, Empty, ServiceCard, num, row, rows, str } from '@/components/ui';
@@ -29,14 +30,20 @@ export default async function CreatorPage({
   return <main className="container">
     {notices}
     <div className="panel">
-      <div className="avatar">
-        {str(c.display_name, 'C')[0]}
+      <div className="creator-hero">
+        <Avatar name={c.display_name} assetId={c.avatar_asset_id} size={88} />
+        <div>
+          <PageHeading
+            eyebrow={str(c.niche, 'Independent creator')}
+            title={str(c.display_name)}
+            description={str(c.headline) || undefined}
+          />
+          {(c.location || c.languages) ? <p className="muted creator-meta">
+            {[str(c.location), c.languages ? `Speaks ${str(c.languages)}` : ''].filter(Boolean).join(' · ')}
+          </p> : null}
+        </div>
       </div>
-      <PageHeading
-        eyebrow={str(c.niche, 'Independent creator')}
-        title={str(c.display_name)}
-        description={str(c.bio)}
-      />
+      {c.bio ? <p className="prewrap creator-bio">{str(c.bio)}</p> : null}
       {rows(d.social_accounts).length > 0 && <ul className="social-links">
         {rows(d.social_accounts).map(account => <li key={str(account.id)}>
           <a className="text-link" href={str(account.url)} target="_blank" rel="noreferrer nofollow">

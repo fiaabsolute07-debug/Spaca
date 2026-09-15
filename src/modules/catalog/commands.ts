@@ -107,12 +107,34 @@ const updateProfile: CommandHandler = async ({ tx, actor, form }) => {
   const social = socialValue ? httpUrl(socialValue, 'social_url') : null;
   const timezone = text(form, 'timezone', false, 64);
   if (timezone && !isValidTimeZone(timezone)) throw new CommandError('Time zone is not a valid IANA time zone');
+  const headline = text(form, 'headline', false, 120);
+  const location = text(form, 'location', false, 80);
+  const languages = text(form, 'languages', false, 120);
+  assertContentPolicy(`${displayName}\n${headline}\n${bio}`);
   const [taken] = await tx<Row[]>`select user_id from app.profiles where handle=${handle} and user_id<>${actor.id}`;
   if (taken) throw new CommandError('That handle is already taken');
   await tx`update app.users set display_name=${displayName}, timezone=coalesce(${timezone || null},timezone) where id=${actor.id}`;
-  await tx`insert into app.profiles (user_id,handle,bio,niche,social_url) values (${actor.id},${handle},${bio},${niche},${social})
-    on conflict (user_id) do update set handle=excluded.handle,bio=excluded.bio,niche=excluded.niche,social_url=excluded.social_url,updated_at=now()`;
+  await tx`insert into app.profiles (user_id,handle,bio,niche,social_url,headline,location,languages) values (${actor.id},${handle},${bio},${niche},${social},${headline},${location},${languages})
+    on conflict (user_id) do update set handle=excluded.handle,bio=excluded.bio,niche=excluded.niche,social_url=excluded.social_url,
+      headline=excluded.headline,location=excluded.location,languages=excluded.languages,updated_at=now()`;
   return { path: '/settings/profile', message: 'Profile saved' };
+};
+
+/** Profile photo: the caller's own finalized AVATAR upload. Replacing it leaves the old file to storage cleanup. */
+const setAvatar: CommandHandler = async ({ tx, actor, form }) => {
+  const ids = text(form, 'asset_ids', false, 200).split(',').map((id) => id.trim()).filter(Boolean);
+  if (ids.length !== 1) throw new CommandError('Choose one photo');
+  const [asset] = await tx<Row[]>`select id,lifecycle_state from app.storage_assets where id=${ids[0]!} and owner_id=${actor.id} and purpose='AVATAR' for share`;
+  if (!asset) throw new CommandError('Upload the photo first', 'NOT_FOUND');
+  if (asset.lifecycle_state !== 'READY') throw new CommandError('This photo did not pass the upload checks', 'DOMAIN_RULE');
+  const updated = await tx`update app.profiles set avatar_asset_id=${ids[0]!},updated_at=now() where user_id=${actor.id} returning user_id`;
+  if (!updated.length) throw new CommandError('Save your profile (name and handle) before adding a photo', 'DOMAIN_RULE');
+  return { path: '/settings/profile', message: 'Profile photo updated' };
+};
+
+const removeAvatar: CommandHandler = async ({ tx, actor }) => {
+  await tx`update app.profiles set avatar_asset_id=null,updated_at=now() where user_id=${actor.id}`;
+  return { path: '/settings/profile', message: 'Profile photo removed' };
 };
 
 const addSample: CommandHandler = async ({ tx, actor, form }) => {
@@ -344,6 +366,8 @@ async function digitalPurchaseOf(tx: Tx, form: FormData, serviceId: string, vers
 
 export const catalogCommands: Record<string, CommandHandler> = {
   update_profile: updateProfile,
+  set_avatar: setAvatar,
+  remove_avatar: removeAvatar,
   add_sample: addSample,
   create_service: createService,
   update_service: updateService,

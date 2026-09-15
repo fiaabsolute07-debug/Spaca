@@ -2,12 +2,12 @@
  * Upload policy (master §4.4): MIME allowlist tied to extensions and file signatures, per-kind size limits,
  * and server-generated object keys. Markup (HTML/SVG/XML) is never accepted, whatever it claims to be.
  */
-export type AssetPurpose = 'DELIVERY' | 'BRIEF' | 'DISPUTE' | 'SAMPLE' | 'DIGITAL';
-export type StorageBucket = 'public-portfolio' | 'private-briefs' | 'private-deliverables' | 'private-disputes' | 'private-products' | 'private-quarantine';
+export type AssetPurpose = 'DELIVERY' | 'BRIEF' | 'DISPUTE' | 'SAMPLE' | 'DIGITAL' | 'AVATAR';
+export type StorageBucket = 'public-portfolio' | 'private-briefs' | 'private-deliverables' | 'private-disputes' | 'private-products' | 'public-avatars' | 'private-quarantine';
 type AssetKind = 'image' | 'document' | 'video' | 'archive';
 type Signature = 'png' | 'jpeg' | 'gif' | 'webp' | 'pdf' | 'zip' | 'isobmff' | 'ebml' | 'markup' | 'unknown';
 
-export const ASSET_PURPOSES: readonly AssetPurpose[] = ['DELIVERY', 'BRIEF', 'DISPUTE', 'SAMPLE', 'DIGITAL'];
+export const ASSET_PURPOSES: readonly AssetPurpose[] = ['DELIVERY', 'BRIEF', 'DISPUTE', 'SAMPLE', 'DIGITAL', 'AVATAR'];
 export const BUCKET_FOR_PURPOSE: Readonly<Record<AssetPurpose, StorageBucket>> = {
   DELIVERY: 'private-deliverables',
   BRIEF: 'private-briefs',
@@ -15,6 +15,8 @@ export const BUCKET_FOR_PURPOSE: Readonly<Record<AssetPurpose, StorageBucket>> =
   SAMPLE: 'public-portfolio',
   // XPL-06: product files are private; buyers reach them only through an active entitlement.
   DIGITAL: 'private-products',
+  // Profile photos are shown publicly through /api/avatars/[id] while a profile uses them.
+  AVATAR: 'public-avatars',
 };
 export const QUARANTINE_BUCKET: StorageBucket = 'private-quarantine';
 export const MAX_ASSETS_PER_DELIVERY = 10;
@@ -46,6 +48,7 @@ const PURPOSE_KINDS: Readonly<Record<AssetPurpose, readonly AssetKind[]>> = {
   SAMPLE: ['image', 'document', 'video'],
   // Templates, code and presets usually ship as a zip; archives are accepted only as product files.
   DIGITAL: ['image', 'document', 'video', 'archive'],
+  AVATAR: ['image'],
 };
 
 const MB = 1024 * 1024;

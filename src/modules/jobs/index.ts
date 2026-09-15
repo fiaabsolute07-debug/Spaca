@@ -385,10 +385,10 @@ export async function cleanupStorage(options: JobScope & { orphanGraceSeconds?: 
     }
   }
   const orphanGrace = ageFilter(options.orphanGraceSeconds ?? 24 * 3600);
-  const orphans = await sql<Row[]>`select a.id from app.storage_assets a where a.lifecycle_state='READY' and a.purpose in ('DELIVERY','SAMPLE','DIGITAL')
+  const orphans = await sql<Row[]>`select a.id from app.storage_assets a where a.lifecycle_state='READY' and a.purpose in ('DELIVERY','SAMPLE','DIGITAL','AVATAR')
     and a.created_at < now() - (${orphanGrace} * interval '1 second') and ${scoped(sql`a.order_id`, options)}
     and not exists (select 1 from app.delivery_assets d where d.asset_id=a.id) and not exists (select 1 from app.samples s where s.storage_asset_id=a.id)
-    and not exists (select 1 from app.digital_releases r where r.asset_id=a.id)
+    and not exists (select 1 from app.digital_releases r where r.asset_id=a.id) and not exists (select 1 from app.profiles p where p.avatar_asset_id=a.id)
     order by a.created_at limit ${limit}`;
   for (const orphan of orphans) {
     try {

@@ -4,6 +4,9 @@ import type { Actor } from './auth';
 import { availabilityOf, workloadsFor } from '@/modules/capacity';
 import { digitalAvailability, downloadableReleases } from '@/modules/digital';
 import { isFlagEnabled } from '@/modules/admin/policy';
+import { CommandError } from './commands';
+import { parseServiceSearch, toPrefixQuery } from '@/modules/discovery/params';
+import { searchServices } from '@/modules/discovery/search';
 
 export type ReadRow = Record<string, unknown>;
 const asRows = (value: unknown): ReadRow[] => Array.isArray(value) ? value as ReadRow[] : [];
@@ -26,10 +29,10 @@ async function withAvailability(rows: ReadRow[]): Promise<ReadRow[]> {
 async function serviceRows(options: { ownerId?: string; publicCreatorId?: string } = {}) {
   const actorId = options.ownerId;
   const services = actorId
-    ? await sql`select ${SERVICE_COLUMNS_OWNER},u.display_name as creator_name,p.handle,p.niche,p.avatar_color
+    ? await sql`select ${SERVICE_COLUMNS_OWNER},u.display_name as creator_name,p.handle,p.niche,p.avatar_color,p.avatar_asset_id
         from app.services s join app.users u on u.id=s.creator_id left join app.profiles p on p.user_id=s.creator_id
         where s.creator_id=${actorId} order by s.created_at desc`
-    : await sql`select ${SERVICE_COLUMNS_PUBLIC},u.display_name as creator_name,p.handle,p.niche,p.avatar_color
+    : await sql`select ${SERVICE_COLUMNS_PUBLIC},u.display_name as creator_name,p.handle,p.niche,p.avatar_color,p.avatar_asset_id
         from app.services s join app.service_versions v on v.id=s.published_version_id join app.users u on u.id=s.creator_id
         left join app.profiles p on p.user_id=s.creator_id
         where s.status='PUBLISHED' and u.status='ACTIVE' and (${options.publicCreatorId ?? null}::uuid is null or s.creator_id=${options.publicCreatorId ?? null}::uuid)
@@ -92,7 +95,8 @@ export async function getDashboardData(actor: Actor) {
       where a.creator_id=${actor.id} order by a.created_at desc`,
     sql`select r.id,r.buyer_id,r.title,r.brief,r.taxonomy,r.budget_minor,r.per_creator_cap_minor,r.target_hires,r.deadline,r.status,u.display_name as buyer_name,(select count(*) from app.applications a where a.request_id=r.id) as application_count from app.requests r join app.users u on u.id=r.buyer_id where r.buyer_id=${actor.id} order by r.created_at desc`,
     sql`select a.id,a.service_id,a.seller_id,s.title,u.display_name as creator_name,a.starting_price_minor,a.current_price_minor,a.minimum_increment_minor,a.buy_now_price_minor,a.ends_at,a.starts_at,a.status,a.bid_count,a.winner_id from app.auctions a join app.services s on s.id=a.service_id join app.users u on u.id=a.seller_id where a.seller_id=${actor.id} order by a.created_at desc`,
-    sql`select p.handle,p.bio,p.niche,p.avatar_color,p.social_url,u.display_name,u.email,
+    sql`select p.handle,p.bio,p.niche,p.avatar_color,p.avatar_asset_id,p.headline,p.location,p.languages,p.social_url,u.display_name,u.email,
+      (select count(*)::int from app.samples s where s.creator_id=u.id and s.visibility='PUBLIC' and s.moderation_status='APPROVED') as public_samples,
       coalesce((select json_agg(json_build_object('id',a.id,'platform',a.platform,'handle',a.handle,'url',a.canonical_url,'verification_status',a.verification_status) order by a.created_at)
         from app.social_accounts a where a.creator_id=u.id and a.removed_at is null),'[]') as social_accounts
       from app.users u left join app.profiles p on p.user_id=u.id where u.id=${actor.id}`,
@@ -175,7 +179,7 @@ export async function getOrderData(actor: Actor, id: string) {
 }
 
 export async function getServiceData(id: string) {
-  const rows = asRows(await sql`select ${SERVICE_COLUMNS_PUBLIC},u.display_name as creator_name,p.handle,p.bio,p.niche,p.avatar_color
+  const rows = asRows(await sql`select ${SERVICE_COLUMNS_PUBLIC},u.display_name as creator_name,p.handle,p.bio,p.niche,p.avatar_color,p.avatar_asset_id,p.headline,p.location,p.languages
     from app.services s join app.service_versions v on v.id=s.published_version_id join app.users u on u.id=s.creator_id
     left join app.profiles p on p.user_id=s.creator_id where s.id=${id} and s.status='PUBLISHED' and u.status='ACTIVE'`);
   if (!rows[0]) return null;
@@ -185,11 +189,11 @@ export async function getServiceData(id: string) {
   // The service page shows the samples the creator linked to this service (service_samples), not their whole portfolio.
   const samples = await sql`select sm.id,sm.creator_id,sm.title,sm.url,sm.description,sm.created_at from app.service_samples ss join app.samples sm on sm.id=ss.sample_id
     where ss.service_id=${id} and sm.visibility='PUBLIC' and sm.moderation_status='APPROVED' order by sm.created_at desc limit 12`;
-  return { service: service!, digital: digitalInfo, creator: { id: service!.creator_id, display_name: service!.creator_name, bio: service!.bio, niche: service!.niche, handle: service!.handle, avatar_color: service!.avatar_color }, samples: asRows(samples) };
+  return { service: service!, digital: digitalInfo, creator: { id: service!.creator_id, display_name: service!.creator_name, bio: service!.bio, niche: service!.niche, handle: service!.handle, avatar_color: service!.avatar_color, avatar_asset_id: service!.avatar_asset_id, headline: service!.headline }, samples: asRows(samples) };
 }
 
 export async function getCreatorData(handle: string) {
-  const [creator] = asRows(await sql`select u.id,u.display_name,p.handle,p.bio,p.niche,p.avatar_color,(select count(*) from app.orders o where o.creator_id=u.id and o.status='COMPLETED') as completed_jobs,(select round(avg(r.rating)::numeric,1) from app.reviews r where r.creator_id=u.id) as rating,(select count(*) from app.services s where s.creator_id=u.id and s.status='PUBLISHED') as services_count from app.users u join app.profiles p on p.user_id=u.id where p.handle=${handle} and u.status='ACTIVE'`);
+  const [creator] = asRows(await sql`select u.id,u.display_name,p.handle,p.bio,p.niche,p.avatar_color,p.avatar_asset_id,p.headline,p.location,p.languages,(select count(*) from app.orders o where o.creator_id=u.id and o.status='COMPLETED') as completed_jobs,(select round(avg(r.rating)::numeric,1) from app.reviews r where r.creator_id=u.id) as rating,(select count(*) from app.services s where s.creator_id=u.id and s.status='PUBLISHED') as services_count from app.users u join app.profiles p on p.user_id=u.id where p.handle=${handle} and u.status='ACTIVE'`);
   if (!creator) return null;
   const [services, samples, socialAccounts] = await Promise.all([
     serviceRows({ publicCreatorId: String(creator.id) }),
@@ -309,4 +313,94 @@ export async function getMyBids(actor: Actor) {
       : row.intent_status ? 'DEFAULTED' : open ? (row.leading ? 'WINNING' : 'OUTBID') : row.status === 'CANCELLED' ? 'CANCELLED' : 'LOST';
     return { ...row, standing };
   });
+}
+
+export const EXPLORE_PAGE_SIZE = 20;
+export const EXPLORE_PRICES: Record<string, { label: string; min: string | null; max: string | null }> = {
+  under_100: { label: 'Under $100', min: null, max: '100' },
+  '100_500': { label: '$100 – $500', min: '100', max: '500' },
+  '500_1000': { label: '$500 – $1,000', min: '500', max: '1000' },
+  over_1000: { label: '$1,000+', min: '1000', max: null },
+};
+export const EXPLORE_DELIVERY: Record<string, string> = { '24': 'Within 24 hours', '72': 'Within 3 days', '168': 'Within 7 days', '336': 'Within 14 days' };
+export const EXPLORE_SORTS: Record<string, string> = { relevance: 'Best match', newest: 'Newest', price_asc: 'Price: low to high', price_desc: 'Price: high to low', turnaround: 'Fastest delivery' };
+
+type QueryInput = Record<string, string | string[] | undefined>;
+
+/**
+ * Explore (master-detail): allowlisted filters mapped onto the discovery search, one page of results with everything
+ * the detail panel shows, and the niches that currently have published services. Invalid input falls back to defaults.
+ */
+export async function getExploreData(query: QueryInput) {
+  const pick = (key: string) => (typeof query[key] === 'string' ? (query[key] as string).trim() : '');
+  const filters = {
+    q: pick('q').slice(0, 120),
+    category: ['CREATE', 'PUBLISH', 'ACCESS', 'DIGITAL'].includes(pick('category')) ? pick('category') : '',
+    niche: pick('niche').slice(0, 80),
+    price: EXPLORE_PRICES[pick('price')] ? pick('price') : '',
+    delivery: EXPLORE_DELIVERY[pick('delivery')] ? pick('delivery') : '',
+    available: pick('available') === '1',
+    sort: '',
+    cursor: pick('cursor'),
+    selected: pick('selected'),
+  };
+  const sort = EXPLORE_SORTS[pick('sort')] && (pick('sort') !== 'relevance' || filters.q) ? pick('sort') : (filters.q ? 'relevance' : 'newest');
+  filters.sort = sort;
+  const params = new URLSearchParams({ sort, limit: String(EXPLORE_PAGE_SIZE) });
+  if (filters.q) params.set('q', filters.q);
+  if (filters.category) params.set('taxonomy', filters.category);
+  if (filters.niche) params.set('niche', filters.niche);
+  if (filters.price) {
+    const range = EXPLORE_PRICES[filters.price]!;
+    if (range.min) params.set('price_min', range.min);
+    if (range.max) params.set('price_max', range.max);
+  }
+  if (filters.delivery) params.set('turnaround_max', filters.delivery);
+  if (filters.available) params.set('available', 'true');
+  if (filters.cursor) params.set('cursor', filters.cursor);
+  if (params.get('sort') === 'relevance' && !toPrefixQuery(filters.q)) params.set('sort', 'newest');
+
+  let error: string | null = null;
+  let result: Awaited<ReturnType<typeof searchServices>>;
+  try {
+    result = await searchServices(parseServiceSearch(params));
+  } catch (caught) {
+    if (!(caught instanceof CommandError)) throw caught;
+    error = caught.message;
+    result = await searchServices(parseServiceSearch(new URLSearchParams({ sort: 'newest', limit: String(EXPLORE_PAGE_SIZE) })));
+  }
+  const ids = result.items.map((item) => String(item.id));
+  const creatorIds = [...new Set(result.items.map((item) => String(item.creator_id)))];
+  const [details, samples, stats, niches] = await Promise.all([
+    ids.length ? sql`select s.id,v.description,v.publish_platform,v.publish_handle,v.publish_format,v.min_live_hours,v.disclosure_text,v.access_session_minutes,
+        v.digital_license,v.digital_updates,v.digital_download_limit,p.headline
+      from app.services s join app.service_versions v on v.id=s.published_version_id left join app.profiles p on p.user_id=s.creator_id where s.id = any(${ids}::uuid[])` : [],
+    ids.length ? sql`select service_id,title,url from (
+        select ss.service_id,sm.title,sm.url,row_number() over (partition by ss.service_id order by sm.created_at desc) as rank
+        from app.service_samples ss join app.samples sm on sm.id=ss.sample_id
+        where ss.service_id = any(${ids}::uuid[]) and sm.visibility='PUBLIC' and sm.moderation_status='APPROVED' and sm.url is not null
+      ) ranked where rank <= 3` : [],
+    creatorIds.length ? sql`select u.id,
+        (select count(*)::int from app.orders o where o.creator_id=u.id and o.status='COMPLETED') as completed_jobs,
+        (select count(*)::int from app.reviews r where r.creator_id=u.id) as review_count,
+        (select round(avg(r.rating)::numeric,1)::text from app.reviews r where r.creator_id=u.id) as rating
+      from app.users u where u.id = any(${creatorIds}::uuid[])` : [],
+    sql`select distinct p.niche from app.services s join app.profiles p on p.user_id=s.creator_id join app.users u on u.id=s.creator_id
+      where s.status='PUBLISHED' and u.status='ACTIVE' and p.niche <> '' and p.niche <> 'Independent creator' order by p.niche limit 40`,
+  ]);
+  const detailOf = new Map(asRows(details).map((d) => [String(d.id), d]));
+  const statOf = new Map(asRows(stats).map((s) => [String(s.id), s]));
+  const items = result.items.map((item) => {
+    const stat = statOf.get(String(item.creator_id));
+    return {
+      ...item,
+      ...detailOf.get(String(item.id)),
+      samples: asRows(samples).filter((sample) => String(sample.service_id) === String(item.id)).map(({ title, url }) => ({ title, url })),
+      completed_jobs: Number(stat?.completed_jobs ?? 0),
+      // Ratings are shown only with at least three reviews (DSC rule, same as creator discovery).
+      rating: Number(stat?.review_count ?? 0) >= 3 ? stat?.rating ?? null : null,
+      review_count: Number(stat?.review_count ?? 0),
+    } as ReadRow;
+  });
+  return { items, matched: result.matched, next_cursor: result.next_cursor, filters, niches: asRows(niches).map((n) => String(n.niche)), error };
 }

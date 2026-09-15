@@ -27,7 +27,7 @@ import {
 } from './policy';
 import { getStorageProvider } from './provider';
 
-const ORDER_UPLOAD_STATES: Readonly<Record<Exclude<AssetPurpose, 'SAMPLE' | 'DIGITAL'>, readonly string[]>> = {
+const ORDER_UPLOAD_STATES: Readonly<Record<Exclude<AssetPurpose, 'SAMPLE' | 'DIGITAL' | 'AVATAR'>, readonly string[]>> = {
   DELIVERY: ['IN_PROGRESS', 'REVISION_REQUESTED'],
   BRIEF: ['AWAITING_PAYMENT', 'FUNDED'],
   DISPUTE: ['IN_PROGRESS', 'DELIVERED', 'REVISION_REQUESTED', 'DISPUTED'],
@@ -36,6 +36,12 @@ const ORDER_UPLOAD_STATES: Readonly<Record<Exclude<AssetPurpose, 'SAMPLE' | 'DIG
 const notFound = () => new CommandError('File not found or not available to this account', 'NOT_FOUND');
 
 async function assertOrderUpload(tx: Tx, actor: Actor, purpose: AssetPurpose, orderId: string | null) {
+  if (purpose === 'AVATAR') {
+    // Any active account (buyer or creator) may upload its own profile photo.
+    if (orderId) throw new CommandError('Profile photos are not tied to an order');
+    if (actor.status !== 'ACTIVE') throw new CommandError('Suspended accounts cannot change their photo', 'ACCOUNT_SUSPENDED');
+    return;
+  }
   if (purpose === 'SAMPLE' || purpose === 'DIGITAL') {
     const what = purpose === 'SAMPLE' ? 'portfolio samples' : 'product files';
     if (orderId) throw new CommandError(`${purpose === 'SAMPLE' ? 'Portfolio samples' : 'Product files'} are not tied to an order`);
@@ -164,7 +170,10 @@ export async function createDownloadUrl(actor: Actor | null, assetId: string) {
   const owner = !!actor && actor.id === String(asset.owner_id);
   let operatorAccess = false;
   let allowed: boolean;
-  if (purpose === 'DIGITAL') {
+  if (purpose === 'AVATAR') {
+    // Photos are public only while a profile shows them (/api/avatars/[id]); here the owner can always preview.
+    allowed = owner || (asset.lifecycle_state === 'READY' && !!(await sql<Row[]>`select 1 from app.profiles p join app.users u on u.id=p.user_id where p.avatar_asset_id=${assetId} and u.status='ACTIVE'`)[0]);
+  } else if (purpose === 'DIGITAL') {
     // Buyers download product files only through their entitlement (src/modules/digital); here only the creator.
     allowed = owner;
   } else if (purpose === 'SAMPLE') {

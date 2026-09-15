@@ -79,6 +79,11 @@ export async function chooseOption(page: Page, scope: Page | Locator, label: str
   await expect(trigger).toHaveText(option);
 }
 
+/** Client components ignore input until React hydrates them; wait for React's props on the element. */
+export async function waitForHydration(locator: Locator) {
+  await expect.poll(() => locator.evaluate((el) => Object.keys(el).some((k) => k.startsWith('__reactProps')))).toBe(true);
+}
+
 export function orderPath(page: Page) {
   const path = new URL(page.url()).pathname;
   expect(path).toMatch(/^\/orders\/[0-9a-f-]{36}$/);
@@ -126,7 +131,15 @@ export async function bookFromExplore(page: Page, title: string) {
     hasText: creatorName,
   }).first();
   await expect(first.getByRole('heading', { name: title, exact: true })).toBeVisible();
-  await first.click();
+  // Wide screens (≥1024px) select the card and show its details beside the list; narrow screens open the service page.
+  await waitForHydration(first);
+  if ((page.viewportSize()?.width ?? 1280) >= 1024) {
+    await first.click();
+    await expect(page.getByRole('article', { name: `Details: ${title}` })).toBeVisible();
+    await submit(page, page.getByRole('article', { name: `Details: ${title}` }).getByRole('link', { name: 'View full page ›' }));
+  } else {
+    await submit(page, first);
+  }
   await expect(page.getByRole('heading', { level: 1, name: title, exact: true })).toBeVisible();
   await expect(page.getByRole('link', { name: `By ${creatorName} ›` })).toBeVisible();
   await page.getByLabel('Tell the creator about your project').fill(`Project brief ${uniqueSuffix()}: Write a launch narrative for a developer tool with a clear audience and CTA.`);

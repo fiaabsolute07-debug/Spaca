@@ -32,6 +32,9 @@ describe('storage upload policy', () => {
     expect(() => validateDeclaredUpload({ purpose: 'DELIVERY', filename: 'a.jpg', mime: 'image/png', size: 10 })).toThrow(/extension/);
     expect(() => validateDeclaredUpload({ purpose: 'DELIVERY', filename: 'a.pdf', mime: 'application/pdf', size: 25 * 1024 * 1024 + 1 })).toThrow(/25 MB/);
     expect(() => validateDeclaredUpload({ purpose: 'DELIVERY', filename: 'a.pdf', mime: 'application/pdf', size: 0 })).toThrow(/size/);
-    expect(() => validateDeclaredUpload({ purpose: 'AVATAR', filename: 'a.png', mime: 'image/png', size: 10 })).toThrow(/purpose/);
+    expect(() => validateDeclaredUpload({ purpose: 'INVOICE', filename: 'a.png', mime: 'image/png', size: 10 })).toThrow(/purpose/);
+    // Profile photos: images only, in their own bucket.
+    expect(validateDeclaredUpload({ purpose: 'AVATAR', filename: 'me.png', mime: 'image/png', size: 10 })).toMatchObject({ bucket: 'public-avatars' });
+    expect(() => validateDeclaredUpload({ purpose: 'AVATAR', filename: 'cv.pdf', mime: 'application/pdf', size: 10 })).toThrow(/not accepted/);
   });
 });

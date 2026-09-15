@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import type { ReactNode } from 'react';
+import { Avatar } from './avatar';
 
 export type Row = Record<string, unknown>;
 export const row = (value: unknown): Row => value && typeof value === 'object' ? value as Row : {};
@@ -159,9 +160,7 @@ export function ServiceCard({
   const availability = availabilityLabel(s.availability_status);
   return <Link href={`/services/${str(s.id)}`} className="service-card">
     <div className="service-card-top">
-      <span className="avatar small" style={s.avatar_color ? { background: str(s.avatar_color) } : undefined}>
-        {str(s.creator_name, 'C').slice(0, 1)}
-      </span>
+      <Avatar name={s.creator_name} assetId={s.avatar_asset_id} size={28} />
       <span className="service-card-creator">
         <strong>{str(s.creator_name, 'Independent creator')}</strong>
         {s.niche ? <span>{str(s.niche)}</span> : null}

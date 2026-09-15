@@ -31,7 +31,7 @@ export async function searchServices(input: ServiceSearch, db: Db = sql) {
   const rows = await db<Row[]>`
     with matched as (
       select s.id, v.id as service_version_id, v.version as service_version, v.title, left(v.description, 280) as summary, v.taxonomy, v.price_minor, v.currency,
-        v.turnaround_hours, v.revision_limit, v.created_at as published_at, s.creator_id, u.display_name as creator_name, p.handle, p.niche, p.avatar_color,
+        v.turnaround_hours, v.revision_limit, v.created_at as published_at, s.creator_id, u.display_name as creator_name, p.handle, p.niche, p.avatar_color, p.avatar_asset_id,
         ${query ? sql`round((ts_rank_cd(v.search_document, to_tsquery('simple', ${query})) + 0.5 * ts_rank_cd(coalesce(p.search_document, ''::tsvector), to_tsquery('simple', ${query})))::numeric, 6)` : sql`0::numeric`} as rank,
         case when v.taxonomy = 'DIGITAL' then ${digitalStatus} else ${availabilityStatus} end as availability_status
       from app.services s
@@ -48,7 +48,7 @@ export async function searchServices(input: ServiceSearch, db: Db = sql) {
         ${and(input.turnaroundMaxHours !== null, sql`v.turnaround_hours <= ${input.turnaroundMaxHours ?? 0}`)}
         ${and(!!input.creatorHandle, sql`p.handle = ${input.creatorHandle ?? ''}`)}
     )
-    select * from matched
+    select *, count(*) over () as matched_count from matched
     where true
       ${and(input.availableOnly, sql`availability_status = 'ACCEPTING'`)}
       ${cursorId === null ? empty : input.sort === 'relevance' ? sql`and (rank < ${keys[0]}::numeric or (rank = ${keys[0]}::numeric and id > ${cursorId}::uuid))`
@@ -69,7 +69,9 @@ export async function searchServices(input: ServiceSearch, db: Db = sql) {
     return input.sort === 'newest' ? iso(value) : String(value);
   };
   return {
-    items,
+    items: items.map(({ matched_count: _count, ...item }) => item),
+    // Matches from this page on (the whole result set on the first page).
+    matched: rows[0] ? Number(rows[0].matched_count) : 0,
     next_cursor: rows.length > input.limit && last ? encodeCursor({ sort: input.sort, keys: [keyOf(last)], id: String(last.id) }) : null,
     sort: input.sort,
     ranking: input.sort === 'relevance' ? 'ts_rank_cd(title A, description B, taxonomy C) + 0.5 × profile match; ties by id' : `ordered by ${input.sort}; ties by id`,
