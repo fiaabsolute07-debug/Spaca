@@ -1,7 +1,8 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
+import { X } from 'lucide-react';
 import { Avatar } from '../avatar';
 import { availabilityLabel, money, num, rows, str, type Row } from '../ui';
 
@@ -33,10 +34,11 @@ function Included({ s }: { s: Row }) {
   return <ul className="included-list">{items.map((item) => <li key={item}>{item}</li>)}</ul>;
 }
 
-function Detail({ s }: { s: Row }) {
+function Detail({ s, onClose }: { s: Row; onClose: () => void }) {
   const availability = availabilityLabel(s.availability_status);
   return <article className="explore-detail" aria-label={`Details: ${str(s.title)}`}>
     <header className="explore-detail-head">
+      <button type="button" className="detail-close" onClick={onClose} aria-label="Close details"><X size={18} aria-hidden /></button>
       <span className="chip">{CATEGORY[str(s.taxonomy)] ?? str(s.taxonomy)}</span>
       <h2>{str(s.title)}</h2>
       <Link className="detail-creator" href={s.handle ? `/creators/${str(s.handle)}` : '#'}>
@@ -72,12 +74,22 @@ function Detail({ s }: { s: Row }) {
 }
 
 /**
- * Results list with a sticky detail panel (desktop). Cards are real links to the service page: on narrow screens they
- * navigate; on wide screens a click selects the card and keeps `selected` in the URL so the choice survives reloads.
+ * Two states, like a job board: without a selection, filters sit beside wide result cards; selecting a card (wide
+ * screens) hides the filters and shows the list beside a sticky detail panel, closable back to the filters. Cards are
+ * real links, so narrow screens and clicks before hydration open the service page. `selected` is kept in the URL.
  */
-export function ExploreBrowser({ items, initialSelected }: { items: Row[]; initialSelected: string }) {
-  const [selected, setSelected] = useState(items.some((i) => str(i.id) === initialSelected) ? initialSelected : str(items[0]?.id));
+export function ExploreBrowser({ items, initialSelected, sidebar, toolbar, pager, empty, filterCount }: {
+  items: Row[];
+  initialSelected: string;
+  sidebar: ReactNode;
+  toolbar: ReactNode;
+  pager: ReactNode;
+  empty: ReactNode;
+  filterCount: number;
+}) {
+  const [selected, setSelected] = useState(items.some((i) => str(i.id) === initialSelected) ? initialSelected : '');
   const [wide, setWide] = useState(false);
+  const [filtersOpen, setFiltersOpen] = useState(false);
   useEffect(() => {
     const media = window.matchMedia('(min-width: 1024px)');
     const update = () => setWide(media.matches);
@@ -85,44 +97,67 @@ export function ExploreBrowser({ items, initialSelected }: { items: Row[]; initi
     media.addEventListener('change', update);
     return () => media.removeEventListener('change', update);
   }, []);
-  const current = items.find((i) => str(i.id) === selected) ?? items[0];
+  const current = items.find((i) => str(i.id) === selected);
 
+  const setUrl = (id: string) => {
+    const url = new URL(window.location.href);
+    if (id) url.searchParams.set('selected', id);
+    else url.searchParams.delete('selected');
+    window.history.replaceState(null, '', url);
+  };
   function choose(event: React.MouseEvent<HTMLAnchorElement>, id: string) {
     if (!wide || event.metaKey || event.ctrlKey || event.shiftKey || event.button !== 0) return;
     event.preventDefault();
     setSelected(id);
-    const url = new URL(window.location.href);
-    url.searchParams.set('selected', id);
-    window.history.replaceState(null, '', url);
+    setUrl(id);
   }
+  const close = () => {
+    setSelected('');
+    setUrl('');
+  };
 
-  return <div className="explore-layout">
-    <ol className="explore-list" aria-label="Services">
-      {items.map((s) => {
-        const active = wide && str(s.id) === str(current?.id);
-        const availability = availabilityLabel(s.availability_status);
-        return <li key={str(s.id)}>
-          <a href={`/services/${str(s.id)}`} className={`explore-card${active ? ' is-active' : ''}`} aria-current={active ? 'true' : undefined} onClick={(event) => choose(event, str(s.id))}>
-            <span className="explore-card-creator">
-              <Avatar name={s.creator_name} assetId={s.avatar_asset_id} size={24} />
-              <span>{str(s.creator_name, 'Creator')}</span>
-              {s.niche && str(s.niche) !== 'Independent creator' ? <span className="muted">· {str(s.niche)}</span> : null}
-            </span>
-            <h3>{str(s.title)}</h3>
-            <span className="explore-card-price">{money(s.price_minor)}</span>
-            <span className="chip-row">
-              <span className="chip">{CATEGORY[str(s.taxonomy)] ?? str(s.taxonomy)}</span>
-              <span className="chip">{str(s.taxonomy) === 'DIGITAL' ? 'Instant' : delivery(s.turnaround_hours)}</span>
-              {s.rating ? <span className="chip">★ {str(s.rating)}</span> : null}
-            </span>
-            <span className="explore-card-foot">
-              <span className={availability.className}>{availability.label}</span>
-              {num(s.completed_jobs) > 0 ? <span className="muted">{num(s.completed_jobs)} completed</span> : <span className="muted">New creator</span>}
-            </span>
-          </a>
-        </li>;
-      })}
-    </ol>
-    {current ? <Detail s={current} /> : null}
+  return <div className={`explore-shell${current ? ' is-detail' : ''}${filtersOpen ? ' show-filters' : ''}`}>
+    <button type="button" className="button button-outline compact filters-toggle" aria-expanded={filtersOpen} onClick={() => setFiltersOpen((open) => !open)}>
+      Filters{filterCount ? ` (${filterCount})` : ''}
+    </button>
+    <aside className="explore-sidebar" aria-label="Filters">{sidebar}</aside>
+    <section className="explore-results" aria-label="Results">
+      {toolbar}
+      {items.length ? <ol className="explore-list" aria-label="Services">
+        {items.map((s) => {
+          const active = str(s.id) === str(current?.id);
+          const availability = availabilityLabel(s.availability_status);
+          return <li key={str(s.id)}>
+            <a href={`/services/${str(s.id)}`} className={`explore-card${active ? ' is-active' : ''}`} aria-current={active ? 'true' : undefined} onClick={(event) => choose(event, str(s.id))}>
+              <Avatar name={s.creator_name} assetId={s.avatar_asset_id} size={40} className="explore-card-avatar" />
+              <span className="explore-card-main">
+                <span className="explore-card-headline">
+                  <h3>{str(s.title)}</h3>
+                  <span className="explore-card-price">{money(s.price_minor)}</span>
+                </span>
+                <span className="explore-card-creator">
+                  {str(s.creator_name, 'Creator')}
+                  {s.niche && str(s.niche) !== 'Independent creator' ? <span className="muted"> · {str(s.niche)}</span> : null}
+                </span>
+                <span className="chip-row">
+                  <span className="chip">{CATEGORY[str(s.taxonomy)] ?? str(s.taxonomy)}</span>
+                  <span className="chip">{str(s.taxonomy) === 'DIGITAL' ? 'Instant' : delivery(s.turnaround_hours)}</span>
+                  {s.rating ? <span className="chip">★ {str(s.rating)}</span> : null}
+                </span>
+                <span className="explore-card-foot">
+                  <span className="muted explore-card-summary">{str(s.summary)}</span>
+                  <span className="explore-card-status">
+                    <span className={availability.className}>{availability.label}</span>
+                    <span className="muted">{num(s.completed_jobs) > 0 ? `${num(s.completed_jobs)} completed` : 'New creator'}</span>
+                  </span>
+                </span>
+              </span>
+            </a>
+          </li>;
+        })}
+      </ol> : empty}
+      {pager}
+    </section>
+    {current ? <Detail s={current} onClose={close} /> : null}
   </div>;
 }

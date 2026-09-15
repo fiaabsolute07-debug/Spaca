@@ -5,36 +5,45 @@ const priceOf = (text: string) => Number(text.replace(/[^0-9.]/g, ''));
 // 1×1 PNG.
 const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYGD4DwABBAEAwS2OUAAAAABJRU5ErkJggg==', 'base64');
 
-test('explore filters apply at once, show as removable chips, and the detail panel follows the selected card', async ({ page }) => {
+test('explore: filters beside the results; selecting a card shows its details, and closing returns to the filters', async ({ page }) => {
   await visit(page, '/explore');
+  const filters = page.getByRole('complementary', { name: 'Filters' });
+  await expect(filters).toBeVisible();
   await expect(page.getByRole('list', { name: 'Services' })).toBeVisible();
+  await expect(page.getByRole('article')).toHaveCount(0);
 
-  await chooseOption(page, page, 'Price', '$100 – $500');
+  await submit(page, filters.getByRole('radio', { name: '$100 – $500' }));
   await expect(page).toHaveURL(/price=100_500/);
+  await expect(filters.getByRole('radio', { name: '$100 – $500' })).toHaveAttribute('aria-checked', 'true');
   const chips = page.getByRole('list', { name: 'Active filters' });
   await expect(chips.getByRole('link', { name: 'Remove filter $100 – $500' })).toBeVisible();
 
-  await chooseOption(page, page, 'Sort', 'Price: low to high');
+  await chooseOption(page, page, 'Sort by', 'Price: low to high');
   await expect(page).toHaveURL(/sort=price_asc/);
+  await expect(page).toHaveURL(/price=100_500/);
   const prices = (await page.locator('.explore-card-price').allTextContents()).map(priceOf);
   expect(prices.length).toBeGreaterThan(0);
   for (const price of prices) expect(price >= 100 && price <= 500, `price ${price}`).toBe(true);
   expect([...prices].sort((a, b) => a - b)).toEqual(prices);
 
-  await submit(page, page.getByRole('switch', { name: 'Accepting orders' }));
+  await submit(page, page.getByRole('complementary', { name: 'Filters' }).getByRole('radio', { name: 'Accepting orders' }));
   await expect(page).toHaveURL(/available=1/);
-  await expect(page.getByRole('switch', { name: 'Accepting orders' })).toHaveAttribute('aria-checked', 'true');
   await expect(chips.getByRole('link', { name: 'Remove filter Accepting orders' })).toBeVisible();
 
   const cards = page.getByRole('list', { name: 'Services' }).getByRole('link');
-  if (await cards.count() > 1) {
-    const title = (await cards.nth(1).getByRole('heading').textContent())!.trim();
-    await waitForHydration(cards.nth(1));
-    await cards.nth(1).click();
-    await expect(page.getByRole('article', { name: `Details: ${title}` })).toBeVisible();
-    await expect(page).toHaveURL(/selected=/);
-    await expect(cards.nth(1)).toHaveAttribute('aria-current', 'true');
-  }
+  const title = (await cards.first().getByRole('heading').textContent())!.trim();
+  await waitForHydration(cards.first());
+  await cards.first().click();
+  const detail = page.getByRole('article', { name: `Details: ${title}` });
+  await expect(detail).toBeVisible();
+  await expect(page.getByRole('complementary', { name: 'Filters' })).toBeHidden();
+  await expect(page).toHaveURL(/selected=/);
+  await expect(cards.first()).toHaveAttribute('aria-current', 'true');
+
+  await detail.getByRole('button', { name: 'Close details' }).click();
+  await expect(page.getByRole('article')).toHaveCount(0);
+  await expect(page.getByRole('complementary', { name: 'Filters' })).toBeVisible();
+  await expect(page).not.toHaveURL(/selected=/);
 
   await submit(page, chips.getByRole('link', { name: 'Clear all' }));
   await expect(page).toHaveURL(/\/explore$/);
