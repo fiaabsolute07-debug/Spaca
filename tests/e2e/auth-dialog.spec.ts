@@ -37,6 +37,38 @@ test('Get started opens account creation in the dialog and signs the new account
   await dialog.getByLabel(/^Password/).fill('a-long-test-password');
   await Promise.all([page.waitForURL(/\/dashboard$/), dialog.getByRole('button', { name: 'Create account' }).click()]);
   await expect(page.getByRole('banner').getByRole('link', { name: 'Workspace' })).toBeVisible();
+  // Accounts are one type; without a choice a new account hires.
+  const sidebar = page.getByRole('complementary');
+  await expect(sidebar.getByText('Buyer account', { exact: true })).toBeVisible();
+  await expect(sidebar.getByRole('link', { name: 'Post a brief' })).toBeVisible();
+  await expect(sidebar.getByRole('link', { name: 'My services' })).toHaveCount(0);
+});
+
+test('a creator account sells: its workspace has no hiring tools and booking asks for a buyer account', async ({ page }) => {
+  await visit(page, '/explore');
+  const serviceHref = await page.locator('a[href^="/services/"]').first().getAttribute('href');
+  const start = page.getByRole('banner').getByRole('link', { name: 'Get started', exact: true });
+  await waitForHydration(start);
+  await start.click();
+  const dialog = page.getByRole('dialog', { name: 'Create your account' });
+  await dialog.getByRole('button', { name: 'Continue with email' }).click();
+  await dialog.getByLabel('Your name').fill('Creator Tester');
+  await dialog.getByLabel('Email address').fill(`creator-${uniqueSuffix()}@example.test`);
+  await dialog.getByLabel(/^Password/).fill('a-long-test-password');
+  await chooseOption(page, dialog, 'What brings you here?', 'I want to offer my skills');
+  await Promise.all([page.waitForURL(/\/dashboard$/), dialog.getByRole('button', { name: 'Create account' }).click()]);
+
+  const sidebar = page.getByRole('complementary');
+  await expect(sidebar.getByText('Creator account', { exact: true })).toBeVisible();
+  await expect(sidebar.getByRole('link', { name: 'My services' })).toBeVisible();
+  await expect(sidebar.getByRole('link', { name: 'Post a brief' })).toHaveCount(0);
+
+  await visit(page, '/buyer/requests/new');
+  await expect(page.getByRole('heading', { name: 'This page is for buyer accounts' })).toBeVisible();
+  expect(serviceHref).toMatch(/^\/services\/[0-9a-f-]{36}/);
+  await visit(page, serviceHref!);
+  await expect(page.getByRole('heading', { name: 'Booking needs a buyer account' })).toBeVisible();
+  await expect(page.getByRole('button', { name: /Reserve|Buy license/ })).toHaveCount(0);
 });
 
 test('the dialog switches between sign in and join, offers local test accounts, and /sign-in still works as a page', async ({ page }) => {

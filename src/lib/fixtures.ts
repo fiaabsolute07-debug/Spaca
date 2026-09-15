@@ -15,12 +15,13 @@ export type FixturePersona = {
 };
 
 export const FIXTURE_PERSONAS = {
-  creator_c: { id: '10000000-0000-4000-8000-000000000001', email: 'creator@example.test', displayName: 'Ari Nguyen', roles: ['buyer', 'creator'], status: 'ACTIVE', handle: 'ari-makes' },
-  buyer_a: { id: '10000000-0000-4000-8000-000000000002', email: 'buyer@example.test', displayName: 'Sam Tran', roles: ['buyer', 'creator'], status: 'ACTIVE', handle: 'sam-builds' },
-  buyer_b: { id: '10000000-0000-4000-8000-000000000003', email: 'buyer-b@example.test', displayName: 'Linh Pham', roles: ['buyer', 'creator'], status: 'ACTIVE' },
-  creator_d: { id: '10000000-0000-4000-8000-000000000004', email: 'creator-d@example.test', displayName: 'Minh Le', roles: ['buyer', 'creator'], status: 'ACTIVE', handle: 'minh-frames' },
+  creator_c: { id: '10000000-0000-4000-8000-000000000001', email: 'creator@example.test', displayName: 'Ari Nguyen', roles: ['creator'], status: 'ACTIVE', handle: 'ari-makes' },
+  buyer_a: { id: '10000000-0000-4000-8000-000000000002', email: 'buyer@example.test', displayName: 'Sam Tran', roles: ['buyer'], status: 'ACTIVE', handle: 'sam-builds' },
+  buyer_b: { id: '10000000-0000-4000-8000-000000000003', email: 'buyer-b@example.test', displayName: 'Linh Pham', roles: ['buyer'], status: 'ACTIVE' },
+  creator_d: { id: '10000000-0000-4000-8000-000000000004', email: 'creator-d@example.test', displayName: 'Minh Le', roles: ['creator'], status: 'ACTIVE', handle: 'minh-frames' },
+  // Legacy test account holding both roles (real accounts are one type; see drizzle/0019).
   dual_e: { id: '10000000-0000-4000-8000-000000000005', email: 'dual@example.test', displayName: 'Quinn Vo', roles: ['buyer', 'creator'], status: 'ACTIVE', handle: 'quinn-dual' },
-  suspended: { id: '10000000-0000-4000-8000-000000000006', email: 'suspended@example.test', displayName: 'Suspended Creator', roles: ['buyer', 'creator'], status: 'SUSPENDED', handle: 'suspended-creator' },
+  suspended: { id: '10000000-0000-4000-8000-000000000006', email: 'suspended@example.test', displayName: 'Suspended Creator', roles: ['creator'], status: 'SUSPENDED', handle: 'suspended-creator' },
   moderator: { id: '10000000-0000-4000-8000-000000000007', email: 'moderator@example.test', displayName: 'Mod Operator', roles: [], grants: ['moderator'], status: 'ACTIVE' },
   finance: { id: '10000000-0000-4000-8000-000000000008', email: 'finance@example.test', displayName: 'Finance Operator', roles: [], grants: ['finance'], status: 'ACTIVE' },
   admin: { id: '10000000-0000-4000-8000-000000000009', email: 'admin@example.test', displayName: 'Local Admin', roles: [], grants: ['admin'], status: 'ACTIVE' },

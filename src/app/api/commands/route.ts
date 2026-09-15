@@ -3,6 +3,7 @@
  * one transaction per command, post-commit mock webhook delivery. Domain logic lives in the
  * per-domain `commands.ts` files under `src/modules/` (registry: `src/modules/commands.ts`).
  */
+import { accountTypeMessage, requiredAccountType } from '@/lib/account';
 import { createHash, randomUUID } from 'node:crypto';
 import { NextResponse } from 'next/server';
 import { getActor, isSameOrigin, publicUrl } from '@/lib/auth';
@@ -51,6 +52,9 @@ export async function POST(request: Request) {
     // Operator commands check privileged roles themselves; marketplace commands need a buyer/creator account.
     const operatorCommand = command.startsWith('admin_');
     if (!operatorCommand && !['buyer', 'creator'].some((role) => actor.roles.includes(role))) throw new CommandError('This account cannot perform marketplace actions', 'FORBIDDEN');
+    // Buyer and creator accounts are separate: selling commands need a creator account, hiring commands a buyer account.
+    const needed = requiredAccountType(command);
+    if (needed && !actor.roles.includes(needed)) throw new CommandError(accountTypeMessage(needed), 'FORBIDDEN');
     // SEC-10: suspended accounts keep existing obligations (delivery, messages, cancellation/refund, reviews) but start nothing new.
     if (actor.status !== 'ACTIVE' && !SUSPENDED_ALLOWED_COMMANDS.has(command)) throw new CommandError('This account is suspended; only existing orders can be handled', 'ACCOUNT_SUSPENDED');
     const inputHash = hashInput(valuesOf(form));

@@ -17,7 +17,7 @@ export default async function CreatorServicesPage({
   const {
     actor,
     prompt
-  } = await requireActorOrLoginPrompt(route, query);
+  } = await requireActorOrLoginPrompt(route, query, 'creator');
   if (!actor) return prompt;
   const notices = <Notices query={query} />;
   const d = row(await getDashboardData(actor));

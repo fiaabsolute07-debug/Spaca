@@ -1,5 +1,6 @@
 import { listInAppNotifications } from '@/modules/notifications/store';
 import { WorkspaceSidebar } from '@/components/workspace-sidebar';
+import { isCreator } from '@/lib/account';
 import Link from 'next/link';
 import { getDashboardData } from '@/lib/read-model';
 import { Badge, Empty, OrderList, date, money, num, row, rows } from '@/components/ui';
@@ -26,6 +27,7 @@ export default async function DashboardPage({
   const stats = row(d.stats);
   const workload = row(d.workload);
   const orders = rows(d.orders);
+  const creatorAccount = isCreator(actor);
   return <main className="container">
     <div className="workspace">
       <WorkspaceSidebar actor={actor} />
@@ -34,7 +36,7 @@ export default async function DashboardPage({
         <PageHeading
           eyebrow="Your workspace"
           title="Keep good work moving."
-          description="Track orders, manage your services, and respond to opportunities from one place."
+          description={creatorAccount ? 'Manage your services, deliver orders and find new campaigns.' : 'Hire creators, follow your orders and run campaigns from one place.'}
         />
         <div className="stats">
           <div className="stat">
@@ -50,17 +52,17 @@ export default async function DashboardPage({
             </strong>
           </div>
           <div className="stat">
-            <span>Gross volume</span>
+            <span>{creatorAccount ? 'Completed sales' : 'Funded orders'}</span>
             <strong>
-              {money(stats.gross_minor)}
+              {money(creatorAccount ? stats.sales_minor : stats.funded_minor)}
             </strong>
           </div>
-          <div className="stat">
+          {creatorAccount && <div className="stat">
             <span>Orders in progress</span>
             <strong>
               {num(workload.in_flight_units)}
             </strong>
-          </div>
+          </div>}
         </div>
         <div className="section-heading">
           <h2>Notifications</h2>
@@ -83,28 +85,38 @@ export default async function DashboardPage({
           <Link className="text-link" href="/buyer/orders">View all ›</Link>
         </div>
         {orders.length ? <OrderList orders={orders.slice(0, 8)} /> : <Empty title="Your next collaboration starts here">
-          <Link href="/explore" className="text-link">Find a creator ›</Link>
+          {creatorAccount ? <Link href="/creator/services/new" className="text-link">Publish your first service ›</Link> : <Link href="/explore" className="text-link">Find a creator ›</Link>}
         </Empty>}
         <div className="section-heading">
           <h2>Shortcuts</h2>
         </div>
-        <div className="service-grid">
+        {creatorAccount ? <div className="service-grid">
           <Link className="panel" href="/creator/services/new">
-            <Badge>Creator</Badge>
             <h3>Publish a service</h3>
-            <p>Set a clear scope, price, samples, and real available capacity.</p>
+            <p>Set a clear scope, price and samples so buyers can book you.</p>
+          </Link>
+          <Link className="panel" href="/requests">
+            <h3>Apply to campaigns</h3>
+            <p>Send your approach and quote to open briefs from projects.</p>
+          </Link>
+          <Link className="panel" href="/settings/profile">
+            <h3>Complete your profile</h3>
+            <p>A photo, headline and linked accounts help buyers choose you.</p>
+          </Link>
+        </div> : <div className="service-grid">
+          <Link className="panel" href="/explore">
+            <h3>Find creators</h3>
+            <p>Filter by category, price and delivery time, then book directly.</p>
           </Link>
           <Link className="panel" href="/buyer/requests/new">
-            <Badge>Buyer</Badge>
-            <h3>Post an open brief</h3>
-            <p>Tell the community what you need and compare approaches.</p>
+            <h3>Post a brief</h3>
+            <p>Describe the campaign once and compare creators&apos; approaches.</p>
           </Link>
-          <Link className="panel" href="/creator/auctions/new">
-            <Badge>Optional</Badge>
-            <h3>Open an auction</h3>
-            <p>Offer a time-bound slot when direct booking is not the right fit.</p>
+          <Link className="panel" href="/auctions">
+            <h3>Browse auctions</h3>
+            <p>Bid on time-bound slots when a creator offers one.</p>
           </Link>
-        </div>
+        </div>}
       </section>
     </div>
   </main>;

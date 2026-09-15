@@ -49,7 +49,7 @@ export default async function AuctionPage({ params, searchParams }: PageProps<{ 
       </div>
       <aside className="panel">
         <h2>{seller ? 'Your auction' : 'Make your offer'}</h2>
-        {!actor ? <Link className="button button-dark" href="/sign-in">Log in to bid</Link> : seller ? <>
+        {!actor ? <Link className="button button-dark" href="/sign-in">Log in to bid</Link> : !seller && !actor.roles.includes('buyer') ? <p className="muted">Bidding needs a buyer account. You are signed in with a creator account.</p> : seller ? <>
           {['SCHEDULED', 'LIVE'].includes(str(a.status)) && !a.first_valid_bid_at && <CommandForm command="cancel_auction" label="Cancel before any bid" values={{ auction_id: str(a.id) }} returnTo={route}>
             <Field name="reason" label="Reason (optional)" />
           </CommandForm>}

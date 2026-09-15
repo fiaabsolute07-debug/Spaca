@@ -18,7 +18,7 @@ export default async function NewServicePage({
   const {
     actor,
     prompt
-  } = await requireActorOrLoginPrompt(route, query);
+  } = await requireActorOrLoginPrompt(route, query, 'creator');
   if (!actor) return prompt;
   const notices = <Notices query={query} />;
   const accounts = rows(row(row(await getDashboardData(actor)).profile).social_accounts);
@@ -27,7 +27,7 @@ export default async function NewServicePage({
     <PageHeading
       eyebrow="Creator setup"
       title="Offer a clear next step."
-      description="A service needs a real scope, price, and samples before it can be published. Every service shares your active order limit."
+      description="A service needs a real scope, price, and samples before it can be published."
     />
     <div className="panel">
       <CommandForm command="create_service" label="Save draft service" returnTo="/creator/services">
@@ -69,7 +69,7 @@ export default async function NewServicePage({
         </div>
         <h3>If you chose DIGITAL</h3>
         <p className="muted">
-          DIGITAL sells files you already made (templates, code, presets). It does not use your order limit. Save the draft, upload the file on My services, then publish.
+          DIGITAL sells files you already made (templates, code, presets). Buyers download the file right after paying. Save the draft, upload the file on My services, then publish.
         </p>
         <div className="form-grid">
           <SelectField name="digital_license" label="License" defaultValue="NON_EXCLUSIVE"

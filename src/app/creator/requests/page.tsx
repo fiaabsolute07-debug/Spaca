@@ -12,8 +12,8 @@ export default async function WorkspaceRequestsPage({
   const {
     actor,
     prompt
-  } = await requireActorOrLoginPrompt(route, query);
+  } = await requireActorOrLoginPrompt(route, query, 'creator');
   if (!actor) return prompt;
 
-  return <WorkspaceRequests actor={actor} query={query} />;
+  return <WorkspaceRequests actor={actor} query={query} view="creator" />;
 }

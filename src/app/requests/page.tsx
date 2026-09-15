@@ -1,6 +1,8 @@
 import Link from 'next/link';
 
 import { getPublicData } from '@/lib/read-model';
+import { getActor } from '@/lib/auth';
+import { isBuyer } from '@/lib/account';
 import { Empty, rows, str } from '@/components/ui';
 import { Notices } from '@/components/notices';
 import { PageHeading } from '@/components/page-heading';
@@ -15,6 +17,7 @@ export default async function RequestsPage({
   const query = await searchParams;
 
   const notices = <Notices query={query} />;
+  const actor = await getActor();
   const data = await getPublicData({
     q: typeof query.q === 'string' ? query.q : undefined,
     category: typeof query.category === 'string' ? query.category : undefined
@@ -29,7 +32,8 @@ export default async function RequestsPage({
           title="Bring your next project to life."
           description="Share what you need. Creators bring their approach, samples, and quote."
         />
-        <Link className="button button-dark" href="/buyer/requests/new">Post a brief</Link>
+        {actor && !isBuyer(actor) ? <Link className="button button-dark" href="/creator/requests">My applications</Link>
+          : <Link className="button button-dark" href="/buyer/requests/new">Post a brief</Link>}
       </div>
       <div className="cards">
         {rows(data.requests).length ? (

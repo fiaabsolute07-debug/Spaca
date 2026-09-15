@@ -16,7 +16,7 @@ export default async function NewRequestPage({
   const {
     actor,
     prompt
-  } = await requireActorOrLoginPrompt(route, query);
+  } = await requireActorOrLoginPrompt(route, query, 'buyer');
   if (!actor) return prompt;
   const notices = <Notices query={query} />;
   return <main className="container">

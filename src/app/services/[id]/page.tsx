@@ -142,7 +142,9 @@ export default async function ServicePage({
               <strong>$0.00</strong>
             </li>
           </ul>
-          {actor ? !salesOpen ? <Empty title="Purchases are paused">This product cannot be bought right now.</Empty> : availability.accepting ? <CommandForm
+          {actor && !actor.roles.includes('buyer') ? <Empty title={actor.id === str(s.creator_id) ? 'This is your service' : 'Booking needs a buyer account'}>
+              {actor.id === str(s.creator_id) ? <Link className="text-link" href="/creator/services">Manage it in My services ›</Link> : 'You are signed in with a creator account. Buyers book services from a buyer account.'}
+            </Empty> : actor ? !salesOpen ? <Empty title="Purchases are paused">This product cannot be bought right now.</Empty> : availability.accepting ? <CommandForm
             command="book"
             label={isAccess ? 'Reserve a session' : isDigital ? 'Buy license' : 'Reserve this service'}
             values={{

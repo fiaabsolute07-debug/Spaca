@@ -288,7 +288,7 @@ describe.skipIf(!RUN_DB)('P5-05/06 — creator discovery and public SEO surfaces
 
   it('P5-06: the sitemap lists only public eligible records and private surfaces are noindex', async () => {
     const email = `public-${randomUUID().slice(0, 8)}@example.test`;
-    const [user] = await sql<{ id: string }[]>`insert into app.users (email,display_name,roles,is_test,status) values (${email},'Public creator',${['buyer', 'creator']},false,'ACTIVE') returning id`;
+    const [user] = await sql<{ id: string }[]>`insert into app.users (email,display_name,roles,is_test,status) values (${email},'Public creator',${['creator']},false,'ACTIVE') returning id`;
     const { createSession } = await import('@/lib/auth');
     const publicCreator: TestUser = { id: user!.id, email, token: await createSession(user!.id) };
     const handle = `pub${randomUUID().replace(/-/g, '').slice(0, 10)}`;

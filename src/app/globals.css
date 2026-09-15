@@ -398,6 +398,7 @@ textarea { resize: vertical; min-height: 110px; }
 .sidebar-profile { display: flex; flex-direction: column; gap: 4px; padding-bottom: 16px; margin-bottom: 4px; border-bottom: 1px solid var(--line); }
 .sidebar-profile .avatar { width: 40px; height: 40px; font-size: 16px; margin-bottom: 6px; }
 .sidebar-profile strong { font-size: 14px; }
+.account-type { align-self: flex-start; margin-top: 6px; padding: 2px 8px; border-radius: 980px; background: var(--ink); color: var(--white); font-size: 11px; font-weight: 600; }
 .sidebar-profile .muted { font-size: 12px; overflow: hidden; text-overflow: ellipsis; }
 .sidebar h4 { margin: 18px 10px 6px; font-size: 12px; font-weight: 600; color: var(--faint); letter-spacing: 0; }
 .sidebar a { display: block; padding: 8px 10px; border-radius: 10px; font-size: 14px; color: var(--muted); }

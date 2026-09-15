@@ -31,8 +31,7 @@ export default async function ProfilePage({
     { label: 'Headline', done: Boolean(str(profile.headline).trim()) },
     { label: 'Bio of 80+ characters', done: str(profile.bio).trim().length >= 80 },
     { label: 'Niche', done: Boolean(profile.niche) && str(profile.niche) !== 'Independent creator' },
-    { label: 'Linked account', done: rows(profile.social_accounts).length > 0 },
-    ...(isCreator ? [{ label: 'Approved public work sample', done: Number(profile.public_samples ?? 0) > 0 }] : []),
+    ...(isCreator ? [{ label: 'Linked account', done: rows(profile.social_accounts).length > 0 }, { label: 'Approved public work sample', done: Number(profile.public_samples ?? 0) > 0 }] : []),
   ];
   const completed = checks.filter((c) => c.done).length;
   const percent = Math.round((completed / checks.length) * 100);
@@ -76,6 +75,7 @@ export default async function ProfilePage({
               placeholder="Your experience, the projects you have worked with and how you like to work." />
           </CommandForm>
         </section>
+        {isCreator && <>
         <section className="panel" aria-labelledby="linked-accounts-heading">
       <h2 id="linked-accounts-heading">Linked accounts</h2>
       <p className="muted">Accounts you post on. They show on your profile as self-reported; spaca does not connect to these platforms. PUBLISH services post on one of them.</p>
@@ -92,6 +92,7 @@ export default async function ProfilePage({
         </div>
       </CommandForm>
     </section>
+        </>}
       </div>
       <aside>
         <section className="panel profile-strength" aria-labelledby="strength-heading">

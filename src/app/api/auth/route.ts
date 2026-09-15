@@ -10,6 +10,8 @@ export async function POST(request: Request) {
   const email = String(form.get('email') ?? '').trim().toLowerCase();
   const password = String(form.get('password') ?? '');
   const displayName = String(form.get('display_name') ?? '').trim();
+  // Separate accounts: a new account is a buyer or a creator, never both.
+  const accountType = String(form.get('role') ?? '') === 'creator' ? 'creator' : 'buyer';
   // The sign-in dialog asks for JSON so it can show errors in place; plain form posts get redirects.
   const wantsJson = (request.headers.get('accept') ?? '').includes('application/json');
   const requested = String(form.get('return_to') ?? '');
@@ -30,13 +32,13 @@ export async function POST(request: Request) {
       const client = await supabaseAuth();
       if (action === 'logout') { await client.auth.signOut(); return go('/sign-in'); }
       const result = action === 'signup'
-        ? await client.auth.signUp({ email, password, options: { data: { display_name: displayName } } })
+        ? await client.auth.signUp({ email, password, options: { data: { display_name: displayName, account_type: accountType } } })
         : await client.auth.signInWithPassword({ email, password });
       if (result.error) return failure();
       // Mapping occurs only after a verified authenticated response, never from browser IDs/roles.
       if (result.data.session && result.data.user) {
         const user = result.data.user;
-        await sql`insert into app.users (id,auth_user_id,email,display_name,roles,is_test,status) values (gen_random_uuid(),${user.id},${user.email!},${String(user.user_metadata.display_name ?? 'Member').slice(0,100)},ARRAY['buyer','creator'],false,'ACTIVE') on conflict (auth_user_id) do nothing`;
+        await sql`insert into app.users (id,auth_user_id,email,display_name,roles,is_test,status) values (gen_random_uuid(),${user.id},${user.email!},${String(user.user_metadata.display_name ?? 'Member').slice(0,100)},${[user.user_metadata.account_type === 'creator' ? 'creator' : 'buyer']},false,'ACTIVE') on conflict (auth_user_id) do nothing`;
         return go(returnTo);
       }
       return wantsJson ? NextResponse.json({ error: 'Check your email to verify your account, then sign in.' }, { status: 400 })
@@ -51,7 +53,7 @@ export async function POST(request: Request) {
     }
     let userId: string;
     if (action === 'signup') {
-      const [user] = await sql`insert into app.users (id,email,display_name,password_hash,roles,is_test,status) values (gen_random_uuid(),${email},${displayName},${hashPassword(password)},ARRAY['buyer','creator'],true,'ACTIVE') returning id`;
+      const [user] = await sql`insert into app.users (id,email,display_name,password_hash,roles,is_test,status) values (gen_random_uuid(),${email},${displayName},${hashPassword(password)},${[accountType]},true,'ACTIVE') returning id`;
       userId = user!.id;
     } else {
       const [user] = await sql`select id,password_hash from app.users where email=${email} and status in ('ACTIVE','SUSPENDED')`;

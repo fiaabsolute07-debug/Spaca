@@ -145,7 +145,7 @@ const createAuction: CommandHandler = async ({ tx, actor, form }) => {
       ${starts.toISOString()},${ends.toISOString()},${status},${JSON.stringify(terms)}::jsonb) returning id`;
   // The auction holds its units from scheduling until the sale's order finishes or the auction ends unsold.
   await claimWorkload(tx, { creatorId: actor.id, units, origin: 'AUCTION', auctionId: String(auction!.id), expiresAt: null });
-  return { path: `/auctions/${auction!.id}`, message: 'Auction scheduled. It counts toward your active order limit until it ends.', id: String(auction!.id) };
+  return { path: `/auctions/${auction!.id}`, message: 'Auction scheduled.', id: String(auction!.id) };
 };
 
 /** AUC-02/03/04: lock → server time → minimum → sequenced insert → pointer; ties go to the first committed bid. */
