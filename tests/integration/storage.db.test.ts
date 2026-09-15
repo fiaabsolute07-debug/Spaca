@@ -4,7 +4,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { MockPaymentProvider } from '@/modules/payments/providers';
-import { ORIGIN, RUN_DB, callRoute, createPublishedService, createUser, key, sessionState, type TestUser } from './harness';
+import { ORIGIN, RUN_DB, callRoute, commandInstant, createPublishedService, createUser, key, sessionState, type TestUser } from './harness';
 
 vi.mock('next/headers', () => ({
   cookies: async () => {
@@ -20,6 +20,7 @@ const finalizeRoute = await import('@/app/api/assets/[id]/finalize/route');
 const downloadRoute = await import('@/app/api/assets/[id]/download-url/route');
 const devUpload = await import('@/app/api/dev/storage/upload/[token]/route');
 const devDownload = await import('@/app/api/dev/storage/download/[token]/route');
+const requestImageRoute = await import('@/app/api/request-images/[id]/route');
 const funding = await import('@/modules/payments/funding');
 const jobs = await import('@/modules/jobs');
 const storage = await import('@/modules/storage/provider');
@@ -313,5 +314,92 @@ describe.skipIf(!RUN_DB)('ORD-07 / cleanup', () => {
     expect(await provider.stat('private-disputes', String(intentRow!.object_key))).toBeNull();
     await expect(sql`update app.storage_assets set lifecycle_state='DELETED',deleted_at=now() where id=${attached.id}`).rejects.toThrow(/referenced/);
     await expect(sql`delete from app.storage_assets where id=${attached.id}`).rejects.toThrow();
+  });
+});
+
+describe.skipIf(!RUN_DB)('Campaign images — the buyer\'s own uploads, public only while the campaign is visible', () => {
+  const inDays = (days: number) => commandInstant(new Date(Date.now() + days * 86_400_000));
+  const imageGet = async (actor: TestUser | null, id: string) => {
+    sessionState.token = actor?.token ?? null;
+    return requestImageRoute.GET(new Request(`${ORIGIN}/api/request-images/${id}`), params({ id }));
+  };
+  const createCampaign = (buyer: TestUser, fields: Record<string, string>) => command(buyer, {
+    command: 'create_request', idempotency_key: key('req'), title: 'Campaign with project images',
+    brief: 'Launch threads for our public beta; the screenshots show the product flow.', taxonomy: 'CREATE', budget: '300', target_hires: '1', deadline: inDays(14), ...fields,
+  });
+  const setImages = (actor: TestUser, fields: Record<string, string>) => command(actor, { command: 'set_request_images', idempotency_key: key('img'), ...fields });
+
+  it('attaches images in the order given; anyone sees them on an open campaign, and an unattached upload stays private', async () => {
+    const buyer = await createUser('img-buyer', ['buyer']);
+    const first = await upload(buyer, 'REQUEST_IMAGE', PNG, { filename: 'one.png' });
+    const second = await upload(buyer, 'REQUEST_IMAGE', PNG, { filename: 'two.png' });
+    expect([first.finalize.status, second.finalize.status]).toEqual([200, 200]);
+    const [intent] = await sql`select bucket from app.upload_intents where id=${first.id}`;
+    expect(intent!.bucket).toBe('public-campaigns');
+
+    const created = await createCampaign(buyer, { image_ids: `${second.id},${first.id}` });
+    expect(created.status, JSON.stringify(created.body)).toBe(200);
+    const requestId = String(created.body.id);
+    const rows = await sql`select asset_id,position from app.request_images where request_id=${requestId} order by position`;
+    expect(rows.map((r) => [String(r.asset_id), Number(r.position)])).toEqual([[second.id, 0], [first.id, 1]]);
+    expect((await imageGet(null, first.id)).status).toBe(302);
+    expect((await downloadUrl(null, first.id)).status).toBe(200);
+
+    const loose = await upload(buyer, 'REQUEST_IMAGE', PNG, { filename: 'loose.png' });
+    expect((await imageGet(null, loose.id)).status).toBe(404);
+    expect((await downloadUrl(null, loose.id)).status).toBe(404);
+    expect((await downloadUrl(buyer, loose.id)).status).toBe(200);
+  });
+
+  it('refuses creator uploads, non-images, other people\'s files, other purposes and more than six images', async () => {
+    const buyer = await createUser('img-owner', ['buyer']);
+    const other = await createUser('img-other', ['buyer']);
+    const creator = await createUser('img-creator', ['creator']);
+    expect((await createIntent(creator, { purpose: 'REQUEST_IMAGE', filename: 'c.png', mime: 'image/png', size: PNG.byteLength })).status).toBe(403);
+    expect((await createIntent(buyer, { purpose: 'REQUEST_IMAGE', filename: 'brief.pdf', mime: 'application/pdf', size: PDF.byteLength })).status).toBe(422);
+
+    const theirs = await upload(other, 'REQUEST_IMAGE', PNG);
+    expect((await createCampaign(buyer, { image_ids: theirs.id })).status).toBe(404);
+    const avatar = await upload(buyer, 'AVATAR', PNG);
+    expect((await createCampaign(buyer, { image_ids: avatar.id })).status).toBe(404);
+    const mine = [];
+    for (let n = 0; n < 7; n++) mine.push(await upload(buyer, 'REQUEST_IMAGE', PNG, { filename: `n${n}.png` }));
+    const tooMany = await createCampaign(buyer, { image_ids: mine.map((image) => image.id).join(',') });
+    expect(tooMany.status).toBe(400);
+    expect(JSON.stringify(tooMany.body)).toContain('at most 6 images');
+    // Refused commands roll back: no campaign was created.
+    expect((await sql`select count(*)::int as n from app.requests where buyer_id=${buyer.id}`)[0]!.n).toBe(0);
+
+    const kept = await createCampaign(buyer, { image_ids: mine[0]!.id });
+    expect(kept.status).toBe(200);
+    const requestId = String(kept.body.id);
+    // The database itself refuses an image that is not the campaign buyer's own REQUEST_IMAGE upload.
+    await expect(sql`insert into app.request_images (request_id,buyer_id,asset_id,position) values (${requestId},${buyer.id},${theirs.id},1)`).rejects.toThrow(/foreign key/);
+    await expect(sql`insert into app.request_images (request_id,buyer_id,asset_id,position) values (${requestId},${other.id},${theirs.id},1)`).rejects.toThrow(/foreign key/);
+    await expect(sql`insert into app.request_images (request_id,buyer_id,asset_id,position) values (${requestId},${buyer.id},${avatar.id},1)`).rejects.toThrow(/foreign key|check constraint/);
+    await expect(sql`update app.storage_assets set lifecycle_state='DELETED',deleted_at=now() where id=${mine[0]!.id}`).rejects.toThrow(/referenced/);
+  });
+
+  it('the buyer replaces or removes images while the campaign is open; a cancelled campaign\'s images are hidden from others', async () => {
+    const buyer = await createUser('img-edit', ['buyer']);
+    const stranger = await createUser('img-stranger', ['buyer']);
+    const a = await upload(buyer, 'REQUEST_IMAGE', PNG, { filename: 'a.png' });
+    const b = await upload(buyer, 'REQUEST_IMAGE', PNG, { filename: 'b.png' });
+    const requestId = String((await createCampaign(buyer, { image_ids: a.id })).body.id);
+
+    expect((await setImages(stranger, { request_id: requestId, image_ids: b.id })).status).toBe(404);
+    expect((await setImages(buyer, { request_id: requestId })).status).toBe(400);
+    expect((await setImages(buyer, { request_id: requestId, image_ids: b.id })).status).toBe(200);
+    expect((await sql`select asset_id from app.request_images where request_id=${requestId}`).map((r) => String(r.asset_id))).toEqual([b.id]);
+    expect((await imageGet(null, a.id)).status).toBe(404);
+    expect((await setImages(buyer, { request_id: requestId, clear: 'true' })).status).toBe(200);
+    expect((await sql`select count(*)::int as n from app.request_images where request_id=${requestId}`)[0]!.n).toBe(0);
+
+    expect((await setImages(buyer, { request_id: requestId, image_ids: a.id })).status).toBe(200);
+    expect((await command(buyer, { command: 'cancel_request', idempotency_key: key('cancel'), request_id: requestId })).status).toBe(200);
+    expect((await imageGet(null, a.id)).status).toBe(404);
+    expect((await imageGet(stranger, a.id)).status).toBe(404);
+    expect((await imageGet(buyer, a.id)).status).toBe(302);
+    expect((await setImages(buyer, { request_id: requestId, image_ids: b.id })).status).toBe(422);
   });
 });

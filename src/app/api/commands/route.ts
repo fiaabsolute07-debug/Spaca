@@ -5,6 +5,7 @@
  */
 import { accountTypeMessage, requiredAccountType } from '@/lib/account';
 import { withNotice } from '@/lib/notices';
+import { logError } from '@/lib/log';
 import { createHash, randomUUID } from 'node:crypto';
 import { NextResponse } from 'next/server';
 import { getActor, isSameOrigin, publicUrl } from '@/lib/auth';
@@ -31,7 +32,7 @@ function errorResponse(error: unknown): { status: number; message: string } {
   // The workload claim trigger (drizzle/0017) refuses new claims while a creator paused new orders.
   const hint = (error as { hint?: unknown } | null)?.hint;
   if (hint === 'NOT_ACCEPTING_ORDERS') return { status: 409, message: 'This creator paused new orders' };
-  console.error('command failed', error);
+  logError('command failed', error);
   return { status: 400, message: 'The command could not be completed. Check the order state and try again.' };
 }
 
@@ -71,7 +72,7 @@ export async function POST(request: Request) {
       return outcome;
     });
     // Local mock provider emits webhooks after commit (e.g. refund confirmation); failures stay in the inbox for retry.
-    if (mockPaymentsEnabled()) await deliverPendingMockWebhooks().catch((error) => console.error('mock webhook delivery failed', error));
+    if (mockPaymentsEnabled()) await deliverPendingMockWebhooks().catch((error) => logError('mock webhook delivery failed', error));
     if (wantsJson) return NextResponse.json(result);
     // Operator consoles act on queues; they return to the page the form came from rather than the entity page.
     const destination = operatorCommand && form.get('return_to') ? returnTo : result.path || returnTo;

@@ -7,6 +7,7 @@
  * in that same process (the dev route does).
  */
 import { sql } from '@/lib/db';
+import { logError } from '@/lib/log';
 import { NotificationDispatcher, NotificationError, type NotificationTemplateId } from '@/modules/notifications';
 import { DatabaseNotificationSink } from '@/modules/notifications/store';
 import {
@@ -92,7 +93,7 @@ export async function expireCheckoutHolds(options: JobScope = {}): Promise<JobRe
         return 'RELEASED';
       }));
     } catch (error) {
-      console.error('expire_checkout_holds failed', orderId, error);
+      logError('expire_checkout_holds failed', error, { order_id: orderId });
       tally('ERROR');
     }
   }
@@ -109,7 +110,7 @@ export async function reprocessWebhookInbox(options: JobScope & { minAgeSeconds?
     try {
       tally((await processVerifiedEvent(eventFromInboxRow(row))).outcome);
     } catch (error) {
-      console.error('reprocess_webhook_inbox failed', row.event_id, error);
+      logError('reprocess_webhook_inbox failed', error, { event_id: String(row.event_id) });
       tally('ERROR');
     }
   }
@@ -156,7 +157,7 @@ export async function reconcileProviderOperations(options: JobScope & { minAgeSe
         }));
       }
     } catch (error) {
-      console.error('reconcile_provider_operations failed', operationId, error);
+      logError('reconcile_provider_operations failed', error, { operation_id: operationId });
       tally('ERROR');
     }
   }
@@ -194,7 +195,7 @@ export async function reconcileProviderOperations(options: JobScope & { minAgeSe
         await sql.begin((tx) => openCase(tx, operation.order_id ? String(operation.order_id) : null, String(operation.id), 'PROVIDER_OBJECT_MISSING', 'HIGH', 'Provider has no record of this reference; verify manually'));
         tally('PROVIDER_OBJECT_MISSING');
       } else {
-        console.error('reconcile fetch failed', operationId, error);
+        logError('reconcile fetch failed', error, { operation_id: operationId });
         tally('ERROR');
       }
     }
@@ -227,7 +228,7 @@ export async function releaseReadySettlements(options: JobScope = {}): Promise<J
       }));
     } catch (error) {
       if (error instanceof PaymentFlowError) tally(`BLOCKED_${error.code}`);
-      else { console.error('release_ready_settlements failed', candidate.id, error); tally('ERROR'); }
+      else { logError('release_ready_settlements failed', error, { order_id: String(candidate.id) }); tally('ERROR'); }
     }
   }
   if (mockPaymentsEnabled()) await deliverPendingMockWebhooks();
@@ -241,7 +242,7 @@ export async function dispatchChainPayouts(options: { limit?: number; orderId?: 
     try {
       tally(await dispatchChainPayout(id));
     } catch (error) {
-      console.error('dispatch_chain_payouts failed', id, error instanceof Error ? error.message : error);
+      logError('dispatch_chain_payouts failed', error, { payout_id: String(id) });
       tally('ERROR');
     }
   }
@@ -283,7 +284,7 @@ export async function dispatchNotificationOutbox(options: JobScope & { dispatche
       const poison = error instanceof NotificationError;
       await sql`update app.outbox set status='FAILED',attempts=${poison ? MAX_OUTBOX_ATTEMPTS : Number(row.attempts)},
         available_at=now() + interval '5 minutes' where id=${String(row.id)}`;
-      if (!poison) console.error('dispatch_notification_outbox failed', row.semantic_key, error);
+      if (!poison) logError('dispatch_notification_outbox failed', error, { outbox_id: String(row.id) });
       tally(poison ? 'POISONED' : 'ERROR');
     }
   }
@@ -328,7 +329,7 @@ export async function autoAcceptDeliveries(options: JobScope = {}): Promise<JobR
         return 'AUTO_APPROVED';
       }));
     } catch (error) {
-      console.error('auto_accept_deliveries failed', orderId, error);
+      logError('auto_accept_deliveries failed', error, { order_id: orderId });
       tally('ERROR');
     }
   }
@@ -381,15 +382,16 @@ export async function cleanupStorage(options: JobScope & { orphanGraceSeconds?: 
       await provider.remove(String(intent.bucket) as StorageBucket, String(intent.object_key));
       tally('ABANDONED_UPLOAD_REMOVED');
     } catch (error) {
-      console.error('cleanup_storage remove failed', error);
+      logError('cleanup_storage remove failed', error);
       tally('ERROR');
     }
   }
   const orphanGrace = ageFilter(options.orphanGraceSeconds ?? 24 * 3600);
-  const orphans = await sql<Row[]>`select a.id from app.storage_assets a where a.lifecycle_state='READY' and a.purpose in ('DELIVERY','SAMPLE','DIGITAL','AVATAR')
+  const orphans = await sql<Row[]>`select a.id from app.storage_assets a where a.lifecycle_state='READY' and a.purpose in ('DELIVERY','SAMPLE','DIGITAL','AVATAR','REQUEST_IMAGE')
     and a.created_at < now() - (${orphanGrace} * interval '1 second') and ${scoped(sql`a.order_id`, options)}
     and not exists (select 1 from app.delivery_assets d where d.asset_id=a.id) and not exists (select 1 from app.samples s where s.storage_asset_id=a.id)
     and not exists (select 1 from app.digital_releases r where r.asset_id=a.id) and not exists (select 1 from app.profiles p where p.avatar_asset_id=a.id)
+    and not exists (select 1 from app.request_images i where i.asset_id=a.id)
     order by a.created_at limit ${limit}`;
   for (const orphan of orphans) {
     try {
@@ -404,7 +406,7 @@ export async function cleanupStorage(options: JobScope & { orphanGraceSeconds?: 
       // The guard trigger refuses assets that became referenced after the scan.
       if (String((error as Error).message).includes('referenced storage assets')) tally('SKIPPED_REFERENCED');
       else {
-        console.error('cleanup_storage orphan failed', orphan.id, error);
+        logError('cleanup_storage orphan failed', error, { asset_id: String(orphan.id) });
         tally('ERROR');
       }
     }
@@ -432,7 +434,7 @@ export async function expireHireOffers(options: { limit?: number; requestId?: st
         return 'OFFER_EXPIRED';
       }));
     } catch (error) {
-      console.error('expire_hire_offers failed', candidate.id, error);
+      logError('expire_hire_offers failed', error, { offer_id: String(candidate.id) });
       tally('ERROR');
     }
   }
@@ -456,7 +458,7 @@ export async function closeDueAuctions(options: { limit?: number; auctionId?: st
     try {
       tally((await sql.begin((tx) => closeAuction(tx, String(auction.id)))).outcome);
     } catch (error) {
-      console.error('close_due_auctions failed', auction.id, error);
+      logError('close_due_auctions failed', error, { auction_id: String(auction.id) });
       tally('ERROR');
     }
   }
@@ -475,7 +477,7 @@ export async function indexChainDeposits(): Promise<JobReport> {
         if (outcome.error) tally(outcome.error);
         for (const [name, count] of Object.entries(outcome.outcomes)) for (let i = 0; i < count; i++) tally(name);
       } catch (error) {
-        console.error('chain_indexer failed', chainId, error instanceof Error ? error.name : error);
+        logError('chain_indexer failed', error, { chain_id: Number(chainId) });
         tally('ERROR');
       }
     }

@@ -119,8 +119,11 @@ beforeAll(async () => {
   await write(KEYS.owner, escrow, [{ type: 'function', name: 'setTokenAllowed', stateMutability: 'nonpayable', inputs: [{ type: 'address' }, { type: 'bool' }], outputs: [] }], 'setTokenAllowed', [usdc, true]);
   await write(KEYS.owner, usdc, [{ type: 'function', name: 'mint', stateMutability: 'nonpayable', inputs: [{ type: 'address' }, { type: 'uint256' }], outputs: [] }], 'mint', [privateKeyToAccount(KEYS.buyer).address, 10_000n * 10n ** 6n]);
 
-  await sql`insert into app.chain_networks (chain_id,name,mode,settlement_address,finality_confirmations,enabled,verification_note) values (${CHAIN_ID},'IT anvil escrow','LOCAL',${escrow},1,true,'anvil with compiled SpacaEscrow')`;
-  await sql`insert into app.chain_assets (chain_id,symbol,kind,contract_address,decimals,balance_key,usd_pegged,transfer_behavior,allowlisted) values (${CHAIN_ID},'USDC','ERC20',${usdc},6,'USDC',true,'STANDARD',true)`;
+  // The test database outlives a run: re-running the suite updates the anvil network and token instead of duplicating them.
+  await sql`insert into app.chain_networks (chain_id,name,mode,settlement_address,finality_confirmations,enabled,verification_note) values (${CHAIN_ID},'IT anvil escrow','LOCAL',${escrow},1,true,'anvil with compiled SpacaEscrow')
+    on conflict (chain_id) do update set name=excluded.name,mode=excluded.mode,settlement_address=excluded.settlement_address,finality_confirmations=excluded.finality_confirmations,enabled=true,verification_note=excluded.verification_note`;
+  await sql`insert into app.chain_assets (chain_id,symbol,kind,contract_address,decimals,balance_key,usd_pegged,transfer_behavior,allowlisted) values (${CHAIN_ID},'USDC','ERC20',${usdc},6,'USDC',true,'STANDARD',true)
+    on conflict (chain_id, kind, (coalesce(contract_address, ''))) do update set symbol=excluded.symbol,decimals=excluded.decimals,balance_key=excluded.balance_key,usd_pegged=true,transfer_behavior=excluded.transfer_behavior,allowlisted=true`;
   const email = `it-anvil-admin-${randomUUID().slice(0, 8)}@example.test`;
   const [user] = await sql<{ id: string }[]>`insert into app.users (email,display_name,roles,is_test,status) values (${email},'IT admin',${[]},true,'ACTIVE') returning id`;
   await sql`insert into app.user_roles (user_id,role,granted_reason) values (${user!.id},'admin','Anvil suite operator grant')`;

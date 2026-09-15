@@ -1,7 +1,8 @@
 /*
- * spaca product UI. Neutral by default: white / #F5F5F7 surfaces, ink text and ink buttons.
- * Color is reserved for meaning: green = done / funded / accepting orders, orange = waiting on someone or
- * sandbox, red = disputed / failed / destructive. Blue appears only as the keyboard focus ring.
+ * spaca product UI. Neutral by default: white / #F5F5F7 surfaces and ink text.
+ * Color marks what matters and nothing else: blue = the primary action and where you are (active tab, sidebar item);
+ * one hue per campaign category (create / publish / access / digital); green = done / funded / accepting orders,
+ * orange = waiting on someone or sandbox, red = disputed / failed / destructive.
  */
 :root {
   --bg: #ffffff;
@@ -21,6 +22,17 @@
   --bad: #d70015;
   --bad-soft: rgba(255, 59, 48, 0.1);
   --focus: #0071e3;
+  --accent: #0071e3;
+  --accent-hover: #0062c4;
+  --accent-soft: rgba(0, 113, 227, 0.1);
+  --cat-create: #8944ab;
+  --cat-create-soft: rgba(137, 68, 171, 0.1);
+  --cat-publish: #0071a4;
+  --cat-publish-soft: rgba(0, 113, 164, 0.1);
+  --cat-access: #c93400;
+  --cat-access-soft: rgba(201, 52, 0, 0.1);
+  --cat-digital: #248a3d;
+  --cat-digital-soft: rgba(36, 138, 61, 0.1);
   --radius: 18px;
   --radius-sm: 12px;
   --shadow: 0 1px 2px rgba(0, 0, 0, 0.04), 0 8px 24px rgba(0, 0, 0, 0.06);
@@ -261,9 +273,9 @@ a.panel:hover { border-color: var(--line-strong); box-shadow: var(--shadow); }
 /* ---------- Profile ---------- */
 .profile-layout { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 20px; align-items: start; }
 .profile-layout > aside { position: sticky; top: 76px; }
-.profile-photo { display: flex; gap: 20px; align-items: flex-start; }
+.profile-photo { display: flex; flex-wrap: wrap; gap: 20px; align-items: flex-start; }
 .profile-photo .avatar { width: 88px; height: 88px; }
-.profile-photo-actions { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 10px; }
+.profile-photo-actions { flex: 1 1 240px; min-width: 0; display: flex; flex-direction: column; gap: 10px; }
 .strength-bar { height: 8px; border-radius: 980px; background: var(--soft-2); overflow: hidden; margin: 4px 0 8px; }
 .strength-bar span { display: block; height: 100%; background: var(--ink); border-radius: inherit; }
 .strength-list { list-style: none; margin: 12px 0 16px; padding: 0; display: grid; gap: 6px; font-size: 14px; color: var(--muted); }
@@ -402,17 +414,29 @@ textarea { resize: vertical; min-height: 110px; }
 /* ---------- Workspace ---------- */
 .workspace { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 40px; }
 .sidebar { position: sticky; top: 84px; align-self: start; display: flex; flex-direction: column; }
-.sidebar-profile { display: flex; flex-direction: column; gap: 4px; padding-bottom: 16px; margin-bottom: 4px; border-bottom: 1px solid var(--line); }
-.sidebar-profile .avatar { width: 40px; height: 40px; font-size: 16px; margin-bottom: 6px; }
-.sidebar-profile strong { font-size: 14px; }
 .account-type { align-self: flex-start; margin-top: 6px; padding: 2px 8px; border-radius: 980px; background: var(--ink); color: var(--white); font-size: 11px; font-weight: 600; }
-.sidebar-profile .muted { font-size: 12px; overflow: hidden; text-overflow: ellipsis; }
 .sidebar h4 { margin: 18px 10px 6px; font-size: 12px; font-weight: 600; color: var(--faint); letter-spacing: 0; }
 .sidebar a { display: block; padding: 8px 10px; border-radius: 10px; font-size: 14px; color: var(--muted); }
 .sidebar a:hover { background: var(--soft); color: var(--ink); }
 .sidebar a.active { background: var(--soft); color: var(--ink); font-weight: 600; }
 .workspace-main { min-width: 0; }
 .workspace-main h1 { font-size: clamp(28px, 3vw, 36px); }
+/* Signed-in pages render beside the persistent sidebar; the frame owns the page width and padding. */
+.app-frame > .workspace-main > main.container { width: auto; margin: 0; padding: 0; }
+.app-frame .breadcrumbs { display: none; }
+.sidebar nav > div { display: contents; }
+.sidebar nav > div:first-child h4 { margin-top: 0; }
+/* Header link to the account's own profile area. */
+.header-profile { display: inline-flex; border-radius: 50%; }
+.header-profile .avatar { width: 32px; height: 32px; font-size: 13px; transition: box-shadow 0.15s; }
+.header-profile:hover .avatar { box-shadow: 0 0 0 2px var(--line-strong); }
+.profile-back { display: inline-flex; align-items: center; gap: 6px; margin-bottom: 18px; font-size: 13px; color: var(--muted); }
+.profile-back:hover { color: var(--accent); }
+.workspace-back { display: inline-flex; align-items: center; gap: 6px; margin-bottom: 18px; font-size: 13px; color: var(--muted); }
+.workspace-back:hover { color: var(--ink); }
+/* Short cells (status, amount, date, action) never break inside a word; long titles in the first column still may. */
+th, .table-wrap td:not(:first-child) { overflow-wrap: normal; }
+th, td .text-link { white-space: nowrap; }
 .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin: 8px 0 12px; }
 .stat { background: var(--soft); border-radius: var(--radius); padding: 18px 20px; }
 .stat span { font-size: 13px; color: var(--muted); }
@@ -454,7 +478,7 @@ td small { display: block; color: var(--faint); margin-top: 3px; font-size: 12px
 .file-item:last-child { border-bottom: 0; }
 .file-name { font-weight: 600; overflow-wrap: anywhere; flex: 1 1 180px; }
 .file-failed .muted { color: var(--bad); }
-.file-field input[type=file] { padding: 12px; background: var(--soft); border-style: dashed; }
+.file-field input[type=file] { width: 100%; max-width: 100%; padding: 12px; background: var(--soft); border-style: dashed; }
 
 /* ---------- Errors ---------- */
 .error-page { min-height: 60vh; display: flex; flex-direction: column; justify-content: center; align-items: flex-start; gap: 14px; }
@@ -506,8 +530,9 @@ td small { display: block; color: var(--faint); margin-top: 3px; font-size: 12px
 @media (max-width: 860px) {
   .workspace { grid-template-columns: minmax(0, 1fr); gap: 20px; }
   .sidebar { position: static; flex-direction: row; gap: 4px; overflow-x: auto; padding-bottom: 8px; border-bottom: 1px solid var(--line); }
-  .sidebar h4, .sidebar-profile { display: none; }
+  .sidebar h4 { display: none; }
   .sidebar a { white-space: nowrap; }
+  .sidebar nav { display: flex; gap: 4px; }
   .auth-layout { grid-template-columns: minmax(0, 1fr); gap: 24px; margin-top: 32px; }
   .admin-queue-grid, .admin-card-grid { grid-template-columns: minmax(0, 1fr); }
 }
@@ -540,3 +565,81 @@ td small { display: block; color: var(--faint); margin-top: 3px; font-size: 12px
 .crypto-badge { background: var(--soft); color: var(--muted); }
 .command-form .button { margin-top: 8px; }
 .panel .button, .command-form .button { white-space: normal; max-width: 100%; text-align: center; line-height: 1.25; padding-top: 10px; padding-bottom: 10px; }
+
+/* ---------- Color accents: primary actions, current location, campaign categories ---------- */
+.button:not(.button-outline):not(.button-dark):not(.button-danger) { background: var(--accent); }
+.button:not(.button-outline):not(.button-dark):not(.button-danger):hover { background: var(--accent-hover); }
+.header nav a.is-active { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+.sidebar a.active { background: var(--accent-soft); color: var(--accent); }
+.account-type { background: var(--accent-soft); color: var(--accent); }
+.workspace-back:hover { color: var(--accent); }
+.cat-create { --cat: var(--cat-create); --cat-soft: var(--cat-create-soft); }
+.cat-publish { --cat: var(--cat-publish); --cat-soft: var(--cat-publish-soft); }
+.cat-access { --cat: var(--cat-access); --cat-soft: var(--cat-access-soft); }
+.cat-digital { --cat: var(--cat-digital); --cat-soft: var(--cat-digital-soft); }
+.badge.badge-cat { background: var(--cat-soft); color: var(--cat); }
+
+/* ---------- Visual choices (radio cards and chips) ---------- */
+.choice-group { min-width: 0; margin: 0 0 20px; padding: 0; border: 0; }
+.choice-group legend { margin-bottom: 10px; padding: 0; font-size: 14px; font-weight: 600; color: var(--ink); }
+.choice-cards { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.choice-card { position: relative; display: flex; flex-direction: column; gap: 6px; padding: 16px; border: 1.5px solid var(--line); border-radius: var(--radius-sm); background: var(--white); cursor: pointer; transition: border-color 0.15s, background-color 0.15s; }
+.choice-card:hover { border-color: var(--line-strong); }
+.choice-card input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; }
+.choice-icon { display: grid; place-items: center; width: 38px; height: 38px; border-radius: 10px; background: var(--cat-soft); color: var(--cat); }
+.choice-card strong { font-size: 15px; }
+.choice-card small { font-size: 13px; line-height: 1.4; color: var(--muted); }
+.choice-card:has(input:checked) { border-color: var(--cat); background: var(--cat-soft); box-shadow: 0 0 0 1px var(--cat); }
+.choice-card:has(input:focus-visible) { outline: 2px solid var(--focus); outline-offset: 2px; }
+.choice-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.choice-chip { position: relative; display: inline-flex; }
+.choice-chip input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; }
+.choice-chip span { display: inline-flex; align-items: center; padding: 8px 14px; border: 1.5px solid var(--line); border-radius: 980px; background: var(--white); font-size: 14px; color: var(--muted); }
+.choice-chip:hover span { border-color: var(--line-strong); color: var(--ink); }
+.choice-chip:has(input:checked) span { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+.choice-chip:has(input:focus-visible) span { outline: 2px solid var(--focus); outline-offset: 2px; }
+.publish-terms { display: none; margin-top: 8px; padding-top: 18px; border-top: 1px solid var(--line); }
+form:has(input[name="taxonomy"][value="PUBLISH"]:checked) .publish-terms { display: block; }
+.panel .brief-section { margin: 26px 0 12px; font-size: 17px; }
+
+/* ---------- Campaign cards and images ---------- */
+.panel.campaign-card { display: flex; flex-direction: column; padding: 0; overflow: hidden; transition: box-shadow 0.15s; }
+.panel.campaign-card:hover { box-shadow: var(--shadow); }
+.campaign-cover { position: relative; display: grid; place-items: center; aspect-ratio: 16 / 9; max-width: 100%; background: linear-gradient(135deg, var(--cat-soft), var(--soft)); color: var(--cat); }
+.campaign-cover img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.campaign-cover-count { position: absolute; right: 10px; bottom: 10px; padding: 2px 8px; border-radius: 980px; background: rgba(0, 0, 0, 0.62); color: #fff; font-size: 12px; font-weight: 600; }
+.campaign-body { display: flex; flex: 1; flex-direction: column; gap: 6px; padding: 18px 20px 20px; }
+.panel .campaign-body h3 { margin: 6px 0 0; }
+.campaign-by { font-size: 13px; color: var(--faint); }
+.campaign-meta { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 6px 12px; margin-top: auto; padding-top: 12px; font-size: 13px; color: var(--muted); }
+.campaign-budget { font-size: 17px; color: var(--ink); }
+.campaign-gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 8px; margin: 0 0 18px; }
+.campaign-gallery > div { display: block; max-width: 100%; aspect-ratio: 4 / 3; overflow: hidden; border-radius: var(--radius-sm); background: var(--soft); }
+.campaign-gallery > div:first-child { grid-column: 1 / -1; aspect-ratio: 16 / 9; }
+.campaign-gallery img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.cards:has(> .campaign-card) { grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr)); }
+.campaign-cover svg { width: 44px; height: 44px; }
+.owner-images { margin: 18px 0; padding-top: 16px; border-top: 1px solid var(--line); }
+.file-thumb { flex-shrink: 0; width: 44px; height: 44px; border-radius: 8px; object-fit: cover; }
+@media (max-width: 860px) { .choice-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 440px) { .choice-cards { grid-template-columns: minmax(0, 1fr); } }
+/* The narrow-screen sidebar strip scrolls without a visible bar. */
+.sidebar, .sidebar nav { scrollbar-width: none; }
+.sidebar::-webkit-scrollbar, .sidebar nav::-webkit-scrollbar { display: none; }
+
+/* REQ-11 comparison controls */
+.compare-controls { display: grid; gap: 10px; margin: 6px 0 18px; }
+.compare-summary { font-size: 14px; font-weight: 600; color: var(--ink); }
+.chip-link { display: inline-flex; align-items: center; padding: 6px 12px; border: 1.5px solid var(--line); border-radius: 980px; background: var(--white); font-size: 13px; color: var(--muted); }
+.chip-link:hover { border-color: var(--line-strong); color: var(--ink); }
+.chip-link[aria-current] { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+
+/* Inside the workspace frame the content column is narrower: side panels stack sooner and Explore's filters take less room. */
+@media (max-width: 1240px) {
+  .app-frame .profile-layout, .app-frame .split { grid-template-columns: minmax(0, 1fr); }
+  .app-frame .profile-layout > aside, .app-frame .split > aside { position: static; }
+}
+/* Below 1024px Explore already stacks and hides filters behind a button; only narrow the filter column above that. */
+@media (min-width: 1024px) and (max-width: 1240px) {
+  .app-frame .explore-shell:not(.is-detail) { grid-template-columns: 220px minmax(0, 1fr); }
+}

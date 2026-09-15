@@ -1,47 +1,69 @@
-import Link from 'next/link';
-import type { Actor } from '@/lib/auth';
-import { accountTypeOf } from '@/lib/account';
-import { str } from './ui';
+'use client';
 
-/** Workspace navigation for the account's type: creators sell, buyers hire. */
-export function WorkspaceSidebar({
-  actor
-}: {
-  actor: Actor;
-}) {
-  const type = accountTypeOf(actor);
-  return <aside className="sidebar">
-    <div className="sidebar-profile">
-      <div className="avatar">
-        {str(actor.display_name, 'C')[0]}
-      </div>
-      <strong>
-        {actor.display_name}
-      </strong>
-      <span className="muted">
-        {actor.email}
-      </span>
-      {type && <span className="account-type">{type === 'creator' ? 'Creator account' : 'Buyer account'}</span>}
-    </div>
-    <h4>Workspace</h4>
-    <Link className="active" href="/dashboard">Overview</Link>
-    {type === 'creator' ? <>
-      <Link href="/creator/services">My services</Link>
-      <Link href="/buyer/orders">Orders</Link>
-      <Link href="/creator/requests">My applications</Link>
-      <h4>Find work</h4>
-      <Link href="/requests">Open campaigns</Link>
-      <Link href="/creator/services/new">New service</Link>
-      <Link href="/creator/auctions/new">New auction</Link>
-    </> : <>
-      <Link href="/buyer/orders">Orders</Link>
-      <Link href="/buyer/requests">My campaigns</Link>
-      <h4>Hire</h4>
-      <Link href="/explore">Find creators</Link>
-      <Link href="/buyer/requests/new">Post a brief</Link>
-      <Link href="/auctions">Auctions</Link>
-    </>}
-    <h4>Account</h4>
-    <Link href="/settings/profile">Profile</Link>
+import Link from 'next/link';
+import { usePathname } from 'next/navigation';
+import type { AccountType } from '@/lib/account';
+
+type NavLink = { href: string; label: string };
+type NavGroup = { title: string; links: NavLink[] };
+
+const CREATOR_NAV: NavGroup[] = [
+  { title: 'Workspace', links: [{ href: '/dashboard', label: 'Overview' }, { href: '/creator/services', label: 'My services' }, { href: '/buyer/orders', label: 'Orders' }, { href: '/creator/requests', label: 'My applications' }] },
+  { title: 'Find work', links: [{ href: '/requests', label: 'Open campaigns' }, { href: '/creator/services/new', label: 'New service' }, { href: '/creator/auctions/new', label: 'New auction' }] },
+];
+const BUYER_NAV: NavGroup[] = [
+  { title: 'Workspace', links: [{ href: '/dashboard', label: 'Overview' }, { href: '/buyer/orders', label: 'Orders' }, { href: '/buyer/requests', label: 'My campaigns' }] },
+  { title: 'Hire', links: [{ href: '/explore', label: 'Find creators' }, { href: '/buyer/requests/new', label: 'Post a brief' }, { href: '/auctions', label: 'Auctions' }] },
+];
+
+/** Pages that belong to a sidebar entry without being under its URL. */
+const ALIASES: [RegExp, string][] = [[/^\/orders\//, '/buyer/orders']];
+
+const within = (pathname: string, href: string) => pathname === href || pathname.startsWith(`${href}/`);
+
+function activeHref(pathname: string, groups: NavGroup[]): string | null {
+  const alias = ALIASES.find(([pattern]) => pattern.test(pathname));
+  if (alias) return alias[1];
+  // The most specific entry wins: /creator/services/new is "New service", not "My services".
+  return groups.flatMap((group) => group.links).filter((link) => within(pathname, link.href))
+    .sort((a, b) => b.href.length - a.href.length)[0]?.href ?? null;
+}
+
+/**
+ * Workspace navigation only (the profile is its own area, reached from the header), rendered once by the root layout for signed-in accounts. It stays mounted while the pages beside
+ * it change, so moving around the workspace happens in one frame.
+ */
+export function WorkspaceSidebar({ type }: { type: AccountType | null }) {
+  const pathname = usePathname();
+  const groups = type === 'creator' ? CREATOR_NAV : BUYER_NAV;
+  const active = activeHref(pathname, groups);
+  return <aside className="sidebar" aria-label="Workspace">
+    <nav aria-label="Workspace sections">
+      {groups.map((group) => <div key={group.title}>
+        <h4>{group.title}</h4>
+        {group.links.map((link) => <Link key={link.href} href={link.href} className={active === link.href ? 'active' : undefined} aria-current={active === link.href ? 'page' : undefined}>{link.label}</Link>)}
+      </div>)}
+    </nav>
   </aside>;
+}
+
+function parentOf(pathname: string, type: AccountType | null): NavLink {
+  if (/^\/orders\//.test(pathname)) return { href: '/buyer/orders', label: 'Orders' };
+  if (pathname === '/creator/services/new') return { href: '/creator/services', label: 'My services' };
+  if (pathname === '/buyer/requests/new') return { href: '/buyer/requests', label: 'My campaigns' };
+  if (/^\/requests\/[^/]+$/.test(pathname)) return type === 'creator' ? { href: '/requests', label: 'Open campaigns' } : { href: '/buyer/requests', label: 'My campaigns' };
+  if (/^\/auctions\/[^/]+$/.test(pathname)) return { href: '/auctions', label: 'Auctions' };
+  if (/^\/(services|creators)\/[^/]+$/.test(pathname)) return type === 'creator' ? { href: '/creator/services', label: 'My services' } : { href: '/explore', label: 'Find creators' };
+  return { href: '/dashboard', label: 'Overview' };
+}
+
+/** The overview and the marketplace lists (reached from the header) show no back link. */
+const NO_BACK = new Set(['/dashboard', '/explore', '/requests', '/auctions']);
+
+/** Back link above every other workspace page; it goes to the page's parent in the workspace. */
+export function WorkspaceBack({ type }: { type: AccountType | null }) {
+  const pathname = usePathname();
+  if (NO_BACK.has(pathname)) return null;
+  const parent = parentOf(pathname, type);
+  return <Link className="workspace-back" href={parent.href}><span aria-hidden>‹</span> Back to {parent.label}</Link>;
 }

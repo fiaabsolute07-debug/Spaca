@@ -20,7 +20,7 @@ const CREATOR_COMMANDS = [
 ];
 const BUYER_COMMANDS = [
   'book', 'submit_brief', 'revision', 'approve', 'refund_digital_purchase', 'create_crypto_payment',
-  'create_request', 'update_request', 'close_request', 'cancel_request', 'select_application', 'withdraw_offer',
+  'create_request', 'update_request', 'set_request_images', 'close_request', 'cancel_request', 'select_application', 'withdraw_offer',
   'bid', 'buy_now', 'create_pool', 'create_campaign_pool', 'update_pool_template', 'create_pool_funding', 'refund_pool_unused', 'close_campaign_pool',
 ];
 const REQUIRED = new Map<string, AccountType>([

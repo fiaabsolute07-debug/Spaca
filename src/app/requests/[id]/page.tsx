@@ -7,6 +7,9 @@ import { getRequestData } from '@/lib/read-model';
 import { Badge, CommandForm, Empty, Field, date, money, num, row, rows, str, type Row } from '@/components/ui';
 import { Notices } from '@/components/notices';
 import { PageHeading } from '@/components/page-heading';
+import { FileUploadField } from '@/components/files/file-upload-field';
+import { categoryOf } from '@/components/category';
+import { APPLICATION_FILTERS, APPLICATION_SORTS, compareApplications, parseFilter, parseSort, quoteSummary } from '@/modules/requests/compare';
 import type { PageProps } from '@/components/page-props';
 
 export const dynamic = 'force-dynamic';
@@ -108,15 +111,30 @@ export default async function RequestPage({ params, searchParams }: PageProps<{ 
     owner = actor?.id === str(r.buyer_id),
     open = str(r.status) === 'OPEN' && new Date(str(r.application_deadline)).getTime() > Date.now(),
     applications = rows(d.applications),
-    mine = applications.find((a) => str(a.creator_id) === actor?.id);
+    mine = applications.find((a) => str(a.creator_id) === actor?.id),
+    images = Array.isArray(r.image_ids) ? r.image_ids.map(String) : [];
+  // REQ-11: the buyer can reorder and filter the comparison; creators only ever see their own application.
+  const sort = parseSort(query.sort), filter = parseFilter(query.status);
+  const shown = owner ? compareApplications(applications, sort, filter) : applications;
+  const summary = owner ? quoteSummary(applications) : null;
+  const compareHref = (next: { sort?: string; status?: string }) => {
+    const params = new URLSearchParams();
+    const nextSort = next.sort ?? sort, nextFilter = next.status ?? filter;
+    if (nextSort !== 'received') params.set('sort', nextSort);
+    if (nextFilter !== 'all') params.set('status', nextFilter);
+    return params.size ? `${route}?${params}` : route;
+  };
   return <main className="container">
     <Notices query={query} />
     <Link href="/requests" className="breadcrumbs">← All open briefs</Link>
-    <PageHeading eyebrow={str(r.taxonomy)} title={str(r.title)} description={`Posted by ${str(r.buyer_name)} · ${str(r.status)}`} />
+    <PageHeading eyebrow={categoryOf(r.taxonomy).title} title={str(r.title)} description={`Posted by ${str(r.buyer_name)} · ${str(r.status)}`} />
     <div className="split">
       <div>
         <div className="panel">
           <h2>The brief</h2>
+          {images.length > 0 && <div className="campaign-gallery">
+            {images.map((imageId, index) => <div key={imageId}><img src={`/api/request-images/${imageId}`} alt={`${str(r.title)}, image ${index + 1} of ${images.length}`} loading="lazy" /></div>)}
+          </div>}
           <p className="prewrap">{str(r.brief)}</p>
           <ul className="facts">
             <li><span>Total budget</span><strong>{money(r.budget_minor)}</strong></li>
@@ -137,7 +155,19 @@ export default async function RequestPage({ params, searchParams }: PageProps<{ 
         <div className="panel">
           <h2>{owner ? 'Compare applications' : 'Your application'}</h2>
           {owner && <p className="muted">Quotes are private to you. Nothing is awarded automatically: each offer holds budget for 24 hours until the creator confirms capacity.</p>}
-          {applications.length ? applications.map((a) => <ApplicationCard key={str(a.id)} application={a} owner={owner} route={route} />) : (
+          {owner && applications.length > 0 && <div className="compare-controls">
+            {summary && <p className="compare-summary">{summary.count} {summary.count === 1 ? 'application' : 'applications'} · quotes {money(String(summary.lowestMinor))}–{money(String(summary.highestMinor))} · median delivery {summary.medianTurnaroundHours} hours</p>}
+            <nav aria-label="Sort applications" className="choice-chips">
+              {Object.entries(APPLICATION_SORTS).map(([value, label]) => <Link key={value} href={compareHref({ sort: value })} scroll={false} className="chip-link" aria-current={sort === value ? 'true' : undefined}>{label}</Link>)}
+            </nav>
+            <nav aria-label="Filter applications" className="choice-chips">
+              {Object.entries(APPLICATION_FILTERS).map(([value, label]) => <Link key={value} href={compareHref({ status: value })} scroll={false} className="chip-link" aria-current={filter === value ? 'true' : undefined}>{label}</Link>)}
+            </nav>
+            <p className="muted">Sorting and filters change only this view. No creator is chosen until you send an offer. <a className="text-link" href={`/api/requests/${str(r.id)}/applications`} download>Download CSV</a></p>
+          </div>}
+          {shown.length ? shown.map((a) => <ApplicationCard key={str(a.id)} application={a} owner={owner} route={route} />) : applications.length ? (
+            <Empty title="No applications match this filter"><Link className="text-link" href={compareHref({ status: 'all' })} scroll={false}>Show all applications</Link></Empty>
+          ) : (
             <Empty title="No applications to show">Applications are visible to the buyer and their respective creators.</Empty>
           )}
         </div>
@@ -146,6 +176,14 @@ export default async function RequestPage({ params, searchParams }: PageProps<{ 
         <h2>{owner ? 'Manage your brief' : mine ? (str(mine.status) === 'SUBMITTED' ? 'Update your quote' : 'Your application') : 'Bring your approach'}</h2>
         {owner ? <>
           <p>Review samples and scope before offering. The lowest quote does not automatically win.</p>
+          {['OPEN', 'FILLED'].includes(str(r.status)) && <section className="owner-images" aria-labelledby="campaign-images-heading">
+            <h3 id="campaign-images-heading">Campaign images</h3>
+            <p className="muted">{images.length ? `${images.length} of 6 shown to creators. Saving new images replaces them.` : 'Add product screenshots or brand visuals so creators see the project at a glance.'}</p>
+            <CommandForm command="set_request_images" label={images.length ? 'Replace images' : 'Save images'} variant="secondary" values={{ request_id: str(r.id) }} returnTo={route}>
+              <FileUploadField purpose="REQUEST_IMAGE" name="image_ids" label="Choose images" help="Up to 6 PNG, JPG, GIF or WebP images, 10 MB each." maxFiles={6} />
+            </CommandForm>
+            {images.length > 0 && <CommandForm command="set_request_images" label="Remove images" variant="danger" values={{ request_id: str(r.id), clear: 'true' }} returnTo={route} />}
+          </section>}
           {['OPEN', 'FILLED'].includes(str(r.status)) && <>
             <CommandForm command="close_request" label="Close to new applications" values={{ request_id: str(r.id) }} returnTo={route} />
             <CommandForm command="cancel_request" label="Cancel request" values={{ request_id: str(r.id) }} returnTo={route} />

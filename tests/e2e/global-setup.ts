@@ -10,7 +10,8 @@ export default async function globalSetup(config: FullConfig) {
   const missing = '00000000-0000-4000-8000-000000000000';
   const paths = ['/', '/explore', '/requests', '/auctions', '/sign-in', '/sign-up', '/dashboard', '/buyer/orders', '/buyer/requests', '/buyer/requests/new',
     '/creator/services', '/creator/services/new', '/creator/requests', '/settings/profile', '/admin', '/admin/flags', `/orders/${missing}`, `/services/${missing}`, `/requests/${missing}`];
-  for (const path of paths) await fetch(new URL(path, baseURL)).catch(() => undefined);
+  // A route that never answers must not stall the whole run: give each warmup request 90 seconds.
+  for (const path of paths) await fetch(new URL(path, baseURL), { signal: AbortSignal.timeout(90_000) }).catch(() => undefined);
 
   const browser = await chromium.launch({ channel: 'chrome' });
   try {

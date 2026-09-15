@@ -6,7 +6,7 @@ const TABLES = [
   'app.users', 'app.services', 'app.service_versions', 'app.orders', 'app.order_events', 'app.deliveries', 'app.messages', 'app.reviews',
   'app.ledger_transactions', 'app.ledger_entries', 'app.provider_operations', 'app.webhook_inbox', 'app.outbox', 'app.reconciliation_cases',
   'app.workload_claims', 'app.creator_workloads', 'app.requests', 'app.request_budget_reservations', 'app.auctions', 'app.bids',
-  'app.chain_payouts', 'app.pool_assets', 'app.pool_ledger', 'app.digital_entitlements', 'app.digital_releases', 'app.storage_assets',
+  'app.chain_payouts', 'app.pool_assets', 'app.pool_ledger', 'app.digital_entitlements', 'app.digital_releases', 'app.storage_assets', 'app.request_images',
   'app.order_amendments', 'app.payment_disputes', 'app.post_release_refunds', 'app.provider_cost_adjustments', 'app.audit_log',
 ];
 

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getActor, isSameOrigin, publicUrl } from '@/lib/auth';
 import { withNotice } from '@/lib/notices';
+import { logError } from '@/lib/log';
 import { sql } from '@/lib/db';
 import { isProviderError } from '@/modules/payments/providers';
 import { PaymentFlowError, completeMockCheckout, mockPaymentsEnabled } from '@/modules/payments/funding';
@@ -42,7 +43,7 @@ export async function POST(request: Request) {
   } catch (error) {
     if (error instanceof PaymentFlowError) return respond(error.code === 'FORBIDDEN' ? 403 : 400, { error: error.message }, error.message, 'error');
     if (isProviderError(error)) return respond(400, { error: 'Provider rejected the request', code: error.code }, 'The provider rejected the payment request.', 'error');
-    console.error('mock checkout failed', error);
+    logError('mock checkout failed', error, { order_id: orderId });
     return respond(500, { error: 'Checkout failed; retry' }, 'Checkout failed; retry.', 'error');
   }
 }

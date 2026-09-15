@@ -71,7 +71,7 @@ async function serviceRows(options: { ownerId?: string; publicCreatorId?: string
 export async function getPublicData(options: { q?: string; category?: string } = {}) {
   const [allServices, requests, auctions] = await Promise.all([
     serviceRows(),
-    sql`select r.id,r.buyer_id,r.title,r.brief,r.taxonomy,r.budget_minor,r.per_creator_cap_minor,r.target_hires,r.deadline,r.status,u.display_name as buyer_name,(select count(*) from app.applications a where a.request_id=r.id) as application_count from app.requests r join app.users u on u.id=r.buyer_id where r.status='OPEN' and r.application_deadline>now() order by r.application_deadline asc`,
+    sql`select r.id,r.buyer_id,r.title,r.brief,r.taxonomy,r.budget_minor,r.per_creator_cap_minor,r.target_hires,r.deadline,r.status,r.application_deadline,u.display_name as buyer_name,(select count(*) from app.applications a where a.request_id=r.id) as application_count,coalesce((select array_agg(i.asset_id order by i.position) from app.request_images i where i.request_id=r.id),'{}') as image_ids from app.requests r join app.users u on u.id=r.buyer_id where r.status='OPEN' and r.application_deadline>now() order by r.application_deadline asc`,
     sql`select a.id,a.service_id,a.seller_id,s.title,u.display_name as creator_name,a.starting_price_minor,a.current_price_minor,a.minimum_increment_minor,a.buy_now_price_minor,a.ends_at,a.starts_at,a.status,a.bid_count,a.winner_id from app.auctions a join app.services s on s.id=a.service_id join app.users u on u.id=a.seller_id where a.status in ('SCHEDULED','LIVE') and a.ends_at>now() order by a.ends_at asc`,
   ]);
   const q = options.q?.trim().toLowerCase();
@@ -93,7 +93,7 @@ export async function getDashboardData(actor: Actor) {
       from app.applications a join app.requests r on r.id=a.request_id join app.users cu on cu.id=a.creator_id
       left join lateral (select * from app.hire_offers h where h.application_id=a.id order by h.created_at desc limit 1) o on true
       where a.creator_id=${actor.id} order by a.created_at desc`,
-    sql`select r.id,r.buyer_id,r.title,r.brief,r.taxonomy,r.budget_minor,r.per_creator_cap_minor,r.target_hires,r.deadline,r.status,u.display_name as buyer_name,(select count(*) from app.applications a where a.request_id=r.id) as application_count from app.requests r join app.users u on u.id=r.buyer_id where r.buyer_id=${actor.id} order by r.created_at desc`,
+    sql`select r.id,r.buyer_id,r.title,r.brief,r.taxonomy,r.budget_minor,r.per_creator_cap_minor,r.target_hires,r.deadline,r.status,r.application_deadline,u.display_name as buyer_name,(select count(*) from app.applications a where a.request_id=r.id) as application_count,coalesce((select array_agg(i.asset_id order by i.position) from app.request_images i where i.request_id=r.id),'{}') as image_ids from app.requests r join app.users u on u.id=r.buyer_id where r.buyer_id=${actor.id} order by r.created_at desc`,
     sql`select a.id,a.service_id,a.seller_id,s.title,u.display_name as creator_name,a.starting_price_minor,a.current_price_minor,a.minimum_increment_minor,a.buy_now_price_minor,a.ends_at,a.starts_at,a.status,a.bid_count,a.winner_id from app.auctions a join app.services s on s.id=a.service_id join app.users u on u.id=a.seller_id where a.seller_id=${actor.id} order by a.created_at desc`,
     sql`select p.handle,p.bio,p.niche,p.avatar_color,p.avatar_asset_id,p.headline,p.location,p.languages,p.social_url,u.display_name,u.email,
       (select count(*)::int from app.samples s where s.creator_id=u.id and s.visibility='PUBLIC' and s.moderation_status='APPROVED') as public_samples,
@@ -114,7 +114,7 @@ export async function getDashboardData(actor: Actor) {
 export async function getOrderData(actor: Actor, id: string) {
   const [order] = asRows(await sql`select o.id,o.buyer_id,o.creator_id,o.service_id,o.service_version_id,o.source,o.title,o.status,o.amount_minor,o.platform_fee_minor,o.provider_fee_minor,
       o.currency,o.brief,o.terms,o.brief_ready_at,o.funded_at,o.work_start_at,o.delivery_due_at,o.review_due_at,o.revision_due_at,o.revision_count,o.approved_at,o.completed_at,
-      o.cancelled_at,o.cancellation_refund_minor,o.status_before_dispute,o.version,o.settlement_status,o.payment_status,o.payment_rail,o.created_at,
+      o.cancelled_at,o.cancellation_refund_minor,o.status_before_dispute,o.version,o.settlement_status,o.payment_status,o.payment_rail,o.funding_method,o.created_at,
       bu.display_name as buyer_name,cu.display_name as creator_name
     from app.orders o join app.users bu on bu.id=o.buyer_id join app.users cu on cu.id=o.creator_id
     where o.id=${id} and (o.buyer_id=${actor.id} or o.creator_id=${actor.id})`);
@@ -221,6 +221,7 @@ export async function getRequestData(actor: Actor | null, id: string) {
   const [request] = asRows(await sql`select r.id,r.buyer_id,r.title,r.brief,r.taxonomy,r.budget_minor,r.per_creator_cap_minor,r.target_hires,r.deadline,r.application_deadline,
       r.status,r.version,r.currency,r.reserved_minor,r.committed_minor,r.reserved_hires,r.committed_hires,u.display_name as buyer_name,
       r.publish_platform,r.publish_format,r.min_live_hours,r.disclosure_text,
+      coalesce((select array_agg(i.asset_id order by i.position) from app.request_images i where i.request_id=r.id),'{}') as image_ids,
       (select count(*) from app.applications a where a.request_id=r.id and a.status <> 'WITHDRAWN')::int as application_count
     from app.requests r join app.users u on u.id=r.buyer_id where r.id=${id} and (r.status in ('OPEN','FILLED','CLOSED') or r.buyer_id=${actor?.id ?? null})`);
   if (!request) return null;
@@ -416,4 +417,10 @@ export async function getExploreData(query: QueryInput) {
     } as ReadRow;
   });
   return { items, matched: result.matched, next_cursor: result.next_cursor, filters, niches: asRows(niches).map((n) => String(n.niche)), error };
+}
+
+/** The signed-in account's photo for the workspace sidebar; null when the profile has none. */
+export async function getWorkspaceIdentity(userId: string): Promise<{ avatar_asset_id: string | null }> {
+  const [profile] = await sql<{ avatar_asset_id: string | null }[]>`select avatar_asset_id from app.profiles where user_id=${userId}`;
+  return { avatar_asset_id: profile?.avatar_asset_id ?? null };
 }

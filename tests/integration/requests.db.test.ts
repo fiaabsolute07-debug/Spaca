@@ -14,6 +14,7 @@ const commands = await import('@/app/api/commands/route');
 const checkout = await import('@/app/api/dev/mock-checkout/route');
 const funding = await import('@/modules/payments/funding');
 const jobs = await import('@/modules/jobs');
+const applicationsCsvRoute = await import('@/app/api/requests/[id]/applications/route');
 const { getRequestData } = await import('@/lib/read-model');
 const { sql } = await import('@/lib/db');
 
@@ -294,5 +295,37 @@ describe.skipIf(!RUN_DB)('REQ-06/07/08 — hire, payment and partial failure', (
     expect([(await applicationOf(requestId, a!)).status, (await applicationOf(requestId, b!)).status, (await applicationOf(requestId, c!)).status]).toEqual(['SUBMITTED', 'DECLINED', 'SUBMITTED']);
     expect((await select(buyer, await applicationOf(requestId, a!))).status).toBe(200);
     await expect(sql`update app.hire_offers set amount_minor=1 where id=${offers[0]!}`).rejects.toThrow(/immutable|already/);
+  });
+});
+
+describe.skipIf(!RUN_DB)('REQ-11 — applications CSV for the campaign buyer only', () => {
+  const csvFor = async (actor: TestUser | null, id: string) => {
+    sessionState.token = actor?.token ?? null;
+    const response = await applicationsCsvRoute.GET(new Request(`http://localhost:3000/api/requests/${id}/applications`), { params: Promise.resolve({ id }) });
+    return { status: response.status, type: response.headers.get('content-type') ?? '', text: response.status === 200 ? await response.text() : '' };
+  };
+
+  it('lists every application in received order with quoted cells and neutralized formulas; others get 404', async () => {
+    const buyer = await createUser('csv-buyer');
+    const first = await creator('csv-first');
+    const second = await creator('csv-second');
+    const requestId = await createRequest(buyer);
+    expect((await applyTo(requestId, first, '120')).status).toBe(200);
+    expect((await applyTo(requestId, second, '95', { note: '=HYPERLINK("https://example.test") launch threads for developer tools we shipped.' })).status).toBe(200);
+
+    const csv = await csvFor(buyer, requestId);
+    expect(csv.status).toBe(200);
+    expect(csv.type).toContain('text/csv');
+    const lines = csv.text.trimEnd().split('\r\n');
+    expect(lines[0]).toBe('creator,handle,status,quote_usd,turnaround_hours,quote_version,valid_until,offer_status,received_at,updated_at,note');
+    expect(lines).toHaveLength(3);
+    expect(lines[1]).toContain('"SUBMITTED","120.00","48","1"');
+    expect(lines[2]).toContain('"95.00"');
+    expect(lines[2]).toContain(`"'=HYPERLINK(""https://example.test"")`);
+
+    expect((await csvFor(first, requestId)).status).toBe(404);
+    expect((await csvFor(null, requestId)).status).toBe(404);
+    expect((await csvFor(buyer, 'not-a-uuid')).status).toBe(404);
+    expect((await csvFor(buyer, '00000000-0000-4000-8000-000000000000')).status).toBe(404);
   });
 });

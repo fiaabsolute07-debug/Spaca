@@ -35,10 +35,12 @@ export default async function ProfilePage({
   ];
   const completed = checks.filter((c) => c.done).length;
   const percent = Math.round((completed / checks.length) * 100);
+  // The profile is its own area outside the workspace frame; it links back to the workspace and names the account type.
   return <main className="container">
     {notices}
+    <Link className="profile-back" href="/dashboard"><span aria-hidden>‹</span> Back to workspace</Link>
     <PageHeading
-      eyebrow="Account"
+      eyebrow={isCreator ? 'Creator account' : 'Buyer account'}
       title="Your public profile"
       description="Buyers and creators decide faster when they can see who you are and what you have done."
     />

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getActor, isSameOrigin, publicUrl } from '@/lib/auth';
 import { withNotice } from '@/lib/notices';
+import { logError } from '@/lib/log';
 import { PaymentFlowError, mockPaymentsEnabled, startBankTransfer } from '@/modules/payments/funding';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -37,7 +38,7 @@ export async function POST(request: Request) {
       const status = error.code === 'FORBIDDEN' ? 403 : error.code === 'UNAVAILABLE' ? 422 : 409;
       return respond(status, { error: error.message, code: error.code === 'UNAVAILABLE' ? 'FEATURE_DISABLED' : error.code }, error.message, 'error');
     }
-    console.error('bank transfer start failed', error);
+    logError('bank transfer start failed', error, { order_id: orderId });
     return respond(500, { error: 'Bank transfer request failed; retry' }, 'Bank transfer request failed; retry.', 'error');
   }
 }

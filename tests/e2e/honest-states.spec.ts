@@ -5,7 +5,9 @@ test('FND-04: each account type sees only its own workspace; a legacy dual test 
   await login(page, 'buyer_a');
   await visit(page, '/creator/services');
   await expect(page.getByRole('heading', { level: 1, name: 'This page is for creator accounts' })).toBeVisible();
-  await expect(page.getByRole('complementary')).toHaveCount(0);
+  const sidebar = page.getByRole('complementary', { name: 'Workspace' });
+  await expect(sidebar.getByRole('link', { name: 'Post a brief', exact: true })).toBeVisible();
+  await expect(sidebar.getByRole('link', { name: 'My services', exact: true })).toHaveCount(0);
   expect((await page.goto('/admin'))?.status()).toBe(404);
 
   await login(page, 'creator_c');
@@ -212,5 +214,32 @@ test('AUC-13: after the connection drops and returns, the auction page shows the
     await expect(page.getByRole('listitem').filter({ hasText: 'Minimum next bid' })).toContainText('$160.00', { timeout: 4_000 });
   } finally {
     await other.close();
+  }
+});
+
+test('DSC-05: a buyer on a stale page cannot book after the creator pauses new orders, and sees why', async ({ page, browser }) => {
+  const service = await createPublishedService(page, 'pause-stale');
+  const buyerContext = await browser.newContext({ baseURL });
+  try {
+    const buyer = await buyerContext.newPage();
+    await login(buyer, 'buyer_a');
+    await visit(buyer, service.path);
+    await buyer.getByLabel('Tell the creator about your project').fill(`Stale page brief ${uniqueSuffix()}: audience, goal and a clear CTA.`);
+    await buyer.getByRole('checkbox', { name: /I agree that version/ }).check();
+
+    await visit(page, '/creator/services');
+    await submit(page, page.getByRole('button', { name: 'Pause new orders', exact: true }));
+
+    await Promise.all([buyer.waitForNavigation(), buyer.getByRole('button', { name: 'Reserve this service', exact: true }).click()]);
+    await expect(buyer.getByRole('main').getByRole('alert')).toContainText('This creator paused new orders');
+    await expect(buyer).toHaveURL(new RegExp(`${service.path}\\?`));
+    await expect(buyer.getByRole('heading', { name: 'Paused', exact: true })).toBeVisible();
+    await expect(buyer.getByRole('button', { name: 'Reserve this service', exact: true })).toHaveCount(0);
+  } finally {
+    await buyerContext.close();
+    await login(page, 'creator_c');
+    await visit(page, '/creator/services');
+    const resume = page.getByRole('button', { name: 'Resume new orders', exact: true });
+    if (await resume.isVisible()) await submit(page, resume);
   }
 });

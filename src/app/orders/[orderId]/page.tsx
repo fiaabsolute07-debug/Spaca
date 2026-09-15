@@ -1,4 +1,5 @@
 import { OrderMessagesPanel } from '@/components/order-workspace/messages-panel';
+import { OrderReceiptPanel } from '@/components/order-workspace/receipt-panel';
 import { OrderNextStepPanel } from '@/components/order-workspace/next-step-panel';
 import { OrderTimelinePanel } from '@/components/order-workspace/timeline-panel';
 import { OrderDeliveryPanel } from '@/components/order-workspace/delivery-panel';
@@ -8,7 +9,6 @@ import { OrderDeadlinePanel } from '@/components/order-workspace/deadline-panel'
 import { OrderFilesPanel } from '@/components/order-workspace/files-panel';
 import { OrderDigitalPanel } from '@/components/order-workspace/digital-panel';
 import { NetworkBadge } from '@/components/crypto/crypto-payment-panel';
-import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { getOrderData } from '@/lib/read-model';
 import { recordOrderPageView } from '@/modules/orders/views';
@@ -52,11 +52,6 @@ export default async function OrderPage({
     buyer = actor.id === str(o.buyer_id);
   return <main className="container">
     {notices}
-    <div className="breadcrumbs">
-      <Link href="/dashboard">Workspace</Link>
-      {" / Order "}
-      {str(o.id).slice(0, 8)}
-    </div>
     <div className="section-heading">
       <PageHeading
         eyebrow={`${humanize(str(o.source, 'BOOK'))} order · ${humanize(str(o.status))}`}
@@ -96,6 +91,7 @@ export default async function OrderPage({
           digital={Boolean(d.digital)}
           route={route}
         />
+        <OrderReceiptPanel order={o} />
         <OrderMessagesPanel order={o} messages={messages} route={route} />
       </aside>
     </div>

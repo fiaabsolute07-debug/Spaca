@@ -1,5 +1,4 @@
 import { listInAppNotifications } from '@/modules/notifications/store';
-import { WorkspaceSidebar } from '@/components/workspace-sidebar';
 import { isCreator } from '@/lib/account';
 import Link from 'next/link';
 import { getDashboardData } from '@/lib/read-model';
@@ -29,9 +28,7 @@ export default async function DashboardPage({
   const orders = rows(d.orders);
   const creatorAccount = isCreator(actor);
   return <main className="container">
-    <div className="workspace">
-      <WorkspaceSidebar actor={actor} />
-      <section className="workspace-main">
+      <section>
         {notices}
         <PageHeading
           eyebrow="Your workspace"
@@ -118,6 +115,5 @@ export default async function DashboardPage({
           </Link>
         </div>}
       </section>
-    </div>
   </main>;
 }

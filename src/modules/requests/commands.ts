@@ -5,7 +5,7 @@
  * Lock order: request → offer → application → capacity pool/bucket. Budget and hire totals are also enforced by
  * CHECK constraints on counters maintained by triggers (drizzle/0007).
  */
-import { CommandError, expectedVersion, instant, integer, money, orderEvent, text, uuid, type CommandHandler, type Row, type Tx } from '@/lib/commands';
+import { CommandError, UUID_PATTERN, expectedVersion, instant, integer, money, orderEvent, text, uuid, type CommandHandler, type Row, type Tx } from '@/lib/commands';
 import type { Actor } from '@/lib/auth';
 import { claimWorkload } from '@/modules/capacity';
 import { CHECKOUT_HOLD_MINUTES } from '@/modules/catalog/commands';
@@ -89,7 +89,41 @@ const createRequest: CommandHandler = async ({ tx, actor, form }) => {
       publish_platform,publish_format,min_live_hours,disclosure_text)
     values (${actor.id},${title},${brief},${taxonomy},${budget.toString()},${cap?.toString() ?? null},${target},${deadline.toISOString()},${applicationDeadline.toISOString()},
       ${publish?.platform ?? null},${publish?.format ?? null},${publish?.minLiveHours ?? null},${publish?.disclosure ?? null}) returning id`;
-  return done(String(request!.id), 'Brief published. Creators can now apply.', String(request!.id));
+  const requestId = String(request!.id);
+  const images = text(form, 'image_ids', false, 400);
+  if (images) await replaceRequestImages(tx, actor, requestId, images);
+  return done(requestId, 'Brief published. Creators can now apply.', requestId);
+};
+
+const MAX_REQUEST_IMAGES = 6;
+
+/** Replaces a campaign's images with the buyer's own finished REQUEST_IMAGE uploads, in the order given. */
+async function replaceRequestImages(tx: Tx, actor: Actor, requestId: string, value: string): Promise<number> {
+  const ids = [...new Set(value.split(/[\s,]+/).map((id) => id.trim().toLowerCase()).filter(Boolean))];
+  if (ids.some((id) => !UUID_PATTERN.test(id))) throw new CommandError('image_ids must be file ids from finished uploads');
+  if (ids.length > MAX_REQUEST_IMAGES) throw new CommandError(`A campaign can show at most ${MAX_REQUEST_IMAGES} images`);
+  if (ids.length) {
+    const assets = await tx<Row[]>`select id,lifecycle_state from app.storage_assets where id = any(${ids}::uuid[]) and owner_id=${actor.id} and purpose='REQUEST_IMAGE' for share`;
+    if (assets.length !== ids.length) throw new CommandError('Upload the images first', 'NOT_FOUND');
+    if (assets.some((asset) => asset.lifecycle_state !== 'READY')) throw new CommandError('An image did not pass the upload checks', 'DOMAIN_RULE');
+  }
+  await tx`delete from app.request_images where request_id=${requestId}`;
+  for (const [position, id] of ids.entries()) {
+    await tx`insert into app.request_images (request_id,buyer_id,asset_id,position) values (${requestId},${actor.id},${id},${position})`;
+  }
+  return ids.length;
+}
+
+/** Campaign images can change while the campaign takes applications or hires; `clear=true` removes them all. */
+const setRequestImages: CommandHandler = async ({ tx, actor, form }) => {
+  const requestId = uuid(form, 'request_id');
+  const request = await lockOwnedRequest(tx, actor, requestId);
+  if (!['OPEN', 'FILLED'].includes(String(request.status))) throw new CommandError('Closed requests cannot be edited', 'REQUEST_CLOSED');
+  const clear = text(form, 'clear', false, 10) === 'true';
+  const images = clear ? '' : text(form, 'image_ids', false, 400);
+  if (!clear && !images) throw new CommandError('Upload at least one image, or remove the current images');
+  const count = await replaceRequestImages(tx, actor, requestId, images);
+  return done(requestId, count ? 'Campaign images updated.' : 'Campaign images removed.');
 };
 
 /** REQ-10: budget, cap, hires and deadlines may change, never below what is already held or committed. */
@@ -345,6 +379,7 @@ const declineOffer: CommandHandler = async ({ tx, actor, form, command }) => {
 export const requestCommands: Record<string, CommandHandler> = {
   create_request: createRequest,
   update_request: updateRequest,
+  set_request_images: setRequestImages,
   close_request: closeRequest,
   cancel_request: closeRequest,
   apply,

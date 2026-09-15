@@ -2,12 +2,12 @@
  * Upload policy (master §4.4): MIME allowlist tied to extensions and file signatures, per-kind size limits,
  * and server-generated object keys. Markup (HTML/SVG/XML) is never accepted, whatever it claims to be.
  */
-export type AssetPurpose = 'DELIVERY' | 'BRIEF' | 'DISPUTE' | 'SAMPLE' | 'DIGITAL' | 'AVATAR';
-export type StorageBucket = 'public-portfolio' | 'private-briefs' | 'private-deliverables' | 'private-disputes' | 'private-products' | 'public-avatars' | 'private-quarantine';
+export type AssetPurpose = 'DELIVERY' | 'BRIEF' | 'DISPUTE' | 'SAMPLE' | 'DIGITAL' | 'AVATAR' | 'REQUEST_IMAGE';
+export type StorageBucket = 'public-portfolio' | 'private-briefs' | 'private-deliverables' | 'private-disputes' | 'private-products' | 'public-avatars' | 'public-campaigns' | 'private-quarantine';
 type AssetKind = 'image' | 'document' | 'video' | 'archive';
 type Signature = 'png' | 'jpeg' | 'gif' | 'webp' | 'pdf' | 'zip' | 'isobmff' | 'ebml' | 'markup' | 'unknown';
 
-export const ASSET_PURPOSES: readonly AssetPurpose[] = ['DELIVERY', 'BRIEF', 'DISPUTE', 'SAMPLE', 'DIGITAL', 'AVATAR'];
+export const ASSET_PURPOSES: readonly AssetPurpose[] = ['DELIVERY', 'BRIEF', 'DISPUTE', 'SAMPLE', 'DIGITAL', 'AVATAR', 'REQUEST_IMAGE'];
 export const BUCKET_FOR_PURPOSE: Readonly<Record<AssetPurpose, StorageBucket>> = {
   DELIVERY: 'private-deliverables',
   BRIEF: 'private-briefs',
@@ -17,6 +17,8 @@ export const BUCKET_FOR_PURPOSE: Readonly<Record<AssetPurpose, StorageBucket>> =
   DIGITAL: 'private-products',
   // Profile photos are shown publicly through /api/avatars/[id] while a profile uses them.
   AVATAR: 'public-avatars',
+  // Campaign images are shown through /api/request-images/[id] while their campaign is visible.
+  REQUEST_IMAGE: 'public-campaigns',
 };
 export const QUARANTINE_BUCKET: StorageBucket = 'private-quarantine';
 export const MAX_ASSETS_PER_DELIVERY = 10;
@@ -49,6 +51,7 @@ const PURPOSE_KINDS: Readonly<Record<AssetPurpose, readonly AssetKind[]>> = {
   // Templates, code and presets usually ship as a zip; archives are accepted only as product files.
   DIGITAL: ['image', 'document', 'video', 'archive'],
   AVATAR: ['image'],
+  REQUEST_IMAGE: ['image'],
 };
 
 const MB = 1024 * 1024;
@@ -90,8 +93,9 @@ export function validateDeclaredUpload(input: { purpose: string; filename: strin
   return { purpose, mime, extension: rule.extensions[0]!, size: input.size, filename, maxBytes, bucket: BUCKET_FOR_PURPOSE[purpose] };
 }
 
+/** `<purpose letters>/<owner>/<intent>.<ext>`; the prefix is letters only (REQUEST_IMAGE → requestimage), as the database requires. */
 export function objectKeyFor(purpose: AssetPurpose, ownerId: string, intentId: string, extension: string): string {
-  return `${purpose.toLowerCase()}/${ownerId}/${intentId}.${extension}`;
+  return `${purpose.toLowerCase().replace(/[^a-z]/g, '')}/${ownerId}/${intentId}.${extension}`;
 }
 
 const ascii = (bytes: Uint8Array, start: number, length: number) => String.fromCharCode(...bytes.subarray(start, start + length));

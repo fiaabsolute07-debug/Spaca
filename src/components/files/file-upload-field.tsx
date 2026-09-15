@@ -3,8 +3,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 
-type Purpose = 'DELIVERY' | 'BRIEF' | 'DISPUTE' | 'SAMPLE' | 'DIGITAL' | 'AVATAR';
-type Item = { key: string; name: string; state: 'uploading' | 'ready' | 'failed'; id?: string; message?: string };
+type Purpose = 'DELIVERY' | 'BRIEF' | 'DISPUTE' | 'SAMPLE' | 'DIGITAL' | 'AVATAR' | 'REQUEST_IMAGE';
+type Item = { key: string; name: string; state: 'uploading' | 'ready' | 'failed'; id?: string; message?: string; preview?: string };
 
 const EXTENSION_TYPES: Record<string, string> = {
   png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', pdf: 'application/pdf',
@@ -12,6 +12,9 @@ const EXTENSION_TYPES: Record<string, string> = {
   zip: 'application/zip',
 };
 export const ACCEPTED_FILES = '.png,.jpg,.jpeg,.gif,.webp,.pdf,.docx,.mp4,.m4v,.mov,.webm';
+const ACCEPTED_IMAGES = '.png,.jpg,.jpeg,.gif,.webp';
+/** Image-only uploads get the image picker and a local thumbnail while they upload. */
+const IMAGE_ONLY = new Set<Purpose>(['AVATAR', 'REQUEST_IMAGE']);
 
 async function errorOf(response: Response) {
   const body = (await response.json().catch(() => ({}))) as { error?: string };
@@ -78,7 +81,7 @@ export function FileUploadField({ purpose, orderId, name = 'asset_ids', label, h
   function choose(files: FileList | null) {
     const room = Math.max(0, maxFiles - items.filter((item) => item.state !== 'failed').length);
     const picked = [...(files ?? [])].slice(0, room);
-    const added = picked.map((file) => ({ key: crypto.randomUUID(), name: file.name, state: 'uploading' as const }));
+    const added = picked.map((file) => ({ key: crypto.randomUUID(), name: file.name, state: 'uploading' as const, preview: IMAGE_ONLY.has(purpose) ? URL.createObjectURL(file) : undefined }));
     setItems((current) => [...current, ...added]);
     picked.forEach((file, index) => void send(file, added[index]!.key));
   }
@@ -86,10 +89,11 @@ export function FileUploadField({ purpose, orderId, name = 'asset_ids', label, h
   return <div className="field file-field" ref={wrapper}>
     <span>{label}</span>
     {!refreshOnReady && <input type="hidden" name={name} value={ready.join(',')} />}
-    <input type="file" multiple={maxFiles > 1} accept={purpose === 'DIGITAL' ? `${ACCEPTED_FILES},.zip` : ACCEPTED_FILES} onChange={(event) => { choose(event.target.files); event.target.value = ''; }} />
+    <input type="file" multiple={maxFiles > 1} accept={IMAGE_ONLY.has(purpose) ? ACCEPTED_IMAGES : purpose === 'DIGITAL' ? `${ACCEPTED_FILES},.zip` : ACCEPTED_FILES} onChange={(event) => { choose(event.target.files); event.target.value = ''; }} />
     {help && <small>{help}</small>}
     {items.length > 0 && <ul className="file-list" aria-live="polite">
       {items.map((item) => <li key={item.key} className={`file-item file-${item.state}`}>
+        {item.preview && <img className="file-thumb" src={item.preview} alt="" width={44} height={44} />}
         <span className="file-name">{item.name}</span>
         <span className="muted">{item.state === 'uploading' ? 'Uploading…' : item.state === 'ready' ? 'Ready' : item.message}</span>
         {item.state !== 'uploading' && !refreshOnReady && <button type="button" className="plain-button" onClick={() => setItems((current) => current.filter((other) => other.key !== item.key))}>Remove</button>}

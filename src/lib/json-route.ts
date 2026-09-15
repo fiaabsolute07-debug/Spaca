@@ -2,6 +2,7 @@
 import { NextResponse } from 'next/server';
 import { getActor, isSameOrigin, type Actor } from '@/lib/auth';
 import { CommandError, statusForCode } from '@/lib/commands';
+import { logError } from './log';
 
 export async function readInput(request: Request): Promise<Record<string, string>> {
   const type = request.headers.get('content-type') ?? '';
@@ -21,7 +22,7 @@ export async function jsonRoute(request: Request, run: (actor: Actor | null) => 
     return NextResponse.json(await run(actor), { headers: { 'cache-control': 'no-store' } });
   } catch (error) {
     if (error instanceof CommandError) return NextResponse.json({ error: error.message, code: error.code }, { status: statusForCode(error.code), headers: { 'cache-control': 'no-store' } });
-    console.error('json route failed', error instanceof Error ? error.name : 'unknown');
+    logError('json route failed', error);
     return NextResponse.json({ error: 'The request could not be completed' }, { status: 500 });
   }
 }

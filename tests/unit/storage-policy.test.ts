@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { detectSignature, sanitizeFilename, validateDeclaredUpload, verifySignature } from '@/modules/storage/policy';
+import { detectSignature, sanitizeFilename, validateDeclaredUpload, verifySignature, objectKeyFor } from '@/modules/storage/policy';
 
 const bytes = (...values: (number | string)[]) =>
   new Uint8Array(values.flatMap((value) => (typeof value === 'string' ? [...new TextEncoder().encode(value)] : [value])));
@@ -36,5 +36,9 @@ describe('storage upload policy', () => {
     // Profile photos: images only, in their own bucket.
     expect(validateDeclaredUpload({ purpose: 'AVATAR', filename: 'me.png', mime: 'image/png', size: 10 })).toMatchObject({ bucket: 'public-avatars' });
     expect(() => validateDeclaredUpload({ purpose: 'AVATAR', filename: 'cv.pdf', mime: 'application/pdf', size: 10 })).toThrow(/not accepted/);
+    expect(validateDeclaredUpload({ purpose: 'REQUEST_IMAGE', filename: 'cover.webp', mime: 'image/webp', size: 10 })).toMatchObject({ bucket: 'public-campaigns' });
+    expect(objectKeyFor('REQUEST_IMAGE', '00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000002', 'webp')).toMatch(/^[a-z]+\/[0-9a-f-]{36}\/[0-9a-f-]{36}\.[a-z0-9]{2,5}$/);
+    expect(() => validateDeclaredUpload({ purpose: 'REQUEST_IMAGE', filename: 'brief.pdf', mime: 'application/pdf', size: 10 })).toThrow(/not accepted/);
+    expect(() => validateDeclaredUpload({ purpose: 'REQUEST_IMAGE', filename: 'clip.mp4', mime: 'video/mp4', size: 10 })).toThrow(/not accepted/);
   });
 });

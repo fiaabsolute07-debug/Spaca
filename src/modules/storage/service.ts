@@ -27,7 +27,7 @@ import {
 } from './policy';
 import { getStorageProvider } from './provider';
 
-const ORDER_UPLOAD_STATES: Readonly<Record<Exclude<AssetPurpose, 'SAMPLE' | 'DIGITAL' | 'AVATAR'>, readonly string[]>> = {
+const ORDER_UPLOAD_STATES: Readonly<Record<Exclude<AssetPurpose, 'SAMPLE' | 'DIGITAL' | 'AVATAR' | 'REQUEST_IMAGE'>, readonly string[]>> = {
   DELIVERY: ['IN_PROGRESS', 'REVISION_REQUESTED'],
   BRIEF: ['AWAITING_PAYMENT', 'FUNDED'],
   DISPUTE: ['IN_PROGRESS', 'DELIVERED', 'REVISION_REQUESTED', 'DISPUTED'],
@@ -40,6 +40,12 @@ async function assertOrderUpload(tx: Tx, actor: Actor, purpose: AssetPurpose, or
     // Any active account (buyer or creator) may upload its own profile photo.
     if (orderId) throw new CommandError('Profile photos are not tied to an order');
     if (actor.status !== 'ACTIVE') throw new CommandError('Suspended accounts cannot change their photo', 'ACCOUNT_SUSPENDED');
+    return;
+  }
+  if (purpose === 'REQUEST_IMAGE') {
+    if (orderId) throw new CommandError('Campaign images are not tied to an order');
+    if (actor.status !== 'ACTIVE') throw new CommandError('Suspended accounts cannot add campaign images', 'ACCOUNT_SUSPENDED');
+    if (!actor.roles.includes('buyer')) throw new CommandError('Only buyer accounts add campaign images', 'FORBIDDEN');
     return;
   }
   if (purpose === 'SAMPLE' || purpose === 'DIGITAL') {
@@ -173,6 +179,9 @@ export async function createDownloadUrl(actor: Actor | null, assetId: string) {
   if (purpose === 'AVATAR') {
     // Photos are public only while a profile shows them (/api/avatars/[id]); here the owner can always preview.
     allowed = owner || (asset.lifecycle_state === 'READY' && !!(await sql<Row[]>`select 1 from app.profiles p join app.users u on u.id=p.user_id where p.avatar_asset_id=${assetId} and u.status='ACTIVE'`)[0]);
+  } else if (purpose === 'REQUEST_IMAGE') {
+    // Campaign images are as visible as their campaign (/api/request-images/[id]); the buyer can always preview.
+    allowed = owner || (asset.lifecycle_state === 'READY' && !!(await sql<Row[]>`select 1 from app.request_images i join app.requests r on r.id=i.request_id where i.asset_id=${assetId} and r.status in ('OPEN','FILLED','CLOSED')`)[0]);
   } else if (purpose === 'DIGITAL') {
     // Buyers download product files only through their entitlement (src/modules/digital); here only the creator.
     allowed = owner;

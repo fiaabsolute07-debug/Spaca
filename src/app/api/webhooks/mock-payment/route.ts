@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { logError } from '@/lib/log';
 import { isProviderError } from '@/modules/payments/providers';
 import { mockPaymentsEnabled, receivePaymentWebhook } from '@/modules/payments/funding';
 
@@ -14,7 +15,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ received: true, duplicate: receipt.duplicate });
   } catch (error) {
     if (isProviderError(error)) return NextResponse.json({ error: 'Invalid webhook' }, { status: 400 });
-    console.error('mock payment webhook processing failed', error);
+    logError('mock payment webhook processing failed', error);
     return NextResponse.json({ error: 'Temporarily unable to process webhook', retryable: true }, { status: 500 });
   }
 }
