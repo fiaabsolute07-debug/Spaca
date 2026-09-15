@@ -1,4 +1,5 @@
 import { CommandForm, Field } from './ui';
+import { SelectField } from './select';
 
 const REASONS: [string, string][] = [
   ['UNDISCLOSED_PROMOTION', 'Paid promotion without disclosure'],
@@ -16,11 +17,7 @@ export function ReportForm({ targetType, targetId, returnTo, label = 'Report' }:
   return <details className="report-form">
     <summary>{label}</summary>
     <CommandForm command="report_content" label="Send report" variant="secondary" values={{ target_type: targetType, target_id: targetId }} returnTo={returnTo}>
-      <Field name="reason" label="What is wrong?">
-        <select name="reason" defaultValue="OTHER">
-          {REASONS.map(([value, text]) => <option key={value} value={value}>{text}</option>)}
-        </select>
-      </Field>
+      <SelectField name="reason" label="What is wrong?" defaultValue="OTHER" options={REASONS.map(([value, text]) => ({ value, label: text }))} />
       <Field name="details" label="Details for the moderators" type="textarea" required placeholder="What you saw and where (at least 10 characters)." />
     </CommandForm>
   </details>;

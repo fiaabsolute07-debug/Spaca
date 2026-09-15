@@ -1,4 +1,5 @@
 import { getPublicData } from '@/lib/read-model';
+import { Select } from '@/components/select';
 import { Empty, ServiceCard, rows, str } from '@/components/ui';
 import { Notices } from '@/components/notices';
 import { PageHeading } from '@/components/page-heading';
@@ -33,12 +34,8 @@ export default async function ExplorePage({
           placeholder="Try explainer thread, research, launch copy…"
           defaultValue={str(query.q)}
         />
-        <select aria-label="Category" name="category" defaultValue={str(query.category)}>
-          <option value="">All categories</option>
-          {categories.map(c => <option key={c}>
-            {c}
-          </option>)}
-        </select>
+        <Select ariaLabel="Category" name="category" variant="pill" defaultValue={categories.includes(str(query.category)) ? str(query.category) : ''}
+          options={[{ value: '', label: 'All categories' }, ...categories.map(c => ({ value: c, label: c.charAt(0) + c.slice(1).toLowerCase() }))]} />
         <button className="button">Search</button>
       </form>
       <p className="muted">

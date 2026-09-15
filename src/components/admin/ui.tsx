@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { SelectField as BaseSelectField } from '../select';
 import { notFound } from 'next/navigation';
 import type { ReactNode } from 'react';
 import type { Actor } from '@/lib/auth';
@@ -57,11 +58,8 @@ export function SelectField({ name, label, options, value }: {
   options: readonly string[];
   value?: string;
 }) {
-  return <Field name={name} label={label}>
-    <select name={name} required defaultValue={value ?? options[0]}>
-      {options.map(option => <option key={option} value={option}>{option.replaceAll('_', ' ')}</option>)}
-    </select>
-  </Field>;
+  return <BaseSelectField name={name} label={label} required defaultValue={value ?? options[0]}
+    options={options.map(option => ({ value: option, label: option.replaceAll('_', ' ') }))} />;
 }
 
 export function OrderLink({ id }: { id: unknown }) {

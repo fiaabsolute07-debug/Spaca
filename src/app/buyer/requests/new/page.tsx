@@ -1,4 +1,5 @@
 import { CommandForm, Field } from '@/components/ui';
+import { SelectField } from '@/components/select';
 import { Notices } from '@/components/notices';
 import { PageHeading } from '@/components/page-heading';
 import { CategoryField } from '@/components/category-field';
@@ -51,16 +52,8 @@ export default async function NewRequestPage({
         <h3>If creators post for you (PUBLISH)</h3>
         <p className="muted">Each creator posts on their own account, in their own words, with a sponsorship disclosure. Briefs that ask to hide the sponsorship, fake engagement or promise returns are refused.</p>
         <div className="form-grid">
-          <Field name="publish_platform" label="Platform">
-            <select name="publish_platform" defaultValue="X">
-              {[['X', 'X'], ['INSTAGRAM', 'Instagram'], ['TIKTOK', 'TikTok'], ['YOUTUBE', 'YouTube'], ['NEWSLETTER', 'Newsletter'], ['WEBSITE', 'Website']].map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-            </select>
-          </Field>
-          <Field name="publish_format" label="Post format">
-            <select name="publish_format" defaultValue="POST">
-              {[['POST', 'Post'], ['THREAD', 'Thread'], ['QUOTE_POST', 'Quote post'], ['VIDEO', 'Video'], ['NEWSLETTER_ISSUE', 'Newsletter issue'], ['ARTICLE', 'Article']].map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-            </select>
-          </Field>
+          <SelectField name="publish_platform" label="Platform" defaultValue="X" options={[{ value: 'X', label: 'X' }, { value: 'INSTAGRAM', label: 'Instagram' }, { value: 'TIKTOK', label: 'TikTok' }, { value: 'YOUTUBE', label: 'YouTube' }, { value: 'NEWSLETTER', label: 'Newsletter' }, { value: 'WEBSITE', label: 'Website' }]} />
+          <SelectField name="publish_format" label="Post format" defaultValue="POST" options={[{ value: 'POST', label: 'Post' }, { value: 'THREAD', label: 'Thread' }, { value: 'QUOTE_POST', label: 'Quote post' }, { value: 'VIDEO', label: 'Video' }, { value: 'NEWSLETTER_ISSUE', label: 'Newsletter issue' }, { value: 'ARTICLE', label: 'Article' }]} />
           <Field name="min_live_hours" label="Keep posts live for (hours)" type="number" value="72" />
           <Field name="disclosure_text" label="Sponsorship disclosure" value="#ad" />
         </div>

@@ -1,4 +1,5 @@
 import { getDashboardData } from '@/lib/read-model';
+import { SelectField } from '@/components/select';
 import { CommandForm, Field, money, row, rows, str } from '@/components/ui';
 import { Notices } from '@/components/notices';
 import { PageHeading } from '@/components/page-heading';
@@ -29,16 +30,8 @@ export default async function NewAuctionPage({
     />
     <div className="panel">
       <CommandForm command="create_auction" label="Schedule auction" returnTo="/auctions">
-        <Field name="service_id" label="Published service" required>
-          <select name="service_id" defaultValue="">
-            <option value="" disabled>Select a service</option>
-            {services.map(s => <option key={str(s.id)} value={str(s.id)}>
-              {str(s.title)}
-              {" · "}
-              {money(s.price_minor)}
-            </option>)}
-          </select>
-        </Field>
+        <SelectField name="service_id" label="Published service" required placeholder="Select a service"
+          options={services.map(s => ({ value: str(s.id), label: `${str(s.title)} · ${money(s.price_minor)}` }))} />
         <div className="form-grid">
           <Field name="starting_price" label="Starting price (USD)" type="number" required />
           <Field name="minimum_increment" label="Minimum increment (USD)" type="number" value="25" required />

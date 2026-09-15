@@ -1,10 +1,10 @@
 import { expect, test } from '@playwright/test';
-import { baseURL, createPublishedService, dateTimeLocal, login, submit, visit } from './helpers';
+import { baseURL, chooseOption, createPublishedService, dateTimeLocal, login, submit, visit } from './helpers';
 
 test('buyer_a sees a live outbid update within 12 seconds after buyer_b bids in a separate context', async ({ page, browser }) => {
   const service = await createPublishedService(page, 'auction');
   await visit(page, '/creator/auctions/new');
-  await page.getByLabel('Published service').selectOption(service.path.split('/').at(-1)!);
+  await chooseOption(page, page, 'Published service', `${service.title} · $100.00`);
   await page.getByLabel('Starting price (USD)', { exact: true }).fill('100');
   await page.getByLabel('Minimum increment (USD)', { exact: true }).fill('10');
   await page.getByLabel('Buy now price (optional)', { exact: true }).fill('400');

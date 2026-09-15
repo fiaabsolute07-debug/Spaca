@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { SelectField } from '@/components/select';
 import { ReportForm } from '@/components/report-form';
 import { notFound } from 'next/navigation';
 import { getActor } from '@/lib/auth';
@@ -159,11 +160,9 @@ export default async function RequestPage({ params, searchParams }: PageProps<{ 
           <Field name="turnaround_hours" label="Delivery time (hours)" type="number" value={mine ? str(mine.turnaround_hours) : '48'} required />
           <Field name="valid_days" label="Quote valid for (days)" type="number" value="7" />
           {str(r.taxonomy) === 'PUBLISH' && (rows(d.my_social_accounts).length
-            ? <Field name="publish_account_id" label={`Account you will post on (${str(r.publish_platform)})`}>
-              <select name="publish_account_id" required defaultValue={str(mine?.publish_account_id)}>
-                {rows(d.my_social_accounts).map((account) => <option key={str(account.id)} value={str(account.id)}>{account.handle ? `@${str(account.handle)}` : str(account.url)}</option>)}
-              </select>
-            </Field>
+            ? <SelectField name="publish_account_id" label={`Account you will post on (${str(r.publish_platform)})`} required
+              defaultValue={mine?.publish_account_id ? str(mine.publish_account_id) : str(rows(d.my_social_accounts)[0]?.id)}
+              options={rows(d.my_social_accounts).map((account) => ({ value: str(account.id), label: account.handle ? `@${str(account.handle)}` : str(account.url) }))} />
             : <p className="muted">Link your {str(r.publish_platform)} account under <Link className="text-link" href="/settings/profile">Profile › Linked accounts</Link> to apply.</p>)}
           <Field name="note" label="Your approach and relevant samples" type="textarea" value={mine ? str(mine.note) : undefined} required />
           <p className="muted">Your approved public samples are attached as a snapshot. Only the buyer sees your quote.</p>

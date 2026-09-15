@@ -4,6 +4,7 @@ import { getDashboardData } from '@/lib/read-model';
 import { Notices } from '@/components/notices';
 import { PageHeading } from '@/components/page-heading';
 import { CategoryField } from '@/components/category-field';
+import { SelectField } from '@/components/select';
 import { requireActorOrLoginPrompt } from '@/components/require-actor';
 import type { PageProps } from '@/components/page-props';
 
@@ -55,17 +56,9 @@ export default async function NewServicePage({
           {accounts.length === 0 && <> <Link className="text-link" href="/settings/profile">Link an account first ›</Link></>}
         </p>
         <div className="form-grid">
-          <Field name="publish_account_id" label="Posting account">
-            <select name="publish_account_id" defaultValue="">
-              <option value="">Not a PUBLISH service</option>
-              {accounts.map(account => <option key={str(account.id)} value={str(account.id)}>{account.handle ? `@${str(account.handle)}` : str(account.url)} · {str(account.platform)}</option>)}
-            </select>
-          </Field>
-          <Field name="publish_format" label="Post format">
-            <select name="publish_format" defaultValue="POST">
-              {[['POST', 'Post'], ['THREAD', 'Thread'], ['QUOTE_POST', 'Quote post'], ['VIDEO', 'Video'], ['NEWSLETTER_ISSUE', 'Newsletter issue'], ['ARTICLE', 'Article']].map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-            </select>
-          </Field>
+          <SelectField name="publish_account_id" label="Posting account" defaultValue=""
+            options={[{ value: '', label: 'Not a PUBLISH service' }, ...accounts.map(account => ({ value: str(account.id), label: `${account.handle ? `@${str(account.handle)}` : str(account.url)} · ${str(account.platform)}` }))]} />
+          <SelectField name="publish_format" label="Post format" defaultValue="POST" options={[{ value: 'POST', label: 'Post' }, { value: 'THREAD', label: 'Thread' }, { value: 'QUOTE_POST', label: 'Quote post' }, { value: 'VIDEO', label: 'Video' }, { value: 'NEWSLETTER_ISSUE', label: 'Newsletter issue' }, { value: 'ARTICLE', label: 'Article' }]} />
           <Field name="min_live_hours" label="Keeps the post live for (hours)" type="number" value="72" />
           <Field name="disclosure_text" label="Sponsorship disclosure" value="#ad" />
         </div>
@@ -75,16 +68,8 @@ export default async function NewServicePage({
           <Link className="text-link" href="/creator/services#availability">Set your availability ›</Link>
         </p>
         <div className="form-grid">
-          <Field name="access_session_minutes" label="Session length">
-            <select name="access_session_minutes" defaultValue="60">
-              {[30, 45, 60, 90, 120].map((m) => <option key={m} value={m}>{m} minutes</option>)}
-            </select>
-          </Field>
-          <Field name="access_buffer_minutes" label="Break after each session">
-            <select name="access_buffer_minutes" defaultValue="15">
-              {[0, 5, 10, 15, 30, 60].map((m) => <option key={m} value={m}>{m} minutes</option>)}
-            </select>
-          </Field>
+          <SelectField name="access_session_minutes" label="Session length" defaultValue="60" options={[30, 45, 60, 90, 120].map((m) => ({ value: String(m), label: `${m} minutes` }))} />
+          <SelectField name="access_buffer_minutes" label="Break after each session" defaultValue="15" options={[0, 5, 10, 15, 30, 60].map((m) => ({ value: String(m), label: m === 0 ? 'No break' : `${m} minutes` }))} />
           <Field name="access_cancel_notice_hours" label="Free cancellation until (hours before)" type="number" value="24" />
           <Field name="access_no_show_minutes" label="No-show after (minutes)" type="number" value="10" />
         </div>

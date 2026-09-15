@@ -63,6 +63,22 @@ export async function submit(page: Page, button: Locator) {
   await expect(page.getByRole('main').getByRole('alert')).toHaveCount(0);
 }
 
+/**
+ * Picks an option in a spaca select (Radix UI): opens the combobox named by its label and clicks the option by its
+ * visible text. Retries the open until the client component has hydrated.
+ */
+export async function chooseOption(page: Page, scope: Page | Locator, label: string, option: string | RegExp) {
+  const trigger = scope.getByRole('combobox', { name: label, exact: true });
+  const listbox = page.getByRole('listbox');
+  await expect(async () => {
+    if (!(await listbox.isVisible())) await trigger.click({ timeout: 2_000 });
+    await expect(listbox).toBeVisible({ timeout: 1_000 });
+  }).toPass({ timeout: 15_000 });
+  await listbox.getByRole('option', { name: option, exact: typeof option === 'string' }).click();
+  await expect(listbox).toHaveCount(0);
+  await expect(trigger).toHaveText(option);
+}
+
 export function orderPath(page: Page) {
   const path = new URL(page.url()).pathname;
   expect(path).toMatch(/^\/orders\/[0-9a-f-]{36}$/);
@@ -89,7 +105,7 @@ export async function createPublishedService(page: Page, purpose: string) {
   await expect(page.getByText(/You take up to 100 orders at a time/)).toBeVisible();
   await visit(page, '/creator/services/new');
   await page.getByLabel('Service title', { exact: true }).fill(title);
-  await page.getByLabel('What are you offering?').selectOption('CREATE');
+  await chooseOption(page, page, 'What are you offering?', 'Create · content you deliver');
   await page.getByLabel('Price (USD)', { exact: true }).fill('100');
   await page.getByLabel('Delivery time (hours)').fill('24');
   await page.getByLabel('Scope and deliverables').fill(`A complete launch narrative with one revision for ${title}.`);

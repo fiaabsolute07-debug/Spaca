@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { login, submit, uniqueSuffix, visit } from './helpers';
+import { chooseOption, login, submit, uniqueSuffix, visit } from './helpers';
 
 async function expectNotFound(page: Page, path: string) {
   // Next may stream notFound() after a 200 shell; require its actual 404 UI in either case.
@@ -34,14 +34,13 @@ test('admin saves a flag with a unique audit reason and sees success', async ({ 
   await visit(page, '/admin/flags');
   const reason = `E2E flag audit ${uniqueSuffix()}: Confirm the existing booking setting.`;
   const flag = page.locator('section').filter({ has: page.getByRole('heading', { name: 'BOOKING_ENABLED', exact: true }) });
-  // A <select> inside its <label> includes the selected option in its accessible name.
-  const enabled = flag.getByLabel('Enabled (admin only)');
-  const original = await enabled.inputValue();
+  const enabled = flag.getByRole('combobox', { name: 'Enabled (admin only)', exact: true });
+  const original = (await enabled.textContent())!.trim();
   // A same-value save exercises the audited form without disabling another journey's sales.
-  await enabled.selectOption(original);
+  await chooseOption(page, flag, 'Enabled (admin only)', original);
   await flag.getByLabel('Reason for the audit log (at least 10 characters)', { exact: true }).fill(reason);
   await submit(page, flag.getByRole('button', { name: 'Save flag', exact: true }));
   await expect(page.getByRole('status')).toBeVisible();
   await expect(flag).toContainText(reason);
-  await expect(enabled).toHaveValue(original);
+  await expect(enabled).toHaveText(original);
 });

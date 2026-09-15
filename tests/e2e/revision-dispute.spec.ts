@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { bookFromExplore, createPublishedService, deliverText, expectOrderState, login, payOrder, startOrder, submit, uniqueSuffix, visit } from './helpers';
+import { bookFromExplore, chooseOption, createPublishedService, deliverText, expectOrderState, login, payOrder, startOrder, submit, uniqueSuffix, visit } from './helpers';
 
 test('a buyer requests the included revision and receives version 2 with version 1 preserved', async ({ page }) => {
   const service = await createPublishedService(page, 'revision');
@@ -49,7 +49,7 @@ test('finance resumes a newly disputed order into its recorded IN_PROGRESS state
   await expect(dispute).toHaveCount(1);
   await expect(dispute.getByRole('link')).toHaveAttribute('href', `/admin/orders/${id}`);
   await expect(dispute).toContainText('State before dispute: IN_PROGRESS');
-  await dispute.getByLabel('Outcome').selectOption('RESUME');
+  await chooseOption(page, dispute, 'Outcome', 'RESUME');
   await dispute.getByLabel('Reason for the audit log (at least 10 characters)', { exact: true })
     .fill(`Resume ${uniqueSuffix()}: Both parties clarified scope and agreed to continue work.`);
   await submit(page, dispute.getByRole('button', { name: 'Resolve dispute', exact: true }));

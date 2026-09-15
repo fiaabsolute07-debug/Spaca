@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { expectNoHorizontalOverflow, expectOrderState, login, orderPath, payOrder, submit, uniqueSuffix, visit } from './helpers';
+import { chooseOption, expectNoHorizontalOverflow, expectOrderState, login, orderPath, payOrder, submit, uniqueSuffix, visit } from './helpers';
 
 const WEEKDAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
@@ -10,7 +10,7 @@ test('an ACCESS session is booked from the creator’s availability, paid, and g
   await login(page, 'admin');
   await visit(page, '/admin/flags');
   const flag = page.locator('section').filter({ has: page.getByRole('heading', { name: 'ACCESS_BOOKING_ENABLED', exact: true }) });
-  await flag.getByLabel('Enabled (admin only)').selectOption('true');
+  await chooseOption(page, flag, 'Enabled (admin only)', 'true');
   await flag.getByLabel('Reason for the audit log (at least 10 characters)', { exact: true }).fill(`E2E ${suffix}: enable ACCESS bookings for the local journey.`);
   await submit(page, flag.getByRole('button', { name: 'Save flag', exact: true }));
 
@@ -20,7 +20,7 @@ test('an ACCESS session is booked from the creator’s availability, paid, and g
   await limit.getByLabel('Orders at a time').fill('100');
   await submit(page, limit.getByRole('button', { name: 'Save limit', exact: true }));
   const availability = page.getByRole('region', { name: 'Session availability' });
-  await availability.getByLabel('Time zone').selectOption('Asia/Ho_Chi_Minh');
+  await chooseOption(page, availability, 'Time zone', 'Asia/Ho Chi Minh');
   for (const day of WEEKDAYS) {
     await availability.getByRole('checkbox', { name: day }).check();
     await availability.getByLabel(`${day} start`).fill('08:00');
@@ -31,11 +31,11 @@ test('an ACCESS session is booked from the creator’s availability, paid, and g
 
   await visit(page, '/creator/services/new');
   await page.getByLabel('Service title', { exact: true }).fill(title);
-  await page.getByLabel('What are you offering?').selectOption('ACCESS');
+  await chooseOption(page, page, 'What are you offering?', 'Access · a live session');
   await page.getByLabel('Price (USD)', { exact: true }).fill('90');
   await page.getByLabel('Delivery time (hours)').fill('24');
   await page.getByLabel('Scope and deliverables').fill(`A 45-minute call reviewing your launch plan and community steps (${suffix}).`);
-  await page.getByLabel('Session length').selectOption('45');
+  await chooseOption(page, page, 'Session length', '45 minutes');
   await page.getByLabel('Sample URL 1', { exact: true }).fill('https://example.com/talk');
   await page.getByLabel('Sample title 1', { exact: true }).fill('Conference talk');
   await submit(page, page.getByRole('button', { name: 'Save draft service', exact: true }));

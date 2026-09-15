@@ -1,4 +1,5 @@
 import { getDashboardData } from '@/lib/read-model';
+import { SelectField } from '@/components/select';
 import { Badge, CommandForm, Field, row, rows, str } from '@/components/ui';
 import { Notices } from '@/components/notices';
 import { PageHeading } from '@/components/page-heading';
@@ -60,11 +61,7 @@ export default async function ProfilePage({
       </div>)}
       <CommandForm command="add_social_account" label="Link account" variant="secondary" returnTo={route}>
         <div className="form-grid">
-          <Field name="platform" label="Platform">
-            <select name="platform" defaultValue="X">
-              {[['X', 'X'], ['INSTAGRAM', 'Instagram'], ['TIKTOK', 'TikTok'], ['YOUTUBE', 'YouTube'], ['NEWSLETTER', 'Newsletter'], ['WEBSITE', 'Website']].map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-            </select>
-          </Field>
+          <SelectField name="platform" label="Platform" defaultValue="X" options={[{ value: 'X', label: 'X' }, { value: 'INSTAGRAM', label: 'Instagram' }, { value: 'TIKTOK', label: 'TikTok' }, { value: 'YOUTUBE', label: 'YouTube' }, { value: 'NEWSLETTER', label: 'Newsletter' }, { value: 'WEBSITE', label: 'Website' }]} />
           <Field name="account" label="Handle or link" required placeholder="@yourname or https://…" />
         </div>
       </CommandForm>

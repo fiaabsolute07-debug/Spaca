@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { expectOrderState, login, orderPath, payOrder, submit, uniqueSuffix, visit } from './helpers';
+import { chooseOption, expectOrderState, login, orderPath, payOrder, submit, uniqueSuffix, visit } from './helpers';
 
 test('a PUBLISH order is delivered with the post link on the sold X channel and approved by the buyer', async ({ page }) => {
   const suffix = uniqueSuffix();
@@ -21,12 +21,12 @@ test('a PUBLISH order is delivered with the post link on the sold X channel and 
 
   await visit(page, '/creator/services/new');
   await page.getByLabel('Service title', { exact: true }).fill(title);
-  await page.getByLabel('What are you offering?').selectOption('PUBLISH');
+  await chooseOption(page, page, 'What are you offering?', 'Publish · a post on your channel');
   await page.getByLabel('Price (USD)', { exact: true }).fill('150');
   await page.getByLabel('Delivery time (hours)').fill('48');
   await page.getByLabel('Scope and deliverables').fill(`One disclosed thread on my X account explaining your launch (${suffix}).`);
-  await page.getByLabel('Posting account').selectOption({ label: `@${handle} · X` });
-  await page.getByLabel('Post format').selectOption('THREAD');
+  await chooseOption(page, page, 'Posting account', `@${handle} · X`);
+  await chooseOption(page, page, 'Post format', 'Thread');
   await page.getByLabel('Sample URL 1', { exact: true }).fill(`https://x.com/${handle}/status/1000000000001`);
   await page.getByLabel('Sample title 1', { exact: true }).fill('A past launch thread');
   await submit(page, page.getByRole('button', { name: 'Save draft service', exact: true }));

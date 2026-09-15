@@ -1,3 +1,5 @@
+import { SelectField } from '../select';
+
 type Window = { weekday: number; startMinute: number; endMinute: number };
 
 const WEEKDAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
@@ -13,12 +15,7 @@ export function AvailabilityEditor({ timeZone, windows }: { timeZone: string | n
   const zones = ZONES.includes(zone) ? ZONES : [zone, ...ZONES];
   const multiple = windows.some((w, i) => windows.findIndex((x) => x.weekday === w.weekday) !== i);
   return <div className="availability-editor">
-    <label className="field">
-      <span>Time zone</span>
-      <select name="time_zone" defaultValue={zone}>
-        {zones.map((value) => <option key={value} value={value}>{value}</option>)}
-      </select>
-    </label>
+    <SelectField name="time_zone" label="Time zone" defaultValue={zone} options={zones.map((value) => ({ value, label: value.replaceAll('_', ' ') }))} />
     {multiple && <p className="notice">Some days have more than one window. Saving here keeps one window per day.</p>}
     <div className="availability-days">
       {WEEKDAYS.map((day, index) => {

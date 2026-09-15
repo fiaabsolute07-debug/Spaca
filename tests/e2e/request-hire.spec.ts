@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { createPublishedService, dateTimeLocal, login, orderPath, payOrder, submit, uniqueSuffix, visit } from './helpers';
+import { chooseOption, createPublishedService, dateTimeLocal, login, orderPath, payOrder, submit, uniqueSuffix, visit } from './helpers';
 
 test('a cap-only two-hire request funds one creator after application, offer and capacity confirmation', async ({ page }) => {
   // Also raises creator_c's order limit so the accepted hire is not blocked by earlier runs.
@@ -8,7 +8,7 @@ test('a cap-only two-hire request funds one creator after application, offer and
   await login(page, 'buyer_a');
   await visit(page, '/buyer/requests/new');
   await page.getByLabel('Brief title', { exact: true }).fill(title);
-  await page.getByLabel('What are you offering?').selectOption('CREATE');
+  await chooseOption(page, page, 'What are you offering?', 'Create · content you deliver');
   await page.getByLabel('Brief', { exact: true }).fill(`Develop two independent launch narratives for ${title}, each with audience, message and CTA.`);
   await page.getByLabel('Total budget (USD, optional if you set a cap)', { exact: true }).fill('');
   await page.getByLabel('Per creator cap (USD, optional)', { exact: true }).fill('200');

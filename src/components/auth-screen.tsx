@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { SelectField } from './select';
 import { Field, str } from '@/components/ui';
 import { Notices } from '@/components/notices';
 import type { Query } from '@/components/page-props';
@@ -54,12 +55,8 @@ export function AuthScreen({
         {signup && <Field name="display_name" label="Your name" required />}
         <Field name="email" type="email" label="Email address" required />
         <Field name="password" type="password" label="Password (minimum 12 characters)" required />
-        {signup && <Field name="role" label="What brings you here?">
-          <select name="role" defaultValue={str(query.role, 'buyer')}>
-            <option value="buyer">I want to hire creators</option>
-            <option value="creator">I want to offer my skills</option>
-          </select>
-        </Field>}
+        {signup && <SelectField name="role" label="What brings you here?" defaultValue={str(query.role) === 'creator' ? 'creator' : 'buyer'}
+          options={[{ value: 'buyer', label: 'I want to hire creators' }, { value: 'creator', label: 'I want to offer my skills' }]} />}
         <button className="button button-dark">
           {signup ? 'Create account' : 'Log in'}
         </button>
