@@ -60,7 +60,7 @@ export function renderWelcomeEmail(input: WelcomeEmailInput): WelcomeEmail {
   const base = input.baseUrl.replace(/\/+$/, '');
   const ctaUrl = input.handleToken ? handleStepUrl(base, input.role, input.handleToken) : null;
   const privacyUrl = `${base}/privacy`;
-  const iconUrl = `${base}/email/spaca-icon.png`;
+  const iconUrl = `${base}/email/spaca-icon.svg`;
   const address = input.mailingAddress?.trim() || '[MAILING ADDRESS]';
   const font = "-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif";
 
@@ -105,7 +105,7 @@ export function renderWelcomeEmail(input: WelcomeEmailInput): WelcomeEmail {
         <tr>
           <td style="padding:32px 40px 8px 40px;">
             <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>
-              <td valign="middle"><img src="${escapeHtml(iconUrl)}" width="32" height="32" alt="" style="display:block;border:0;border-radius:7px;"></td>
+              <td valign="middle"><img src="${escapeHtml(iconUrl)}" width="32" height="26" alt="" style="display:block;border:0;"></td>
               <td valign="middle" style="padding-left:10px;font:600 20px/1 ${font};color:#1d1d1f;letter-spacing:-0.5px;">spaca</td>
             </tr></table>
           </td>

@@ -14,7 +14,6 @@
   --good-soft: rgba(52, 199, 89, 0.14);
   --bad: #d70015;
   --focus: #0071e3;
-  --logo-ring: transparent;
   color-scheme: light;
 }
 @media (prefers-color-scheme: dark) {
@@ -33,7 +32,6 @@
     --good: #30d158;
     --good-soft: rgba(48, 209, 88, 0.16);
     --bad: #ff453a;
-    --logo-ring: rgba(255, 255, 255, 0.24);
     color-scheme: dark;
   }
 }

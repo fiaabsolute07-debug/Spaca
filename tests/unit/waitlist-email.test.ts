@@ -7,7 +7,7 @@ describe('waitlist welcome email', () => {
     expect(project.subject).toBe("You're on the spaca waitlist");
     expect(project.html).toContain('https://join.example.com/?step=handle&amp;r=project&amp;t=tok_abcdefghijklmnopqrstuv');
     expect(project.text).toContain('https://join.example.com/?step=handle&r=project&t=tok_abcdefghijklmnopqrstuv');
-    expect(project.html).toContain('https://join.example.com/email/spaca-icon.png');
+    expect(project.html).toContain('https://join.example.com/email/spaca-icon.svg');
     const creator = renderWelcomeEmail({ role: 'creator', email: 'writer@example.com', baseUrl: 'https://join.example.com', handleToken: null });
     expect(creator.subject).toContain('founding creator');
     expect(creator.html).not.toContain('step=handle');

@@ -136,8 +136,6 @@
 }
 .navInner { width: min(1248px, calc(100% - 40px)); height: 52px; margin: 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 24px; }
 .brand { display: inline-flex; color: var(--text); }
-:global(html[data-landing-theme="dark"]) .brand rect { stroke: rgba(255, 255, 255, 0.24); stroke-width: 6; }
-@media (prefers-color-scheme: dark) { :global(html:not([data-landing-theme="light"])) .brand rect { stroke: rgba(255, 255, 255, 0.24); stroke-width: 6; } }
 .navLinks { display: flex; gap: 32px; font-size: 13px; color: var(--nav-text); }
 .navLinks a:hover { color: var(--text); }
 .navActions { display: flex; align-items: center; gap: 18px; }
