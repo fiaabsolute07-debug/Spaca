@@ -3,7 +3,7 @@
 import { useSelectedLayoutSegment } from 'next/navigation';
 import type { ReactNode } from 'react';
 
-/** Top-level routes a signed-in account uses inside the workspace frame (sidebar + back link). */
+/** Top-level routes where a signed-in account gets a back link above the page. */
 const WORKSPACE_SEGMENTS = new Set(['dashboard', 'buyer', 'creator', 'orders', 'settings', 'requests', 'auctions', 'services', 'creators', 'explore']);
 
 /**
@@ -11,18 +11,16 @@ const WORKSPACE_SEGMENTS = new Set(['dashboard', 'buyer', 'creator', 'orders', '
  * The check uses the page slot, not the URL: when Log in opens its dialog over the landing, the URL is /sign-in but the
  * landing is still the page underneath.
  *
- * For a signed-in account, workspace and marketplace pages render beside one persistent sidebar: navigation swaps the
- * page next to it instead of leaving the workspace.
+ * Workspace navigation lives in the header's Account menu; for a signed-in account, workspace and marketplace pages also
+ * get a back link to their parent above the page.
  */
-export function SiteChrome({ header, footer, sidebar, back, children }: { header: ReactNode; footer: ReactNode; sidebar?: ReactNode; back?: ReactNode; children: ReactNode }) {
+export function SiteChrome({ header, footer, back, children }: { header: ReactNode; footer: ReactNode; back?: ReactNode; children: ReactNode }) {
   const segment = useSelectedLayoutSegment();
   const landing = segment === null;
-  const framed = Boolean(sidebar) && segment !== null && WORKSPACE_SEGMENTS.has(segment);
+  const framed = Boolean(back) && segment !== null && WORKSPACE_SEGMENTS.has(segment);
   return <>
     {!landing && header}
-    {framed
-      ? <div className="container workspace app-frame">{sidebar}<div className="workspace-main">{back}{children}</div></div>
-      : children}
+    {framed ? <div className="container app-frame">{back}{children}</div> : children}
     {!landing && footer}
   </>;
 }

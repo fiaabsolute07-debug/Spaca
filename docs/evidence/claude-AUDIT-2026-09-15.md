@@ -29,9 +29,9 @@ Each item names the risk looked for and what the code does about it.
   - Only name, first message line (long quoted values redacted), code, constraint, table, routine and 4 frames are kept. A unit test uses a PostgreSQL-shaped error carrying a brief and an email.
 - `scripts/secret-scan.ts`
   - Prints file:line and a label only, never the match. Its one exclusion is the detector's own unit test, by exact path.
-- Workspace frame (`site-chrome.tsx`, `workspace-sidebar.tsx`, `header-nav.tsx`)
+- Workspace navigation (`site-chrome.tsx`, `account-menu.tsx`, `header-nav.tsx`)
   - Risk: showing another account's data or navigation to the wrong account type.
-  - The sidebar shows only the navigation for the signed-in actor's account type, taken from the server session, and no identity data.
+  - The Account menu shows only the navigation for the signed-in actor's account type, taken from the server session, and no identity data. Log out stays a same-origin POST form.
   - Links do not grant access: every page still checks the account type (FND-04 E2E).
 - `OrderReceiptPanel`
   - Risk: inventing money facts.
@@ -52,3 +52,9 @@ No new secrets, environment variables or external calls were added. `tsx scripts
 - `tsx scripts/release-check.ts`: every check PASS. `tsx scripts/discovery-benchmark.ts`: every latency and plan check passed. `tsx scripts/secret-scan.ts`: no findings.
 - `TZ=UTC playwright test` (full suite, system Chrome, dev server on 3100, tree of `d898592`): 37 passed in 7.1 minutes.
 - `tsx scripts/restore-rehearsal.ts`, run after the E2E suite so the dev database was quiet. Row counts for all 32 obligation tables matched the source, including `app.request_images`. The 8 hard invariants show 0 violations: duplicated chain payouts, principal paid beyond funding, double release, orphan rows, pool conservation, oversold request budget, unbalanced ledger, workload drift. The jobs dry-run at the backup instant lists 25 notification outbox rows and 7 ready settlements as due; none were executed. Webhook replay was a no-op. RESULT: restore verified.
+
+## Found after the audit
+- **Dev server database pool.** While the account menu was being verified, the dashboard showed its error page. The log said PostgreSQL was out of connections ("sorry, too many clients already").
+  - Cause: `src/lib/db.ts` created a new pool (up to 10 connections) every time the module was evaluated. `next dev` evaluates it once per route bundle and again on every hot reload, and a busy editing and testing session reached PostgreSQL's 100-connection limit.
+  - Fix: in development the pool is now created once per process and kept on `globalThis`. Tests and scripts keep a module-scoped pool, because they close it when they finish. The dev server was restarted to release the old pools.
+  - Measured after the fix: a sampler polled `pg_stat_activity` every 1.5 seconds (80 samples) during an E2E run of the Account menu, auth and FND-04 tests (7 passed). The dev database peaked at 10 client connections, one pool's maximum, and all client backends peaked at 11 of 100, counting the sampler itself.

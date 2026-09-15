@@ -1,6 +1,6 @@
 /*
  * spaca product UI. Neutral by default: white / #F5F5F7 surfaces and ink text.
- * Color marks what matters and nothing else: blue = the primary action and where you are (active tab, sidebar item);
+ * Color marks what matters and nothing else: blue = the primary action and where you are (current header section, account menu entry);
  * one hue per campaign category (create / publish / access / digital); green = done / funded / accepting orders,
  * orange = waiting on someone or sandbox, red = disputed / failed / destructive.
  */
@@ -412,20 +412,10 @@ textarea { resize: vertical; min-height: 110px; }
 }
 
 /* ---------- Workspace ---------- */
-.workspace { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 40px; }
-.sidebar { position: sticky; top: 84px; align-self: start; display: flex; flex-direction: column; }
 .account-type { align-self: flex-start; margin-top: 6px; padding: 2px 8px; border-radius: 980px; background: var(--ink); color: var(--white); font-size: 11px; font-weight: 600; }
-.sidebar h4 { margin: 18px 10px 6px; font-size: 12px; font-weight: 600; color: var(--faint); letter-spacing: 0; }
-.sidebar a { display: block; padding: 8px 10px; border-radius: 10px; font-size: 14px; color: var(--muted); }
-.sidebar a:hover { background: var(--soft); color: var(--ink); }
-.sidebar a.active { background: var(--soft); color: var(--ink); font-weight: 600; }
-.workspace-main { min-width: 0; }
-.workspace-main h1 { font-size: clamp(28px, 3vw, 36px); }
-/* Signed-in pages render beside the persistent sidebar; the frame owns the page width and padding. */
-.app-frame > .workspace-main > main.container { width: auto; margin: 0; padding: 0; }
+/* Signed-in pages get a back link above them; the frame owns the page width and padding. */
+.app-frame > main.container { width: auto; margin: 0; padding: 0; }
 .app-frame .breadcrumbs { display: none; }
-.sidebar nav > div { display: contents; }
-.sidebar nav > div:first-child h4 { margin-top: 0; }
 .workspace-back { display: inline-flex; align-items: center; gap: 6px; margin-bottom: 18px; font-size: 13px; color: var(--muted); }
 .workspace-back:hover { color: var(--ink); }
 /* Short cells (status, amount, date, action) never break inside a word; long titles in the first column still may. */
@@ -522,11 +512,6 @@ td small { display: block; color: var(--faint); margin-top: 3px; font-size: 12px
   .header-search { display: none; }
 }
 @media (max-width: 860px) {
-  .workspace { grid-template-columns: minmax(0, 1fr); gap: 20px; }
-  .sidebar { position: static; flex-direction: row; gap: 4px; overflow-x: auto; padding-bottom: 8px; border-bottom: 1px solid var(--line); }
-  .sidebar h4 { display: none; }
-  .sidebar a { white-space: nowrap; }
-  .sidebar nav { display: flex; gap: 4px; }
   .auth-layout { grid-template-columns: minmax(0, 1fr); gap: 24px; margin-top: 32px; }
   .admin-queue-grid, .admin-card-grid { grid-template-columns: minmax(0, 1fr); }
 }
@@ -564,7 +549,6 @@ td small { display: block; color: var(--faint); margin-top: 3px; font-size: 12px
 .button:not(.button-outline):not(.button-dark):not(.button-danger) { background: var(--accent); }
 .button:not(.button-outline):not(.button-dark):not(.button-danger):hover { background: var(--accent-hover); }
 .header nav a.is-active { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
-.sidebar a.active { background: var(--accent-soft); color: var(--accent); }
 .account-type { background: var(--accent-soft); color: var(--accent); }
 .workspace-back:hover { color: var(--accent); }
 .cat-create { --cat: var(--cat-create); --cat-soft: var(--cat-create-soft); }
@@ -617,9 +601,6 @@ form:has(input[name="taxonomy"][value="PUBLISH"]:checked) .publish-terms { displ
 .file-thumb { flex-shrink: 0; width: 44px; height: 44px; border-radius: 8px; object-fit: cover; }
 @media (max-width: 860px) { .choice-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 440px) { .choice-cards { grid-template-columns: minmax(0, 1fr); } }
-/* The narrow-screen sidebar strip scrolls without a visible bar. */
-.sidebar, .sidebar nav { scrollbar-width: none; }
-.sidebar::-webkit-scrollbar, .sidebar nav::-webkit-scrollbar { display: none; }
 
 /* REQ-11 comparison controls */
 .compare-controls { display: grid; gap: 10px; margin: 6px 0 18px; }
@@ -628,12 +609,30 @@ form:has(input[name="taxonomy"][value="PUBLISH"]:checked) .publish-terms { displ
 .chip-link:hover { border-color: var(--line-strong); color: var(--ink); }
 .chip-link[aria-current] { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); font-weight: 600; }
 
-/* Inside the workspace frame the content column is narrower: side panels stack sooner and Explore's filters take less room. */
-@media (max-width: 1240px) {
-  .app-frame .profile-layout, .app-frame .split { grid-template-columns: minmax(0, 1fr); }
-  .app-frame .profile-layout > aside, .app-frame .split > aside { position: static; }
-}
-/* Below 1024px Explore already stacks and hides filters behind a button; only narrow the filter column above that. */
-@media (min-width: 1024px) and (max-width: 1240px) {
-  .app-frame .explore-shell:not(.is-detail) { grid-template-columns: 220px minmax(0, 1fr); }
+
+/* Account menu in the header's top-right corner: workspace navigation, profile and log out. */
+.account-menu { position: relative; }
+.account-menu-button { display: inline-flex; align-items: center; gap: 6px; }
+.account-menu-button svg { transition: transform 0.15s; }
+.account-menu-button[aria-expanded="true"] svg { transform: rotate(180deg); }
+.account-menu-panel { position: absolute; top: calc(100% + 8px); right: 0; z-index: 60; width: min(260px, calc(100vw - 32px)); max-height: calc(100vh - 110px); overflow-y: auto; padding: 8px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--white); box-shadow: var(--shadow); }
+.account-menu-panel[hidden] { display: none; }
+/* The panel sits inside the header: undo the header's horizontal nav row and pill links. */
+.header .account-menu-panel nav { display: block; order: 0; width: auto; margin: 0; overflow: visible; }
+.header .account-menu-panel a { display: block; padding: 8px 10px; border-radius: 10px; font-size: 14px; white-space: normal; color: var(--muted); background: none; }
+.header .account-menu-panel a:hover { background: var(--soft); color: var(--ink); }
+.header .account-menu-panel a[aria-current="page"] { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+.account-menu-group + .account-menu-group { margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--line); }
+.account-menu-panel h4 { margin: 6px 10px 4px; font-size: 12px; font-weight: 600; color: var(--faint); letter-spacing: 0; }
+.account-menu-panel a { display: block; padding: 8px 10px; border-radius: 10px; font-size: 14px; color: var(--muted); }
+.account-menu-panel a:hover { background: var(--soft); color: var(--ink); }
+.account-menu-panel a[aria-current="page"] { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+.account-menu-logout { margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--line); }
+.account-menu-logout .plain-button { width: 100%; padding: 8px 10px; border-radius: 10px; text-align: left; }
+.account-menu-logout .plain-button:hover { background: var(--soft); }
+/* On narrow screens the Account button is not at the right edge: open the panel across the header's width instead. */
+@media (max-width: 860px) {
+  .header { position: relative; }
+  .account-menu { position: static; }
+  .account-menu-panel { top: calc(100% + 6px); left: 0; right: 0; width: auto; }
 }

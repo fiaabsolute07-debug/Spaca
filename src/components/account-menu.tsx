@@ -2,6 +2,8 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { ChevronDown } from 'lucide-react';
+import { useEffect, useId, useRef, useState } from 'react';
 import type { AccountType } from '@/lib/account';
 
 type NavLink = { href: string; label: string };
@@ -15,10 +17,9 @@ const BUYER_NAV: NavGroup[] = [
   { title: 'Workspace', links: [{ href: '/dashboard', label: 'Overview' }, { href: '/buyer/orders', label: 'Orders' }, { href: '/buyer/requests', label: 'My campaigns' }] },
   { title: 'Hire', links: [{ href: '/explore', label: 'Find creators' }, { href: '/buyer/requests/new', label: 'Post a brief' }, { href: '/auctions', label: 'Auctions' }] },
 ];
-
 const ACCOUNT_NAV: NavGroup = { title: 'Account', links: [{ href: '/settings/profile', label: 'Profile' }] };
 
-/** Pages that belong to a sidebar entry without being under its URL. */
+/** Pages that belong to a menu entry without being under its URL. */
 const ALIASES: [RegExp, string][] = [[/^\/orders\//, '/buyer/orders']];
 
 const within = (pathname: string, href: string) => pathname === href || pathname.startsWith(`${href}/`);
@@ -32,21 +33,54 @@ function activeHref(pathname: string, groups: NavGroup[]): string | null {
 }
 
 /**
- * Workspace navigation (no identity block; the profile opens from Account › Profile), rendered once by the root layout for signed-in accounts. It stays mounted while the pages beside
- * it change, so moving around the workspace happens in one frame.
+ * Workspace navigation for signed-in accounts, in the header's top-right corner (the user wanted it there rather than in a
+ * sidebar). A disclosure: the button toggles a panel of links and Log out; Escape, a click outside or navigating closes it.
  */
-export function WorkspaceSidebar({ type }: { type: AccountType | null }) {
+export function AccountMenu({ type }: { type: AccountType | null }) {
   const pathname = usePathname();
+  const [open, setOpen] = useState(false);
+  const root = useRef<HTMLDivElement>(null);
+  const button = useRef<HTMLButtonElement>(null);
+  const panelId = useId();
   const groups = [...(type === 'creator' ? CREATOR_NAV : BUYER_NAV), ACCOUNT_NAV];
   const active = activeHref(pathname, groups);
-  return <aside className="sidebar" aria-label="Workspace">
-    <nav aria-label="Workspace sections">
-      {groups.map((group) => <div key={group.title}>
-        <h4>{group.title}</h4>
-        {group.links.map((link) => <Link key={link.href} href={link.href} className={active === link.href ? 'active' : undefined} aria-current={active === link.href ? 'page' : undefined}>{link.label}</Link>)}
-      </div>)}
-    </nav>
-  </aside>;
+
+  useEffect(() => setOpen(false), [pathname]);
+  useEffect(() => {
+    if (!open) return;
+    const onPointer = (event: PointerEvent) => {
+      if (!root.current?.contains(event.target as Node)) setOpen(false);
+    };
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      setOpen(false);
+      button.current?.focus();
+    };
+    document.addEventListener('pointerdown', onPointer);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('pointerdown', onPointer);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
+
+  return <div className="account-menu" ref={root}>
+    <button ref={button} type="button" className="button compact account-menu-button" aria-expanded={open} aria-controls={panelId} onClick={() => setOpen((value) => !value)}>
+      Account <ChevronDown size={14} aria-hidden />
+    </button>
+    <div id={panelId} className="account-menu-panel" hidden={!open}>
+      <nav aria-label="Account menu">
+        {groups.map((group) => <div key={group.title} className="account-menu-group">
+          <h4>{group.title}</h4>
+          {group.links.map((link) => <Link key={link.href} href={link.href} aria-current={active === link.href ? 'page' : undefined} onClick={() => setOpen(false)}>{link.label}</Link>)}
+        </div>)}
+      </nav>
+      <form method="post" action="/api/auth" className="account-menu-logout">
+        <input type="hidden" name="action" value="logout" />
+        <button className="plain-button" type="submit">Log out</button>
+      </form>
+    </div>
+  </div>;
 }
 
 function parentOf(pathname: string, type: AccountType | null): NavLink {

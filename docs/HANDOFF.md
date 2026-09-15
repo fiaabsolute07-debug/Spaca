@@ -17,7 +17,7 @@ Acceptance: 116 PASS / 19 PARTIAL / 0 NOT_RUN / 2 BLOCKED / 5 REMOVED. Results a
 - Separate buyer and creator accounts.
 - No order limit (pause only), and no ACCESS scheduling.
 - Auctions paused.
-- No name/email/photo block in the workspace sidebar and no profile button in the header; the profile opens from the sidebar's Account › Profile entry.
+- Workspace navigation lives in the header's Account menu (top-right corner): no sidebar, no name/email/photo block, no separate profile button.
 - No tab strip above Explore, Campaigns and Auctions.
 - Visual choice cards instead of dropdowns, and color only on key elements.
 

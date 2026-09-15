@@ -176,3 +176,13 @@ export function dateTimeLocal(date: Date) {
   const pad = (n: number) => String(n).padStart(2, '0');
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
+
+/** Opens the header Account menu (workspace navigation) and returns its navigation landmark. */
+export async function openAccountMenu(page: Page) {
+  const button = page.getByRole('banner').getByRole('button', { name: 'Account', exact: true });
+  await waitForHydration(button);
+  if ((await button.getAttribute('aria-expanded')) !== 'true') await button.click();
+  const menu = page.getByRole('navigation', { name: 'Account menu' });
+  await expect(menu).toBeVisible();
+  return menu;
+}

@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { chooseOption, submit, uniqueSuffix, visit, waitForHydration } from './helpers';
+import { chooseOption, submit, uniqueSuffix, visit, waitForHydration, openAccountMenu } from './helpers';
 
 test('Log in opens a dialog over the current page; errors show in place; Escape returns to the page', async ({ page }) => {
   await visit(page, '/explore');
@@ -36,12 +36,12 @@ test('Get started opens account creation in the dialog and signs the new account
   await dialog.getByLabel('Email address').fill(`dialog-${uniqueSuffix()}@example.test`);
   await dialog.getByLabel(/^Password/).fill('a-long-test-password');
   await Promise.all([page.waitForURL(/\/dashboard$/), dialog.getByRole('button', { name: 'Create account' }).click()]);
-  await expect(page.getByRole('banner').getByRole('link', { name: 'Workspace' })).toBeVisible();
+  await expect(page.getByRole('banner').getByRole('button', { name: 'Account', exact: true })).toBeVisible();
   // Accounts are one type; without a choice a new account hires.
-  const sidebar = page.getByRole('complementary', { name: 'Workspace' });
-  await expect(sidebar.getByRole('link', { name: 'Profile', exact: true })).toBeVisible();
-  await expect(sidebar.getByRole('link', { name: 'Post a brief' })).toBeVisible();
-  await expect(sidebar.getByRole('link', { name: 'My services' })).toHaveCount(0);
+  const menu = await openAccountMenu(page);
+  await expect(menu.getByRole('link', { name: 'Profile', exact: true })).toBeVisible();
+  await expect(menu.getByRole('link', { name: 'Post a brief' })).toBeVisible();
+  await expect(menu.getByRole('link', { name: 'My services' })).toHaveCount(0);
 });
 
 test('a creator account sells: its workspace has no hiring tools and booking asks for a buyer account', async ({ page }) => {
@@ -58,10 +58,10 @@ test('a creator account sells: its workspace has no hiring tools and booking ask
   await chooseOption(page, dialog, 'What brings you here?', 'I want to offer my skills');
   await Promise.all([page.waitForURL(/\/dashboard$/), dialog.getByRole('button', { name: 'Create account' }).click()]);
 
-  const sidebar = page.getByRole('complementary', { name: 'Workspace' });
-  await expect(sidebar.getByRole('link', { name: 'Profile', exact: true })).toBeVisible();
-  await expect(sidebar.getByRole('link', { name: 'My services' })).toBeVisible();
-  await expect(sidebar.getByRole('link', { name: 'Post a brief' })).toHaveCount(0);
+  const menu = await openAccountMenu(page);
+  await expect(menu.getByRole('link', { name: 'Profile', exact: true })).toBeVisible();
+  await expect(menu.getByRole('link', { name: 'My services' })).toBeVisible();
+  await expect(menu.getByRole('link', { name: 'Post a brief' })).toHaveCount(0);
 
   await visit(page, '/buyer/requests/new');
   await expect(page.getByRole('heading', { name: 'This page is for buyer accounts' })).toBeVisible();
@@ -85,7 +85,7 @@ test('the dialog switches between sign in and join, offers local test accounts, 
 
   await submit(page, dialog.getByRole('button', { name: /Sam Tran/ }));
   await expect(page).toHaveURL(/\/explore$/);
-  await expect(page.getByRole('banner').getByRole('link', { name: 'Workspace' })).toBeVisible();
+  await expect(page.getByRole('banner').getByRole('button', { name: 'Account', exact: true })).toBeVisible();
 
   const context = await page.context().browser()!.newContext();
   const direct = await context.newPage();

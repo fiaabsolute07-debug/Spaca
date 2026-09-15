@@ -50,13 +50,9 @@ Nghĩa là:
 - **Tài khoản:** tách buyer và creator (migration 0019, `src/lib/account.ts`).
 - **Phí nền tảng:** chưa chốt. Code cưỡng chế phí = 0. Không tự đặt số. Không viết "0% fee" trong copy.
 - **Hero landing:** video `public/landing/hero.mp4` (đã nén).
-- **Workspace một khung:**
-  - Thanh bên cố định, có link "‹ Back to …".
-  - Không mở tab mới trong luồng app.
-- **Profile:**
-  - Thanh bên **không** có khối tên/email/avatar (user yêu cầu xóa).
-  - **Không** có avatar/nút profile trên header (đã làm rồi user yêu cầu xóa).
-  - Vào profile từ mục Account › Profile ở cuối thanh bên; trang profile nằm trong khung workspace như cũ.
+- **Điều hướng workspace:** nằm trong menu **"Account" ở góc phải header** (nhóm Workspace, Find work hoặc Hire, Account › Profile, và Log out).
+  - **Không** có thanh bên, **không** có khối tên/email/avatar, **không** có nút avatar riêng trên header. User đã yêu cầu xóa từng thứ.
+  - Trang con có link "‹ Back to …"; không mở tab mới trong luồng app.
 - **Explore / Campaigns / Auctions:**
   - Chỉ link trên header tô xanh mục đang xem.
   - User **không muốn** thanh tab Services/Campaigns/Auctions phía trên danh sách (đã làm rồi xóa).
@@ -126,6 +122,10 @@ export PATH=/Users/dohoangphi/.cache/codex-runtimes/codex-primary-runtime/depend
   - Thao tác client component (upload, select Radix) trước khi React hydrate thì không có phản ứng. Chờ `waitForHydration` hoặc `chooseOption`.
   - Chạy E2E **ngay sau khi sửa layout/CSS** dễ bị `ERR_CONNECTION_REFUSED` hoặc timeout vì dev server đang compile. Mở một trang cho server nóng rồi mới chạy.
   - Link có mũi tên `‹` trong `aria-hidden` thì tên truy cập là "Back to …" (không có mũi tên).
+  - Lỗi "too many clients already" / trang báo "We could not load this workspace":
+    - Nguyên nhân: trước đây mỗi route bundle và mỗi lần hot reload tạo một pool DB riêng.
+    - Hiện `src/lib/db.ts` dùng chung một pool trong dev.
+    - Nếu vẫn gặp: restart dev server (mất state mock provider).
 - Chạy job local: `POST /api/dev/jobs` (same-origin).
 - Persona: `creator_c`, `creator_d`, `buyer_a`, `buyer_b`, `dual_e`, `suspended`, `moderator`, `finance`, `admin`.
 - DB dev đang bật `DIGITAL_PRODUCTS_ENABLED` (do E2E). `BANK_FUNDING_ENABLED` đang tắt.
@@ -177,8 +177,8 @@ cd contracts && forge test
   - `crypto`, `pools`, `requests` (có `compare.ts` cho REQ-11), `storage` (purpose `REQUEST_IMAGE` → bucket `public-campaigns`).
   - Còn lại: `publish`, `digital`, `moderation`, `jobs`, `notifications`, `discovery`, `admin`, `orders`, `catalog`, `capacity`, `auctions`.
 - **UI:**
-  - `src/components/site-chrome.tsx`: header/footer, khung workspace cho các segment `dashboard`, `buyer`, `creator`, `orders`, `settings`, `requests`, `auctions`, `services`, `creators`, `explore`.
-  - `workspace-sidebar.tsx` (client): nav và bản đồ "Back to".
+  - `src/components/site-chrome.tsx`: header/footer; thêm link "Back to" phía trên trang cho các segment `dashboard`, `buyer`, `creator`, `orders`, `settings`, `requests`, `auctions`, `services`, `creators`, `explore`.
+  - `account-menu.tsx` (client): menu Account ở góc header (điều hướng workspace, Log out) và bản đồ "Back to".
   - `header-nav.tsx`: link header có trạng thái active.
   - `category.tsx`: thẻ loại campaign và màu. `order-workspace/receipt-panel.tsx`: biên nhận đơn.
   - CSS thuần trong `src/app/globals.css`.
