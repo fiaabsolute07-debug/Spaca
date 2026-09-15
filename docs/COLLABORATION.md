@@ -66,6 +66,7 @@ Status values: TODO · IN_PROGRESS · REVIEW · DONE · BLOCKED.
 | PAY-16 | Late provider costs: cost-v1 policy (capped creator share before payout, no retro debit, credits owed after payout), signed fee updates, immutable adjustments with cap trigger, inbox retry for early facts, admin table. Migration 0023. Evidence `docs/evidence/claude-PAY-16.md` | PAY-16 PASS local | PAY-15 | DONE |
 | BNK | Bank transfer funding: flag + provider capability, bank-v1 120 h hold, verified-fact funding, reconciliation on expiry, returns handling, sandbox bank route, buyer UI, E2E warm-up. Migration 0024. Evidence `docs/evidence/claude-BNK.md` | BNK-01..03 PASS local | PAY-16 | DONE |
 | OPS-02 | Local restore rehearsal: snapshot logical backup (tables + files), isolated restore, obligations/invariants/jobs dry-run comparison, webhook replay as app role, fault self-test, runbook. Evidence `docs/evidence/claude-OPS-02.md` | OPS-02 PASS local | BNK | DONE |
+| SEC-RACE | Security matrices (foreign buyer/creator, forged money fields, expired sessions, suspended obligations, crypto-off, wrong environment) and DB concurrency races (refund vs release, cumulative refunds, UNKNOWN payment vs rival buyers, hire funding vs expiry, offer acceptance vs expiry). Evidence `docs/evidence/claude-SEC-RACE.md` | 14 rows PARTIAL→PASS | OPS-02 | DONE |
 
 ### Codex (Astra)
 
