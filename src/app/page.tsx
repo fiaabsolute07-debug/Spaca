@@ -8,7 +8,9 @@ import styles from '@/components/landing/landing.module.css';
 
 export const dynamic = 'force-dynamic';
 
+// Muted, video-only H.264 at 640×360 (~0.5 MB) with a small poster so the hero paints before the video loads.
 const HERO_VIDEO = '/landing/hero.mp4';
+const HERO_POSTER = '/landing/hero-poster.jpg';
 
 const TICKER = [
   { label: 'Explainer threads' }, { label: 'Research deep dives' }, { label: 'Mainnet launch copy' }, { label: 'Token launch campaigns' },
@@ -49,9 +51,9 @@ export default function LandingPage() {
 
     <main>
       <section className={styles.hero}>
-        <div className={styles.heroMedia} aria-hidden>
+        <div className={styles.heroMedia} aria-hidden style={hasVideo ? { backgroundImage: `url(${HERO_POSTER})` } : undefined}>
           {hasVideo
-            ? <video className={styles.heroVideo} src={HERO_VIDEO} autoPlay muted loop playsInline preload="metadata" />
+            ? <video className={styles.heroVideo} src={HERO_VIDEO} poster={HERO_POSTER} autoPlay muted loop playsInline preload="auto" disablePictureInPicture />
             : <span className={styles.videoPlaceholder}>Background video goes here — add public{HERO_VIDEO}</span>}
           <div className={styles.heroScrim} />
         </div>
