@@ -365,3 +365,11 @@ Commands:
 - `getOrderData(...).amendments = [{ id, deadline: DELIVERY|REVISION, proposed_by, counterparty_id, proposed_by_name, reason, old_due_at, new_due_at, status, created_at, responded_at }]` (newest first) and `active_amendment` (the REQUESTED one or null).
 - Events: `DEADLINE_EXTENSION_REQUESTED`, `DEADLINE_EXTENDED`, `DEADLINE_EXTENSION_REJECTED`, `DEADLINE_EXTENSION_WITHDRAWN`, `DEADLINE_EXTENSION_EXPIRED`. Notifications: `order.deadline_extension_requested {orderRef, newDueAt}`, `order.deadline_extension_resolved {orderRef, outcome ACCEPTED|REJECTED}`.
 - UI: `<OrderDeadlinePanel>` on the order page (region "Deadline").
+
+## ORD-14 additions (2026-09-15): card payment disputes (drizzle/0021)
+
+- Provider webhooks `dispute.opened`, `dispute.won`, `dispute.lost` go to the existing `POST /api/webhooks/mock-payment`. They never change the order status, deliveries or reviews.
+- Order timeline events: `PAYMENT_DISPUTE_OPENED` (with order and settlement status), `PAYMENT_DISPUTE_WON`, `PAYMENT_DISPUTE_LOST`.
+- Notification `payment.disputed {orderRef, stage: OPENED|WON|LOST}` to the creator (in-app by default).
+- Operator order view (`getOperatorOrder`) adds `payment_disputes: [{ id, provider_reference (redacted), amount_minor, currency, status, order_status_at_open, settlement_status_at_open, evidence, opened_at, closed_at }]`. Cases: `PAYMENT_DISPUTE`, `CHARGEBACK_LOST`, `UNMATCHED_PAYMENT_DISPUTE`, `UNEXPECTED_PAYMENT_DISPUTE`, `CONFLICTING_PAYMENT_DISPUTE`.
+- An order with an OPEN or LOST payment dispute is not released to the creator by the settlement job.

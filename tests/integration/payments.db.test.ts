@@ -314,3 +314,106 @@ describe.skipIf(!RUN_DB)('cancellation, late funding and refunds', () => {
     expect(await count(sql`select count(*)::int as count from app.outbox where semantic_key=${`notify:refund.updated:SUCCEEDED:${orderId}`}`)).toBe(1);
   });
 });
+
+describe.skipIf(!RUN_DB)('ORD-14 — card payment disputes after completion', () => {
+  const brief = 'Payment integration brief with enough detail to start.';
+  const fundingReferenceOf = async (orderId: string) => String((await sql`select provider_reference from app.provider_operations where order_id=${orderId} and kind='funding.create'`)[0]!.provider_reference);
+  const deliverAll = async () => {
+    for (const delivery of provider.takeWebhookDeliveries()) expect((await postWebhook(delivery.rawBody, delivery.headers)).status).toBe(200);
+  };
+
+  async function approvedOrder(label: string) {
+    const setup = await bookedOrder(label);
+    expect((await pay(setup.buyer, setup.orderId)).status).toBe(200);
+    const step = (actor: TestUser, fields: Record<string, string>) => command(actor, { idempotency_key: key('step'), order_id: setup.orderId, ...fields });
+    expect((await step(setup.creator, { command: 'start' })).status).toBe(200);
+    expect((await step(setup.creator, { command: 'deliver', body: 'Final launch thread with sources and the CTA.' })).status).toBe(200);
+    expect((await step(setup.buyer, { command: 'approve', delivery_version: '1' })).status).toBe(200);
+    return { ...setup, step };
+  }
+
+  it('ORD-14: a chargeback on a completed order keeps the work history, records evidence, alerts operators and books a lost dispute as a loss', async () => {
+    const { buyer, orderId, step } = await approvedOrder('ord14');
+    const { releaseReadySettlements } = await import('@/modules/jobs');
+    await releaseReadySettlements({ orderId });
+    expect((await step(buyer, { command: 'review', rating: '5', body: 'Clear and fast.' })).status).toBe(200);
+    const before = await orderRow(orderId);
+    expect(before).toMatchObject({ status: 'COMPLETED', settlement_status: 'RELEASED' });
+    const history = async () => ({
+      deliveries: await count(sql`select count(*)::int as count from app.deliveries where order_id=${orderId}`),
+      reviews: await count(sql`select count(*)::int as count from app.reviews where order_id=${orderId}`),
+      events: (await sql`select kind from app.order_events where order_id=${orderId} and kind not like 'PAYMENT_DISPUTE_%' order by created_at, id`).map((e) => e.kind),
+    });
+    const recorded = await history();
+
+    // The buyer's bank disputes the payment; the signed webhook is verified like any other provider fact.
+    const disputeRef = await provider.simulateChargeback(await fundingReferenceOf(orderId));
+    const [opened] = provider.takeWebhookDeliveries();
+    const tampered = new TextEncoder().encode(new TextDecoder().decode(opened!.rawBody).replace('"OPEN"', '"LOST"'));
+    expect((await postWebhook(tampered, opened!.headers)).status).toBe(400);
+    expect((await postWebhook(opened!.rawBody, opened!.headers)).body).toMatchObject({ received: true, duplicate: false });
+    expect((await postWebhook(opened!.rawBody, opened!.headers)).body).toMatchObject({ received: true, duplicate: true });
+
+    const [dispute] = await sql`select * from app.payment_disputes where order_id=${orderId}`;
+    expect(dispute).toMatchObject({ status: 'OPEN', amount_minor: '65000', order_status_at_open: 'COMPLETED', settlement_status_at_open: 'RELEASED', closed_at: null });
+    expect(dispute!.evidence).toMatchObject({ order_status: 'COMPLETED', buyer_reviews: 1, deliveries: [{ version: 1, validation_status: 'VALID' }] });
+    expect(JSON.stringify(dispute!.evidence)).not.toContain(brief);
+    expect(JSON.stringify(dispute!.evidence)).not.toContain('Final launch thread');
+    expect(await count(sql`select count(*)::int as count from app.reconciliation_cases where order_id=${orderId} and kind='PAYMENT_DISPUTE' and status='OPEN'`)).toBe(1);
+    expect(await count(sql`select count(*)::int as count from app.outbox where semantic_key=${`notify:payment.disputed:OPENED:${disputeRef}`}`)).toBe(1);
+
+    await provider.simulateChargebackOutcome(disputeRef, 'LOST');
+    await deliverAll();
+    expect((await sql`select status,closed_at is not null as closed from app.payment_disputes where order_id=${orderId}`)[0]).toEqual({ status: 'LOST', closed: true });
+    const chargeback = await sql`select e.account,e.amount_minor from app.ledger_entries e join app.ledger_transactions t on t.id=e.transaction_id where t.order_id=${orderId} and t.kind='CHARGEBACK_LOST' order by e.account`;
+    expect(chargeback.map((e) => [e.account, e.amount_minor])).toEqual([[`chargeback_loss:${orderId}`, '65000'], ['provider_clearing:mock', '-65000']]);
+    expect((await ledgerBalance(orderId))[0]).toMatchObject({ total: '0' });
+    expect(await count(sql`select count(*)::int as count from app.reconciliation_cases where order_id=${orderId} and kind='CHARGEBACK_LOST'`)).toBe(1);
+
+    // The order, its work and the review are exactly as they were; nothing was taken from the creator.
+    const after = await orderRow(orderId);
+    expect({ status: after.status, version: after.version, completed_at: after.completed_at, settlement_status: after.settlement_status })
+      .toEqual({ status: before.status, version: before.version, completed_at: before.completed_at, settlement_status: before.settlement_status });
+    expect(await history()).toEqual(recorded);
+    expect((await sql`select kind from app.order_events where order_id=${orderId} and kind like 'PAYMENT_DISPUTE_%' order by created_at`).map((e) => e.kind)).toEqual(['PAYMENT_DISPUTE_OPENED', 'PAYMENT_DISPUTE_LOST']);
+    const accounts = (await sql`select distinct e.account from app.ledger_entries e join app.ledger_transactions t on t.id=e.transaction_id where t.order_id=${orderId} order by e.account`).map((e) => e.account);
+    expect(accounts).toEqual([`chargeback_loss:${orderId}`, `order_principal:${orderId}`, 'provider_clearing:mock']);
+    expect(await count(sql`select count(*)::int as count from app.ledger_transactions where order_id=${orderId} and kind not in ('FUNDING_CAPTURED','SETTLEMENT_RELEASED','CHARGEBACK_LOST')`)).toBe(0);
+
+    // The recorded facts cannot be rewritten.
+    await expect(sql`update app.payment_disputes set status='WON' where order_id=${orderId}`).rejects.toThrow(/already LOST/);
+    await expect(sql`update app.payment_disputes set evidence='{}'::jsonb where order_id=${orderId}`).rejects.toThrow(/immutable/);
+    await expect(sql`delete from app.payment_disputes where order_id=${orderId}`).rejects.toThrow();
+  });
+
+  it('ORD-14: an open dispute freezes a pending creator release until it is won', async () => {
+    const { orderId } = await approvedOrder('ord14-freeze');
+    const { releaseReadySettlements } = await import('@/modules/jobs');
+    const disputeRef = await provider.simulateChargeback(await fundingReferenceOf(orderId), 20000n);
+    await deliverAll();
+    expect((await releaseReadySettlements({ orderId })).examined).toBe(0);
+    expect(await orderRow(orderId)).toMatchObject({ status: 'APPROVED', settlement_status: 'READY' });
+
+    await provider.simulateChargebackOutcome(disputeRef, 'WON');
+    await deliverAll();
+    expect((await sql`select status,amount_minor from app.payment_disputes where order_id=${orderId}`)[0]).toEqual({ status: 'WON', amount_minor: '20000' });
+    expect(await count(sql`select count(*)::int as count from app.ledger_transactions where order_id=${orderId} and kind='CHARGEBACK_LOST'`)).toBe(0);
+    expect((await releaseReadySettlements({ orderId })).outcomes).toEqual({ RELEASE_REQUESTED: 1 });
+    expect((await orderRow(orderId)).status).toBe('COMPLETED');
+  });
+
+  it('ORD-14: a dispute for an unknown payment or a decision without an opening opens a case and records nothing', async () => {
+    const unknown = forgeSignedEvent('dispute.opened', { objectType: 'dispute', reference: `mock_dispute_${key('u')}`, fundingReference: 'mock_funding_unknown_000001',
+      operationId: 'dispute:unknown', orderId: '00000000-0000-4000-8000-000000000000', status: 'OPEN', amount: '1000', currency: 'USD', providerFee: null });
+    expect((await postWebhook(unknown.body, unknown.headers)).status).toBe(200);
+    expect(await count(sql`select count(*)::int as count from app.reconciliation_cases where kind='UNMATCHED_PAYMENT_DISPUTE' and next_action like ${'%mock_dispute_%'}`)).toBeGreaterThan(0);
+
+    const { orderId } = await approvedOrder('ord14-orphan');
+    const decision = forgeSignedEvent('dispute.lost', { objectType: 'dispute', reference: `mock_dispute_${key('o')}`, fundingReference: await fundingReferenceOf(orderId),
+      operationId: 'dispute:orphan', orderId, status: 'LOST', amount: '65000', currency: 'USD', providerFee: null });
+    expect((await postWebhook(decision.body, decision.headers)).status).toBe(200);
+    expect(await count(sql`select count(*)::int as count from app.payment_disputes where order_id=${orderId}`)).toBe(0);
+    expect(await count(sql`select count(*)::int as count from app.ledger_transactions where order_id=${orderId} and kind='CHARGEBACK_LOST'`)).toBe(0);
+    expect(await count(sql`select count(*)::int as count from app.reconciliation_cases where order_id=${orderId} and kind='UNMATCHED_PAYMENT_DISPUTE'`)).toBe(1);
+  });
+});

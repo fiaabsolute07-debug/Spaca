@@ -214,7 +214,8 @@ export async function releaseReadySettlements(options: JobScope = {}): Promise<J
     and ((o.status='APPROVED' and o.payment_status='SUCCEEDED')
       or (o.status='CANCELLED' and o.cancellation_refund_minor is not null and o.cancellation_refund_minor < o.amount_minor
           and o.payment_status in ('SUCCEEDED','REFUND_PENDING','PARTIALLY_REFUNDED')))
-    and not exists (select 1 from app.disputes d where d.order_id=o.id and d.status in ('OPEN','UNDER_REVIEW'))`;
+    and not exists (select 1 from app.disputes d where d.order_id=o.id and d.status in ('OPEN','UNDER_REVIEW'))
+    and not exists (select 1 from app.payment_disputes pd where pd.order_id=o.id and pd.status in ('OPEN','LOST'))`;
   const ready = await sql<Row[]>`select o.id from app.orders o where ${readyCondition} and ${railCondition} and ${scoped(sql`o.id`, options)} order by o.updated_at asc limit ${options.limit ?? 50}`;
   for (const candidate of ready) {
     try {

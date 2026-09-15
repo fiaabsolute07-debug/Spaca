@@ -404,7 +404,82 @@ export async function applyFetchedProviderFact(fact: Omit<VerifiedEvent, 'eventI
 async function applyPaymentEvent(tx: Tx, event: VerifiedEvent): Promise<string> {
   if (event.objectType === 'funding') return applyFundingEvent(tx, event);
   if (event.objectType === 'refund') return applyRefundEvent(tx, event);
+  if (event.objectType === 'dispute') return applyDisputeEvent(tx, event);
   return applyReleaseEvent(tx, event);
+}
+
+/**
+ * ORD-14: a card payment dispute is a payment fact about the funding, not an order transition. The order keeps its
+ * status, deliveries, approval and reviews. Opening records an evidence snapshot and alerts operators; a creator release
+ * still pending is frozen while the dispute is open or lost (see `releaseReadySettlements`); a lost dispute books the
+ * returned payment as a loss and never debits the creator automatically.
+ */
+async function applyDisputeEvent(tx: Tx, event: VerifiedEvent): Promise<string> {
+  const [funding] = await tx<Row[]>`select id,order_id from app.provider_operations where provider=${MOCK_PROVIDER} and kind='funding.create' and provider_reference=${event.fundingReference} limit 1`;
+  if (!funding?.order_id) {
+    await openCase(tx, null, funding ? String(funding.id) : null, 'UNMATCHED_PAYMENT_DISPUTE', 'HIGH', `Match provider dispute ${event.reference} to an order`);
+    return 'UNMATCHED';
+  }
+  const orderId = String(funding.order_id);
+  const [order] = await tx<Row[]>`select * from app.orders where id=${orderId} for update`;
+  if (!order) return 'UNMATCHED';
+  const currency = String(order.currency);
+  const fact = { provider: MOCK_PROVIDER, reference: event.reference, event_id: event.eventId, amount_minor: event.amount.toString() };
+
+  if (event.type === 'dispute.opened') {
+    if (event.currency !== currency || event.amount > BigInt(String(order.amount_minor))) {
+      await openCase(tx, orderId, String(funding.id), 'UNEXPECTED_PAYMENT_DISPUTE', 'HIGH', 'Provider dispute does not match the captured payment');
+      return 'UNEXPECTED_DISPUTE';
+    }
+    const evidence = await disputeEvidence(tx, order);
+    const [inserted] = await tx<Row[]>`insert into app.payment_disputes (order_id,provider,provider_reference,funding_reference,amount_minor,currency,order_status_at_open,settlement_status_at_open,evidence,opened_event_id)
+      values (${orderId},${MOCK_PROVIDER},${event.reference},${event.fundingReference},${event.amount.toString()},${currency},${String(order.status)},${String(order.settlement_status)},${JSON.stringify(evidence)}::jsonb,${event.eventId})
+      on conflict (provider,provider_reference) do nothing returning id`;
+    if (!inserted) return 'DUPLICATE_FACT';
+    await orderEvent(tx, orderId, 'PAYMENT_DISPUTE_OPENED', { ...fact, order_status: String(order.status), settlement_status: String(order.settlement_status) });
+    await openCase(tx, orderId, String(funding.id), 'PAYMENT_DISPUTE', 'HIGH', 'Card payment disputed: answer the provider with the evidence snapshot before its deadline. The order and its work stay as recorded.');
+    await outbox(tx, orderId, `notify:payment.disputed:OPENED:${event.reference}`, { templateId: 'payment.disputed', recipientId: String(order.creator_id), params: { orderRef: orderId, stage: 'OPENED' } });
+    return 'PAYMENT_DISPUTE_OPENED';
+  }
+
+  const outcome = event.type === 'dispute.won' ? 'WON' : 'LOST';
+  const [dispute] = await tx<Row[]>`select * from app.payment_disputes where provider=${MOCK_PROVIDER} and provider_reference=${event.reference} for update`;
+  if (!dispute) {
+    await openCase(tx, orderId, String(funding.id), 'UNMATCHED_PAYMENT_DISPUTE', 'HIGH', `A decision arrived for provider dispute ${event.reference}, which was never recorded as opened`);
+    return 'UNMATCHED';
+  }
+  if (dispute.status !== 'OPEN') {
+    if (dispute.status === outcome) return 'DUPLICATE_FACT';
+    await openCase(tx, orderId, String(funding.id), 'CONFLICTING_PAYMENT_DISPUTE', 'HIGH', `Provider sent ${outcome} for a dispute already recorded as ${String(dispute.status)}`);
+    return 'CONFLICTING_FACT';
+  }
+  await tx`update app.payment_disputes set status=${outcome},closed_event_id=${event.eventId},closed_at=now() where id=${String(dispute.id)}`;
+  await orderEvent(tx, orderId, `PAYMENT_DISPUTE_${outcome}`, fact);
+  if (outcome === 'LOST') {
+    const disputed = BigInt(String(dispute.amount_minor));
+    await ledger(tx, orderId, 'CHARGEBACK_LOST', `chargeback:mock:${event.reference}`, [[`chargeback_loss:${orderId}`, disputed], ['provider_clearing:mock', -disputed]], currency);
+    await openCase(tx, orderId, String(funding.id), 'CHARGEBACK_LOST', 'HIGH', 'The card network returned the payment to the buyer. Decide any recovery separately; nothing is taken from the creator automatically.');
+  }
+  await outbox(tx, orderId, `notify:payment.disputed:${outcome}:${event.reference}`, { templateId: 'payment.disputed', recipientId: String(order.creator_id), params: { orderRef: orderId, stage: outcome } });
+  return `PAYMENT_DISPUTE_${outcome}`;
+}
+
+/** What the order record shows about the work, as timestamps and counts only: no brief, delivery or message text. */
+async function disputeEvidence(tx: Tx, order: Row): Promise<Row> {
+  const orderId = String(order.id);
+  const [facts] = await tx<Row[]>`select
+      coalesce((select json_agg(json_build_object('version',d.version,'validation_status',d.validation_status,'created_at',d.created_at,'buyer_viewed_at',d.buyer_viewed_at) order by d.version)
+        from app.deliveries d where d.order_id=${orderId}),'[]') as deliveries,
+      (select count(*)::int from app.messages m where m.order_id=${orderId}) as message_count,
+      (select count(*)::int from app.reviews r where r.order_id=${orderId} and r.reviewer_id=${String(order.buyer_id)}) as buyer_reviews,
+      (select count(*)::int from app.disputes x where x.order_id=${orderId}) as order_disputes`;
+  const terms = (order.terms ?? {}) as Row;
+  return {
+    order_status: order.status, source: order.source, amount_minor: String(order.amount_minor), currency: order.currency,
+    brief_ready_at: order.brief_ready_at, funded_at: order.funded_at, work_start_at: order.work_start_at, delivery_due_at: order.delivery_due_at,
+    approved_at: order.approved_at, completed_at: order.completed_at, auto_accept_consent: terms.auto_accept_consent === true,
+    policy_version: terms.policy_version ?? null, ...facts,
+  };
 }
 
 /** Refund reason is part of the refund request hash, so every caller must derive it the same way. */

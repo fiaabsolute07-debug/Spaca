@@ -55,6 +55,7 @@ export interface NotificationTemplateParams {
   'order.cancellation_resolved': OrderRef & { outcome: 'ACCEPTED' | 'REJECTED' | 'EXPIRED' };
   'order.deadline_extension_requested': OrderRef & { newDueAt: string };
   'order.deadline_extension_resolved': OrderRef & { outcome: 'ACCEPTED' | 'REJECTED' };
+  'payment.disputed': OrderRef & { stage: 'OPENED' | 'WON' | 'LOST' };
   'payout.succeeded': OrderRef & Money;
   'payout.failed': OrderRef;
   'refund.updated': OrderRef & Money & { refundStatus: 'PENDING' | 'SUCCEEDED' | 'FAILED' };
@@ -71,7 +72,7 @@ export interface NotificationTemplateParams {
 
 export type NotificationTemplateId = keyof NotificationTemplateParams;
 
-type ParamKind = 'ref' | 'text' | 'instant' | 'amount' | 'currency' | 'refundStatus' | 'cancellationOutcome';
+type ParamKind = 'ref' | 'text' | 'instant' | 'amount' | 'currency' | 'refundStatus' | 'cancellationOutcome' | 'disputeStage';
 
 export interface NotificationTemplate<K extends NotificationTemplateId = NotificationTemplateId> {
   id: K;
@@ -311,6 +312,20 @@ export const NOTIFICATION_TEMPLATES: { readonly [K in NotificationTemplateId]: N
     body: (p) => (p.outcome === 'ACCEPTED' ? 'Your proposed deadline was accepted and is now the order deadline.' : 'Your proposed deadline was declined; the current deadline stays.'),
     linkPath: orderLink,
   }),
+  'payment.disputed': template({
+    id: 'payment.disputed',
+    category: 'transactional',
+    subject: 'Card payment dispute',
+    allowedChannels: BOTH,
+    defaultChannels: ['in_app'],
+    params: { orderRef: 'ref', stage: 'disputeStage' },
+    body: (p) => ({
+      OPENED: "The buyer's bank disputed the card payment for this order. Your delivered work, the approval and any review stay on record.",
+      WON: 'The card payment dispute for this order was decided in favour of the payment. Nothing changes on the order.',
+      LOST: 'The card network returned this payment to the buyer. Your delivered work stays on record; support will contact you about next steps.',
+    })[p.stage],
+    linkPath: orderLink,
+  }),
   'payout.succeeded': template({
     id: 'payout.succeeded',
     category: 'transactional',
@@ -479,6 +494,9 @@ function validateParam(name: string, kind: ParamKind, value: unknown): void {
       return;
     case 'cancellationOutcome':
       if (value !== 'ACCEPTED' && value !== 'REJECTED' && value !== 'EXPIRED') throw fail('must be a cancellation outcome');
+      return;
+    case 'disputeStage':
+      if (value !== 'OPENED' && value !== 'WON' && value !== 'LOST') throw fail('must be a dispute stage');
       return;
   }
 }

@@ -194,6 +194,8 @@ export interface Capabilities {
 
 export type FundingStatusCode = 'REQUIRES_ACTION' | 'PROCESSING' | 'SUCCEEDED' | 'FAILED' | 'CANCELED';
 export type TransferStatusCode = 'PENDING' | 'SUCCEEDED' | 'FAILED';
+/** Card payment disputes (chargebacks) raised by the buyer's bank against a captured funding. */
+export type DisputeStatusCode = 'OPEN' | 'WON' | 'LOST';
 export type RefundReason = 'BUYER_CANCELED_BEFORE_WORK' | 'MUTUAL_CANCELLATION' | 'OPERATOR_RESOLUTION' | 'DUPLICATE' | 'OTHER';
 
 export interface FundingInput {
@@ -341,7 +343,10 @@ export type WebhookEventType =
   | 'release.failed'
   | 'refund.pending'
   | 'refund.succeeded'
-  | 'refund.failed';
+  | 'refund.failed'
+  | 'dispute.opened'
+  | 'dispute.won'
+  | 'dispute.lost';
 
 export interface VerifiedEvent {
   eventId: string;
@@ -349,13 +354,13 @@ export interface VerifiedEvent {
   mode: ProviderMode;
   accountId: string;
   createdAt: string;
-  objectType: 'funding' | 'release' | 'refund';
+  objectType: 'funding' | 'release' | 'refund' | 'dispute';
   reference: string;
-  /** Funding reference for release/refund objects; equals `reference` for funding. */
+  /** Funding reference for release/refund/dispute objects; equals `reference` for funding. */
   fundingReference: string;
   operationId: string;
   orderId: string;
-  status: FundingStatusCode | TransferStatusCode;
+  status: FundingStatusCode | TransferStatusCode | DisputeStatusCode;
   amount: AtomicAmount;
   currency: string;
   providerFee: AtomicAmount | null;
@@ -603,6 +608,15 @@ interface TransferRecord {
   updatedAt: string;
 }
 
+interface DisputeRecord {
+  reference: string;
+  fundingReference: string;
+  orderId: string;
+  amount: bigint;
+  currency: string;
+  status: DisputeStatusCode;
+}
+
 interface JournalEntry {
   operationId: string;
   kind: OperationKind;
@@ -640,9 +654,13 @@ const WEBHOOK_EVENT_TYPES: ReadonlySet<string> = new Set([
   'refund.pending',
   'refund.succeeded',
   'refund.failed',
+  'dispute.opened',
+  'dispute.won',
+  'dispute.lost',
 ]);
 const FUNDING_STATUSES: ReadonlySet<string> = new Set(['REQUIRES_ACTION', 'PROCESSING', 'SUCCEEDED', 'FAILED', 'CANCELED']);
 const TRANSFER_STATUSES: ReadonlySet<string> = new Set(['PENDING', 'SUCCEEDED', 'FAILED']);
+const DISPUTE_STATUSES: ReadonlySet<string> = new Set(['OPEN', 'WON', 'LOST']);
 
 function assertId(value: unknown, field: string): asserts value is string {
   if (typeof value !== 'string' || !ID_PATTERN.test(value)) {
@@ -677,6 +695,7 @@ export class MockPaymentProvider implements PaymentProvider {
   private readonly journal = new Map<string, JournalEntry>();
   private readonly fundings = new Map<string, FundingRecord>();
   private readonly transfers = new Map<string, TransferRecord>();
+  private readonly disputes = new Map<string, DisputeRecord>();
   private readonly events: StoredEvent[] = [];
   private undelivered: StoredEvent[] = [];
   private eventSequence = 0;
@@ -1015,6 +1034,32 @@ export class MockPaymentProvider implements PaymentProvider {
     return this.fundingSnapshot(funding);
   }
 
+  /**
+   * Simulates the buyer's bank disputing a captured payment (a chargeback), possibly long after the order completed.
+   * Emits a signed `dispute.opened` webhook and returns the dispute reference.
+   */
+  async simulateChargeback(fundingReference: string, amount?: bigint): Promise<string> {
+    const funding = this.requireFunding(fundingReference);
+    if (funding.status !== 'SUCCEEDED') throw new ProviderError('INVALID_STATE', 'only a captured funding can be disputed');
+    const disputed = amount ?? funding.amount;
+    assertAtomicAmount(disputed, { max: funding.amount, field: 'amount' });
+    const reference = this.referenceFor('dispute', `${fundingReference}:${this.disputes.size + 1}`);
+    const record: DisputeRecord = { reference, fundingReference, orderId: funding.orderId, amount: disputed, currency: funding.currency, status: 'OPEN' };
+    this.disputes.set(reference, record);
+    this.emitDisputeEvent('dispute.opened', record);
+    return reference;
+  }
+
+  /** Simulates the card network's decision on a dispute. Emits `dispute.won` or `dispute.lost`. */
+  async simulateChargebackOutcome(reference: string, outcome: 'WON' | 'LOST'): Promise<void> {
+    assertId(reference, 'reference');
+    const record = this.disputes.get(reference);
+    if (!record) throw new ProviderError('NOT_FOUND', 'dispute reference not found');
+    if (record.status !== 'OPEN') throw new ProviderError('INVALID_STATE', `dispute is already ${record.status}`);
+    record.status = outcome;
+    this.emitDisputeEvent(outcome === 'WON' ? 'dispute.won' : 'dispute.lost', record);
+  }
+
   async simulateReleaseOutcome(reference: string, status: 'SUCCEEDED' | 'FAILED'): Promise<ReleaseStatus> {
     this.settleTransfer(this.requireTransfer(reference, 'release'), status);
     return this.getReleaseStatus(reference);
@@ -1272,6 +1317,21 @@ export class MockPaymentProvider implements PaymentProvider {
     });
   }
 
+  private emitDisputeEvent(type: WebhookEventType, record: DisputeRecord): void {
+    this.emit(type, {
+      objectType: 'dispute',
+      reference: record.reference,
+      fundingReference: record.fundingReference,
+      // Provider-initiated: there is no platform operation, so the dispute reference stands in for it.
+      operationId: `dispute:${record.reference}`,
+      orderId: record.orderId,
+      status: record.status,
+      amount: record.amount.toString(),
+      currency: record.currency,
+      providerFee: null,
+    });
+  }
+
   private emit(type: WebhookEventType, data: Record<string, string | null>): void {
     this.eventSequence += 1;
     const eventId = `evt_${createHash('sha256').update(`${this.accountId}\n${this.eventNonce}\n${this.eventSequence}`).digest('hex').slice(0, 32)}`;
@@ -1322,10 +1382,10 @@ function parseMockEventBody(rawBody: Uint8Array): VerifiedEvent {
   const mode = str(body.mode, 'mode');
   if (mode !== 'test' && mode !== 'live') throw bad('unknown mode');
   const objectType = str(data.objectType, 'objectType');
-  if (objectType !== 'funding' && objectType !== 'release' && objectType !== 'refund') throw bad('unknown objectType');
+  if (objectType !== 'funding' && objectType !== 'release' && objectType !== 'refund' && objectType !== 'dispute') throw bad('unknown objectType');
   if (!type.startsWith(`${objectType}.`)) throw bad('type/objectType mismatch');
   const status = str(data.status, 'status');
-  const statuses = objectType === 'funding' ? FUNDING_STATUSES : TRANSFER_STATUSES;
+  const statuses = objectType === 'funding' ? FUNDING_STATUSES : objectType === 'dispute' ? DISPUTE_STATUSES : TRANSFER_STATUSES;
   if (!statuses.has(status)) throw bad('unknown status');
   const currency = str(data.currency, 'currency');
   if (!CURRENCY_PATTERN.test(currency)) throw bad('invalid currency');
@@ -1352,7 +1412,7 @@ function parseMockEventBody(rawBody: Uint8Array): VerifiedEvent {
     fundingReference: str(data.fundingReference, 'fundingReference'),
     operationId: str(data.operationId, 'operationId'),
     orderId: str(data.orderId, 'orderId'),
-    status: status as FundingStatusCode | TransferStatusCode,
+    status: status as VerifiedEvent['status'],
     amount,
     currency,
     providerFee,

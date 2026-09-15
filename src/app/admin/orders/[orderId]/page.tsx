@@ -2,7 +2,7 @@ import { notFound } from 'next/navigation';
 import { getOperatorOrder } from '@/modules/admin/queries';
 import { requireActorOrLoginPrompt } from '@/components/require-actor';
 import type { PageProps } from '@/components/page-props';
-import { Badge, date, money, str } from '@/components/ui';
+import { Badge, date, humanize, money, row, rows, str } from '@/components/ui';
 import { AdminCommand, AdminPage, AdminTable, operatorRead } from '@/components/admin/ui';
 import { ProviderOperations, ReviewHolds } from '@/components/admin/queue-tables';
 
@@ -81,6 +81,18 @@ export default async function OperatorOrderPage({ params, searchParams }: PagePr
       { label: 'Owner', render: item => str(item.assigned_to, 'Unassigned') },
       { label: 'Created', render: item => date(item.created_at) },
       { label: 'Resolved', render: item => item.resolved_at ? date(item.resolved_at) : 'Open' },
+    ]} />
+    <AdminTable title="Card payment disputes" items={data.payment_disputes} columns={[
+      { label: 'Provider dispute', render: item => str(item.provider_reference) },
+      { label: 'Amount', render: item => money(item.amount_minor) },
+      { label: 'Status', render: item => <Badge>{str(item.status)}</Badge> },
+      { label: 'Order when opened', render: item => `${humanize(str(item.order_status_at_open))} · settlement ${humanize(str(item.settlement_status_at_open))}` },
+      { label: 'Evidence on record', render: item => {
+        const e = row(item.evidence);
+        return `${rows(e.deliveries).length} deliveries · approved ${e.approved_at ? date(e.approved_at) : 'no'} · completed ${e.completed_at ? date(e.completed_at) : 'no'} · ${str(e.message_count, '0')} messages · ${str(e.buyer_reviews, '0')} buyer reviews`;
+      } },
+      { label: 'Opened', render: item => date(item.opened_at) },
+      { label: 'Closed', render: item => item.closed_at ? date(item.closed_at) : 'Open' },
     ]} />
     <AdminTable title="Files (metadata only)" items={data.files} columns={[
       { label: 'Asset ID', render: item => str(item.id) },

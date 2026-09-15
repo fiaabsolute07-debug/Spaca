@@ -78,13 +78,15 @@ export async function getOperatorOrder(actor: Actor, orderId: string) {
       o.buyer_id,bu.display_name as buyer_name,o.creator_id,cu.display_name as creator_name
     from app.orders o join app.users bu on bu.id=o.buyer_id join app.users cu on cu.id=o.creator_id where o.id=${orderId}`;
   if (!order) return null;
-  const [events, operations, cases, disputes, files, holds] = await Promise.all([
+  const [events, operations, cases, disputes, files, holds, paymentDisputes] = await Promise.all([
     sql<Row[]>`select kind,actor_id,created_at from app.order_events where order_id=${orderId} order by created_at`,
     sql<Row[]>`select operation_id,kind,status,provider_reference,outcome->>'lastError' as last_error,updated_at from app.provider_operations where order_id=${orderId} order by created_at`,
     sql<Row[]>`select id,kind,severity,status,next_action,assigned_to,resolution,created_at from app.reconciliation_cases where order_id=${orderId} order by created_at`,
     sql<Row[]>`select id,status,outcome,refund_amount_minor,assigned_to,created_at,resolved_at from app.disputes where order_id=${orderId} order by created_at`,
     sql<Row[]>`select id,purpose,filename,mime,size_bytes,lifecycle_state,scan_detail,created_at from app.storage_assets where order_id=${orderId} and lifecycle_state <> 'DELETED' order by created_at`,
     sql<Row[]>`select reason,delivery_version,created_at,resolved_at,resolution from app.review_holds where order_id=${orderId} order by created_at`,
+    // ORD-14: card payment disputes with their evidence snapshot (timestamps and counts, no private text).
+    sql<Row[]>`select id,provider_reference,amount_minor,currency,status,order_status_at_open,settlement_status_at_open,evidence,opened_at,closed_at from app.payment_disputes where order_id=${orderId} order by opened_at`,
   ]);
   return {
     order,
@@ -92,6 +94,7 @@ export async function getOperatorOrder(actor: Actor, orderId: string) {
     provider_operations: operations.map((op): Row => ({ ...op, provider_reference: redact(op.provider_reference) })),
     cases,
     disputes,
+    payment_disputes: paymentDisputes.map((d): Row => ({ ...d, provider_reference: redact(d.provider_reference) })),
     files,
     review_holds: holds,
   };
