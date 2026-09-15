@@ -1,6 +1,6 @@
 # Acceptance ledger
 
-As of 2026-09-15, verified baseline **90004fd**, crypto rows from W5-C1/W5-C2, DSC rows from W6-D, CAP rows from W7-CAP (active-order limit), PUBLISH/MOD/SUP-05/06 rows from W8-PUB, CRY rows from W9-ARC. One row per master §18 ID, including unstarted work. Platform fee is enforced at 0 in code; the fee model is undecided. P3 is done-local from W4-A; P4 is in progress by Claude. ACCESS rows from P6-ACCESS, DIGITAL rows (XPL-04..06) from P6-DIGITAL. Counts: **75 PASS, 54 PARTIAL, 6 NOT_RUN, 2 BLOCKED, 5 REMOVED by product decision (142 total)**. 2026-09-15: the order limit and ACCESS scheduling were removed (drizzle/0017).
+As of 2026-09-15, verified baseline **90004fd**, crypto rows from W5-C1/W5-C2, DSC rows from W6-D, CAP rows from W7-CAP (active-order limit), PUBLISH/MOD/SUP-05/06 rows from W8-PUB, CRY rows from W9-ARC. One row per master §18 ID, including unstarted work. Platform fee is enforced at 0 in code; the fee model is undecided. P3 is done-local from W4-A; P4 is in progress by Claude. ACCESS rows from P6-ACCESS, DIGITAL rows (XPL-04..06) from P6-DIGITAL. Counts: **76 PASS, 54 PARTIAL, 5 NOT_RUN, 2 BLOCKED, 5 REMOVED by product decision (142 total)**. 2026-09-15: the order limit and ACCESS scheduling were removed (drizzle/0017).
 
 | Gate | Status | Evidence / remaining work |
 |---|---|---|
@@ -17,7 +17,7 @@ Gate statuses remain consistent with [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md
 
 PASS requires an executed, passed evidence-table test covering the criterion; PARTIAL retains narrower proof or the evidence's own qualification. NOT_RUN means no mapped execution; BLOCKED means a required external credential/provider/environment is absent. Environment describes evidence or the blocked target. `doc-only` is not execution. Pure contracts are `unit`; mock-provider DB tests are `local-db+mock`; `foundry` is Solidity unit/fuzz/invariant tests; `local-evm` is anvil with the compiled contract. No sandbox, testnet or live PASS is permitted. Phase delivery and gate/acceptance completion are separate.
 
-Sources: [P0](evidence/p0-foundation.md), [provider report](CLAUDE_REPORT.md), [DB](evidence/claude-db-integration.md), [W1-A](evidence/claude-W1-A.md), [W1-B](evidence/claude-W1-B.md), [C4](evidence/claude-C4.md), [C1](evidence/codex-C1.md), [C2](evidence/codex-C2.md), [W2-B](evidence/claude-W2-B.md), [W2-S](evidence/claude-W2-S.md), [W3-R](evidence/claude-W3-R.md), [C6](evidence/codex-C6.md), [C6 review](evidence/claude-review-C6.md), [W4-A](evidence/claude-W4-A.md), [C3 review](evidence/claude-review-C3.md), [W6-D](evidence/claude-W6-D.md), [W7-CAP](evidence/claude-W7-CAP.md), [W8-PUB](evidence/claude-W8-PUB.md), [W9-ARC](evidence/claude-W9-ARC.md), [P6-DIGITAL](evidence/claude-P6-DIGITAL.md), [ORD-12](evidence/claude-ORD-12.md), [ORD-14](evidence/claude-ORD-14.md). Later evidence supersedes older status prose. Table labels identify reported tests; commits identify the corresponding implementation, not a fresh C3 execution.
+Sources: [P0](evidence/p0-foundation.md), [provider report](CLAUDE_REPORT.md), [DB](evidence/claude-db-integration.md), [W1-A](evidence/claude-W1-A.md), [W1-B](evidence/claude-W1-B.md), [C4](evidence/claude-C4.md), [C1](evidence/codex-C1.md), [C2](evidence/codex-C2.md), [W2-B](evidence/claude-W2-B.md), [W2-S](evidence/claude-W2-S.md), [W3-R](evidence/claude-W3-R.md), [C6](evidence/codex-C6.md), [C6 review](evidence/claude-review-C6.md), [W4-A](evidence/claude-W4-A.md), [C3 review](evidence/claude-review-C3.md), [W6-D](evidence/claude-W6-D.md), [W7-CAP](evidence/claude-W7-CAP.md), [W8-PUB](evidence/claude-W8-PUB.md), [W9-ARC](evidence/claude-W9-ARC.md), [P6-DIGITAL](evidence/claude-P6-DIGITAL.md), [ORD-12](evidence/claude-ORD-12.md), [ORD-14](evidence/claude-ORD-14.md), [PAY-15](evidence/claude-PAY-15.md). Later evidence supersedes older status prose. Table labels identify reported tests; commits identify the corresponding implementation, not a fresh C3 execution.
 
 | Family | PASS | PARTIAL | NOT_RUN | BLOCKED | REMOVED |
 |---|---:|---:|---:|---:|---:|
@@ -28,7 +28,7 @@ Sources: [P0](evidence/p0-foundation.md), [provider report](CLAUDE_REPORT.md), [
 | CAP | 5 | 3 | 0 | 0 | 4 |
 | ORD | 7 | 9 | 0 | 0 | 0 |
 | REV | 2 | 1 | 0 | 0 | 0 |
-| PAY | 4 | 13 | 2 | 1 | 0 |
+| PAY | 5 | 13 | 1 | 1 | 0 |
 | BNK | 0 | 0 | 3 | 0 | 0 |
 | REQ | 8 | 3 | 0 | 0 | 0 |
 | AUC | 12 | 2 | 0 | 0 | 0 |
@@ -36,7 +36,7 @@ Sources: [P0](evidence/p0-foundation.md), [provider report](CLAUDE_REPORT.md), [
 | DSC | 4 | 2 | 0 | 0 | 0 |
 | XPL | 5 | 0 | 0 | 0 | 1 |
 | OPS | 1 | 6 | 1 | 0 | 0 |
-| **Total** | 75 | 54 | 6 | 2 | 5 |
+| **Total** | 76 | 54 | 5 | 2 | 5 |
 
 | ID | Summary (≤12 words) | Status | Environment | Evidence (file + test name or commit) | Gap/next task |
 |---|---|---|---|---|---|
@@ -114,7 +114,7 @@ Sources: [P0](evidence/p0-foundation.md), [provider report](CLAUDE_REPORT.md), [
 | PAY-12 | Keep unavailable payouts actionable without claiming money arrived | PARTIAL | local-db+mock | [W2B](evidence/claude-W2-B.md): `90678f8`, OPS-04 APPROVED/READY held; DB missing capability test | Provider balance shortage and bank payout capabilities still missing. |
 | PAY-13 | Serialize refunds and releases against the same principal | PARTIAL | unit | [Provider report](CLAUDE_REPORT.md): PAY-13 release/refund principal contract tests | Real DB concurrency, auto-release and external-effect recovery absent. |
 | PAY-14 | Bound cumulative refunds and confirm full refund only from facts | PARTIAL | local-db+mock | [W1B](evidence/claude-W1-B.md): `3564912`, ORD-15 agreed partial refund; DB full-refund replay; provider sums | Multiple cumulative partial refunds under DB concurrency not evidenced. |
-| PAY-15 | Track post-transfer refund deficits without inventing recovered funds | NOT_RUN | doc-only | [Provider report](CLAUDE_REPORT.md): PAY-15 explicitly not modeled | Implement reversal/insufficient-balance recovery and operator case tests. |
+| PAY-15 | Track post-transfer refund deficits without inventing recovered funds | PASS | local-db+mock | [PAY-15](evidence/claude-PAY-15.md): reversal refused for insufficient balance → DEFICIT + HIGH case, no refund/ledger/notice; DB trigger ties recovered money to confirmed reversals and REFUNDED to the provider refund; retry on the same operation recovers; approved platform cover books `platform_loss`; browser run on the admin order page | Mock provider balances; all-or-nothing reversals; capped at the creator's transfer. |
 | PAY-16 | Handle late actual costs under explicit caps without arbitrary debt | NOT_RUN | doc-only | [C2](evidence/codex-C2.md): e762801 cost policy/readiness plan; `e762801` | Before/after-settlement late-cost tests and operator policy absent. |
 | PAY-17 | Validate and roundtrip integer fiat and token amounts exactly | PARTIAL | unit | [Provider report](CLAUDE_REPORT.md): PAY-17 atomic amount validation; formatting tests | DB storage/serialization boundary and complete precision matrix absent. |
 | PAY-18 | Fail release checks if any platform fee becomes nonzero | PASS | unit | [C4](evidence/claude-C4.md): `d05f9a2`, nonzero/missing/dropped fee CHECK failures; release-check 4 PASS | Static/unit guard plus W1-A DB zero constraint; no live acceptance. |

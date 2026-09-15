@@ -104,6 +104,8 @@ export type ProviderErrorCode =
   | 'PAYEE_MISMATCH'
   | 'UNSUPPORTED_CAPABILITY'
   | 'PAYEE_NOT_CAPABLE'
+  /** The payee's balance cannot cover a transfer reversal. Nothing moved. */
+  | 'INSUFFICIENT_BALANCE'
   | 'IDEMPOTENCY_CONFLICT'
   | 'PROVIDER_TIMEOUT'
   | 'PROVIDER_UNAVAILABLE'
@@ -286,6 +288,31 @@ export interface RefundInput {
   amount: AtomicAmount;
   currency: string;
   reason: RefundReason;
+  /**
+   * PLATFORM_BALANCE refunds a charge whose principal was already transferred, from the platform's own balance (an
+   * explicit, operator-approved loss). Omitted: the refund must fit the principal still held for the order.
+   */
+  source?: 'PLATFORM_BALANCE';
+}
+
+/** Pulls money back from a creator transfer (a transfer reversal). Fails without moving money if the payee lacks balance. */
+export interface ReversalInput {
+  releaseReference: string;
+  orderId: string;
+  amount: AtomicAmount;
+  currency: string;
+}
+
+export interface ReversalResult {
+  reference: string;
+  operationId: string;
+  releaseReference: string;
+  fundingReference: string;
+  orderId: string;
+  amount: AtomicAmount;
+  currency: string;
+  status: TransferStatusCode;
+  createdAt: string;
 }
 
 export interface RefundResult {
@@ -305,7 +332,7 @@ export interface RefundStatus extends RefundResult {
   failureCode: string | null;
 }
 
-export type OperationKind = 'funding.create' | 'funding.cancel' | 'release.create' | 'refund.create';
+export type OperationKind = 'funding.create' | 'funding.cancel' | 'release.create' | 'refund.create' | 'reversal.create';
 
 /** Provider-side view of an operation id, used to recover after an UNKNOWN outcome. */
 export interface OperationLookup {
@@ -344,6 +371,7 @@ export type WebhookEventType =
   | 'refund.pending'
   | 'refund.succeeded'
   | 'refund.failed'
+  | 'reversal.succeeded'
   | 'dispute.opened'
   | 'dispute.won'
   | 'dispute.lost';
@@ -354,7 +382,7 @@ export interface VerifiedEvent {
   mode: ProviderMode;
   accountId: string;
   createdAt: string;
-  objectType: 'funding' | 'release' | 'refund' | 'dispute';
+  objectType: 'funding' | 'release' | 'refund' | 'reversal' | 'dispute';
   reference: string;
   /** Funding reference for release/refund/dispute objects; equals `reference` for funding. */
   fundingReference: string;
@@ -377,6 +405,7 @@ export interface PaymentProvider {
   releaseToCreator(input: ReleaseInput, operationId: string): Promise<ReleaseResult>;
   getReleaseStatus(reference: string): Promise<ReleaseStatus>;
   refund(input: RefundInput, operationId: string): Promise<RefundResult>;
+  reverseTransfer(input: ReversalInput, operationId: string): Promise<ReversalResult>;
   getRefundStatus(reference: string): Promise<RefundStatus>;
   /** Recovery after timeout: resolves whether the provider applied an operation id. `null` = never seen. */
   lookupOperation(operationId: string): Promise<OperationLookup | null>;
@@ -558,6 +587,8 @@ export interface MockPaymentProviderOptions {
   maxAtomicAmount?: bigint;
   partialRefund?: boolean;
   payeesWithoutPayouts?: readonly string[];
+  /** Available balance per payee account for transfer reversals; payees not listed can always be reversed. */
+  payeeBalances?: Readonly<Record<string, bigint>>;
   /** 'immediate' settles to SUCCEEDED on creation; 'pending' waits for simulate*Outcome. */
   releaseSettlement?: 'immediate' | 'pending';
   refundSettlement?: 'immediate' | 'pending';
@@ -593,7 +624,9 @@ interface FundingRecord {
 }
 
 interface TransferRecord {
-  kind: 'release' | 'refund';
+  kind: 'release' | 'refund' | 'reversal';
+  /** Refunds only: PLATFORM_BALANCE refunds do not draw on the order's principal. */
+  source: 'PRINCIPAL' | 'PLATFORM_BALANCE';
   reference: string;
   operationId: string;
   fundingReference: string;
@@ -654,6 +687,7 @@ const WEBHOOK_EVENT_TYPES: ReadonlySet<string> = new Set([
   'refund.pending',
   'refund.succeeded',
   'refund.failed',
+  'reversal.succeeded',
   'dispute.opened',
   'dispute.won',
   'dispute.lost',
@@ -687,6 +721,7 @@ export class MockPaymentProvider implements PaymentProvider {
   private readonly maxAmount: bigint;
   private readonly partialRefund: boolean;
   private readonly payeesWithoutPayouts: ReadonlySet<string>;
+  private readonly payeeBalances: Map<string, bigint>;
   private readonly releaseSettlement: 'immediate' | 'pending';
   private readonly refundSettlement: 'immediate' | 'pending';
   private readonly failureRules: { rule: FailureInjectionRule; remaining: number }[];
@@ -721,6 +756,7 @@ export class MockPaymentProvider implements PaymentProvider {
     this.maxAmount = options.maxAtomicAmount ?? DEFAULT_MAX_ATOMIC_AMOUNT;
     this.partialRefund = options.partialRefund ?? true;
     this.payeesWithoutPayouts = new Set(options.payeesWithoutPayouts ?? []);
+    this.payeeBalances = new Map(Object.entries(options.payeeBalances ?? {}));
     this.releaseSettlement = options.releaseSettlement ?? 'immediate';
     this.refundSettlement = options.refundSettlement ?? 'immediate';
     this.failureRules = (options.failureInjection ?? []).map((rule) => ({ rule: { ...rule }, remaining: rule.times ?? 1 }));
@@ -917,6 +953,9 @@ export class MockPaymentProvider implements PaymentProvider {
     if (typeof input.reason !== 'string' || !REFUND_REASONS.has(input.reason)) {
       throw new ProviderError('INVALID_INPUT', 'reason must be a known RefundReason');
     }
+    if (input.source !== undefined && input.source !== 'PLATFORM_BALANCE') {
+      throw new ProviderError('INVALID_INPUT', 'source must be PLATFORM_BALANCE when given');
+    }
 
     const payload = {
       fundingReference: input.fundingReference,
@@ -924,21 +963,23 @@ export class MockPaymentProvider implements PaymentProvider {
       amount: input.amount,
       currency: input.currency,
       reason: input.reason,
+      source: input.source,
     };
     return this.runIdempotent('refund.create', operationId, payload, () => {
       const funding = this.requireFunding(input.fundingReference);
       this.assertTransferAgainst(funding, input.orderId, input.currency, operationId);
-      if (!this.partialRefund && input.amount !== funding.amount) {
+      if (!this.partialRefund && input.amount !== funding.amount && input.source === undefined) {
         throw new ProviderError('UNSUPPORTED_CAPABILITY', 'partial refunds are not supported', { operationId });
       }
-      const refundable = this.availablePrincipal(funding);
+      // A charge can never be refunded beyond what was captured, whichever balance pays for it.
+      const refundable = input.source === 'PLATFORM_BALANCE' ? funding.amount - this.refundedTotal(funding) : this.availablePrincipal(funding);
       if (input.amount > refundable) {
         throw new ProviderError('REFUND_EXCEEDS_REFUNDABLE', 'refund exceeds refundable principal', {
           operationId,
           details: { requested: input.amount.toString(), refundable: refundable.toString() },
         });
       }
-      const record = this.createTransfer('refund', operationId, funding, input.amount, null, input.reason);
+      const record = this.createTransfer('refund', operationId, funding, input.amount, null, input.reason, input.source ?? 'PRINCIPAL');
       const result: RefundResult = {
         reference: record.reference,
         operationId,
@@ -952,6 +993,56 @@ export class MockPaymentProvider implements PaymentProvider {
       };
       return { reference: record.reference, result };
     });
+  }
+
+  async reverseTransfer(input: ReversalInput, operationId: string): Promise<ReversalResult> {
+    assertOperationId(operationId);
+    assertId(input.releaseReference, 'releaseReference');
+    assertId(input.orderId, 'orderId');
+    assertAtomicAmount(input.amount, { max: this.maxAmount });
+    assertCurrencyCode(input.currency);
+    const payload = { releaseReference: input.releaseReference, orderId: input.orderId, amount: input.amount, currency: input.currency };
+    return this.runIdempotent('reversal.create', operationId, payload, () => {
+      const release = this.requireTransfer(input.releaseReference, 'release');
+      if (release.status !== 'SUCCEEDED') throw new ProviderError('INVALID_STATE', `release is ${release.status}`, { operationId });
+      if (release.orderId !== input.orderId) throw new ProviderError('INVALID_INPUT', 'orderId does not match the transfer', { operationId });
+      if (release.currency !== input.currency) throw new ProviderError('CURRENCY_MISMATCH', 'currency does not match the transfer', { operationId });
+      let reversed = 0n;
+      for (const t of this.transfers.values()) if (t.kind === 'reversal' && t.operationId !== operationId && t.fundingReference === release.fundingReference && t.status === 'SUCCEEDED') reversed += t.amount;
+      if (input.amount > release.amount - reversed) {
+        throw new ProviderError('INVALID_AMOUNT', 'reversal exceeds the transferred amount', { operationId });
+      }
+      const payee = release.payeeAccountId as string;
+      const balance = this.payeeBalances.get(payee);
+      if (balance !== undefined && input.amount > balance) {
+        throw new ProviderError('INSUFFICIENT_BALANCE', 'payee balance cannot cover the reversal', {
+          operationId,
+          details: { requested: input.amount.toString(), available: balance.toString() },
+        });
+      }
+      if (balance !== undefined) this.payeeBalances.set(payee, balance - input.amount);
+      const funding = this.requireFunding(release.fundingReference);
+      const record = this.createTransfer('reversal', operationId, funding, input.amount, payee, null);
+      const result: ReversalResult = {
+        reference: record.reference,
+        operationId,
+        releaseReference: release.reference,
+        fundingReference: funding.reference,
+        orderId: funding.orderId,
+        amount: record.amount,
+        currency: record.currency,
+        status: record.status,
+        createdAt: record.createdAt,
+      };
+      return { reference: record.reference, result };
+    });
+  }
+
+  /** Test harness: the payee's available balance changes (for example after new sales). */
+  setPayeeBalance(payeeAccountId: string, amount: bigint): void {
+    assertId(payeeAccountId, 'payeeAccountId');
+    assertAtomicAmount(amount, { allowZero: true, max: null, field: 'amount' });
+    this.payeeBalances.set(payeeAccountId, amount);
   }
 
   async getRefundStatus(reference: string): Promise<RefundStatus> {
@@ -1192,26 +1283,36 @@ export class MockPaymentProvider implements PaymentProvider {
     if (funding.status !== 'SUCCEEDED') return 0n;
     let committed = 0n;
     for (const transfer of this.transfers.values()) {
-      if (transfer.fundingReference === funding.reference && transfer.status !== 'FAILED') {
-        committed += transfer.amount;
-      }
+      if (transfer.fundingReference !== funding.reference || transfer.status === 'FAILED') continue;
+      // A reversal returns transferred principal; a platform-balance refund never drew on it.
+      if (transfer.kind === 'reversal') committed -= transfer.amount;
+      else if (transfer.source === 'PRINCIPAL') committed += transfer.amount;
     }
     return funding.amount - committed;
   }
 
+  private refundedTotal(funding: FundingRecord): bigint {
+    let refunded = 0n;
+    for (const t of this.transfers.values()) if (t.kind === 'refund' && t.fundingReference === funding.reference && t.status !== 'FAILED') refunded += t.amount;
+    return refunded;
+  }
+
   private createTransfer(
-    kind: 'release' | 'refund',
+    kind: 'release' | 'refund' | 'reversal',
     operationId: string,
     funding: FundingRecord,
     amount: bigint,
     payeeAccountId: string | null,
     reason: RefundReason | null,
+    source: 'PRINCIPAL' | 'PLATFORM_BALANCE' = 'PRINCIPAL',
   ): TransferRecord {
     const at = this.timestamp();
-    const settlement = kind === 'release' ? this.releaseSettlement : this.refundSettlement;
+    // Reversals settle when the provider accepts them; releases and refunds follow the configured settlement.
+    const settlement = kind === 'reversal' ? 'immediate' : kind === 'release' ? this.releaseSettlement : this.refundSettlement;
     const record: TransferRecord = {
       kind,
-      reference: this.referenceFor(kind === 'release' ? 'tr' : 're', operationId),
+      source,
+      reference: this.referenceFor(kind === 'release' ? 'tr' : kind === 'refund' ? 're' : 'trr', operationId),
       operationId,
       fundingReference: funding.reference,
       orderId: funding.orderId,
@@ -1382,7 +1483,7 @@ function parseMockEventBody(rawBody: Uint8Array): VerifiedEvent {
   const mode = str(body.mode, 'mode');
   if (mode !== 'test' && mode !== 'live') throw bad('unknown mode');
   const objectType = str(data.objectType, 'objectType');
-  if (objectType !== 'funding' && objectType !== 'release' && objectType !== 'refund' && objectType !== 'dispute') throw bad('unknown objectType');
+  if (!['funding', 'release', 'refund', 'reversal', 'dispute'].includes(objectType)) throw bad('unknown objectType');
   if (!type.startsWith(`${objectType}.`)) throw bad('type/objectType mismatch');
   const status = str(data.status, 'status');
   const statuses = objectType === 'funding' ? FUNDING_STATUSES : objectType === 'dispute' ? DISPUTE_STATUSES : TRANSFER_STATUSES;
@@ -1407,7 +1508,7 @@ function parseMockEventBody(rawBody: Uint8Array): VerifiedEvent {
     mode,
     accountId: str(body.account, 'account'),
     createdAt,
-    objectType,
+    objectType: objectType as VerifiedEvent['objectType'],
     reference: str(data.reference, 'reference'),
     fundingReference: str(data.fundingReference, 'fundingReference'),
     operationId: str(data.operationId, 'operationId'),

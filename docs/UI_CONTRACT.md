@@ -373,3 +373,10 @@ Commands:
 - Notification `payment.disputed {orderRef, stage: OPENED|WON|LOST}` to the creator (in-app by default).
 - Operator order view (`getOperatorOrder`) adds `payment_disputes: [{ id, provider_reference (redacted), amount_minor, currency, status, order_status_at_open, settlement_status_at_open, evidence, opened_at, closed_at }]`. Cases: `PAYMENT_DISPUTE`, `CHARGEBACK_LOST`, `UNMATCHED_PAYMENT_DISPUTE`, `UNEXPECTED_PAYMENT_DISPUTE`, `CONFLICTING_PAYMENT_DISPUTE`.
 - An order with an OPEN or LOST payment dispute is not released to the creator by the settlement job.
+
+## PAY-15 additions (2026-09-15): refunds after release (drizzle/0022)
+
+- Finance/admin commands (reason ≥ 10 characters, audited): `admin_refund_after_release {order_id, amount}` (card orders with settlement RELEASED; amount ≤ what the creator received minus earlier refunds after release; 409 otherwise, or while a card payment dispute is open/lost), `admin_retry_refund_recovery {refund_id}` and `admin_cover_refund_deficit {refund_id}` (both only for DEFICIT; 409 otherwise).
+- Refund states: RECOVERING → REFUND_PENDING → REFUNDED, or DEFICIT (reversal refused) → retry or cover → REFUND_PENDING → REFUNDED. `recovered_minor` comes only from provider-confirmed reversals; `covered_minor` only from an approved cover.
+- `getOperatorOrder(...).post_release_refunds = [{ id, amount_minor, currency, status, recovered_minor, covered_minor, reason, covered_reason, created_at, updated_at }]`.
+- Order events: `REFUND_AFTER_RELEASE_REQUESTED`, `REFUND_DEFICIT_OPENED`, `REFUND_AFTER_RELEASE_RECOVERED`, `REFUND_DEFICIT_COVERED`, `REFUND_AFTER_RELEASE_CONFIRMED`. The order status does not change. Buyer notification `refund.updated` (SUCCEEDED) when the provider confirms. Cases: `REFUND_DEFICIT`, `REFUND_FAILED`, `REVERSAL_AFTER_COVER`, `UNMATCHED_REVERSAL`, `UNEXPECTED_REVERSAL`.

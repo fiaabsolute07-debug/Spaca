@@ -62,6 +62,7 @@ Status values: TODO · IN_PROGRESS · REVIEW · DONE · BLOCKED.
 | P6-DIGITAL | DIGITAL products: versioned releases in a private bucket, NON_EXCLUSIVE/EXCLUSIVE licenses with stock, entitlements instead of workload claims (DB guard + advisory lock), delivery on payment, signed per-buyer downloads with version and count limits, refund before first download, hold expiry and storage cleanup, UI for creator releases and buyer files. Migration 0016. Evidence `docs/evidence/claude-P6-DIGITAL.md` | XPL-04..06 PASS local | P6-ACCESS | DONE |
 | ORD-12 | Deadline extensions by agreement: immutable amendments, counterparty consent, DB guard on the delivery deadline, expiry on status change, Deadline panel. Migration 0020. Evidence `docs/evidence/claude-ORD-12.md` | ORD-12 PASS local | P6-DIGITAL | DONE |
 | ORD-14 | Card payment disputes after completion: signed mock dispute facts, immutable payment_disputes with evidence snapshot, operator cases and creator notice, loss booking without creator debit, release freeze. Migration 0021. Evidence `docs/evidence/claude-ORD-14.md` | ORD-14 PASS local | ORD-12 | DONE |
+| PAY-15 | Refunds after release: mock transfer reversals with balance checks, deficit tracking with DB-enforced recovered amounts, retry and approved platform cover, admin UI. Migration 0022. Evidence `docs/evidence/claude-PAY-15.md` | PAY-15 PASS local | ORD-14 | DONE |
 
 ### Codex (Astra)
 

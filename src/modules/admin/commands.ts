@@ -7,7 +7,7 @@ import { CommandError, expectedVersion, money, orderEvent, text, uuid, type Comm
 import { enqueueNotification } from '@/modules/notifications/enqueue';
 import { approveOrder } from '@/modules/orders/commands';
 import { latestDelivery, termsOf } from '@/modules/orders/lifecycle';
-import { PaymentFlowError, openCase, requestProviderRefund, setCryptoEscrowFrozen } from '@/modules/payments/funding';
+import { PaymentFlowError, coverPostReleaseDeficit, openCase, requestProviderRefund, retryPostReleaseRecovery, setCryptoEscrowFrozen, startPostReleaseRefund } from '@/modules/payments/funding';
 import { quarantineAsset } from '@/modules/storage/service';
 import { recomputeHighestBid } from '@/modules/auctions/commands';
 import { audit, reasonOf, requireRole, type FeatureFlagKey, type PrivilegedRole } from './policy';
@@ -102,6 +102,53 @@ const refundOrder: CommandHandler = async ({ tx, actor, form }) => {
   await orderEvent(tx, orderId, actor.id, 'REFUND_REQUESTED', { operation_id: result.operationId, provider_state: result.state, by: 'finance' });
   await audit(tx, actor, 'order.refund.request', 'order', orderId, reason, before, { ...orderSnapshot(fresh!), operation_id: result.operationId, provider_state: result.state });
   return { path: `/admin/orders/${orderId}`, message: result.state === 'READY' ? 'Refund requested from the provider' : 'Provider did not confirm yet; retry uses the same operation' };
+};
+
+/** Payment-flow refusals are state conflicts for operators (the order or refund is not in a state that allows it). */
+const asConflict = async <T>(run: () => Promise<T>): Promise<T> => {
+  try {
+    return await run();
+  } catch (error) {
+    if (error instanceof PaymentFlowError) throw new CommandError(error.message, error.code === 'UNAVAILABLE' ? 'PAYMENT_UNAVAILABLE' : 'ORDER_STATE_CONFLICT');
+    throw error;
+  }
+};
+
+const RECOVERY_MESSAGE: Record<string, string> = {
+  RECOVERING: 'Reversal accepted by the provider; the buyer refund follows once the reversal is confirmed',
+  DEFICIT: 'The creator transfer could not be reversed. Nothing was refunded or recovered; the deficit is tracked',
+  RETRY: 'The provider did not confirm the reversal; retrying uses the same operation',
+};
+
+/** PAY-15: refund a buyer after the creator was paid. Money comes back through a reversal or an approved platform cover. */
+const refundAfterRelease: CommandHandler = async ({ tx, actor, form }) => {
+  requireRole(actor, ['finance', 'admin'], 'Refunds after release');
+  const reason = reasonOf(form);
+  const orderId = uuid(form, 'order_id');
+  const amount = money(text(form, 'amount'), 'amount');
+  const { refundId, state } = await asConflict(() => startPostReleaseRefund(tx, actor.id, orderId, amount, reason));
+  await audit(tx, actor, 'order.refund_after_release.request', 'post_release_refund', refundId, reason, null, { order_id: orderId, amount_minor: amount.toString(), state });
+  return { path: `/admin/orders/${orderId}`, message: RECOVERY_MESSAGE[state] ?? state, id: refundId };
+};
+
+const retryRefundRecovery: CommandHandler = async ({ tx, actor, form }) => {
+  requireRole(actor, ['finance', 'admin'], 'Refund recovery retries');
+  const reason = reasonOf(form);
+  const refundId = uuid(form, 'refund_id');
+  const state = await asConflict(() => retryPostReleaseRecovery(tx, refundId));
+  const [refund] = await tx<Row[]>`select order_id from app.post_release_refunds where id=${refundId}`;
+  await audit(tx, actor, 'order.refund_after_release.retry', 'post_release_refund', refundId, reason, { status: 'DEFICIT' }, { state });
+  return { path: `/admin/orders/${String(refund!.order_id)}`, message: RECOVERY_MESSAGE[state] ?? state };
+};
+
+const coverRefundDeficit: CommandHandler = async ({ tx, actor, form }) => {
+  requireRole(actor, ['finance', 'admin'], 'Covering a refund deficit');
+  const reason = reasonOf(form);
+  const refundId = uuid(form, 'refund_id');
+  const state = await asConflict(() => coverPostReleaseDeficit(tx, actor.id, refundId, reason));
+  const [refund] = await tx<Row[]>`select order_id,covered_minor from app.post_release_refunds where id=${refundId}`;
+  await audit(tx, actor, 'order.refund_after_release.cover', 'post_release_refund', refundId, reason, { status: 'DEFICIT' }, { state, covered_minor: String(refund!.covered_minor) });
+  return { path: `/admin/orders/${String(refund!.order_id)}`, message: state === 'REFUND_REQUESTED' ? 'Platform cover approved; buyer refund requested from the provider' : `Platform cover approved; the provider did not accept the refund yet (${state})` };
 };
 
 /** Same logical operation only (§14.3 "retry cùng operation"). Lookup-first reconciliation, never a new key. */
@@ -251,6 +298,9 @@ const setFlag: CommandHandler = async ({ tx, actor, form }) => {
 export const adminCommands: Record<string, CommandHandler> = {
   admin_resolve_dispute: resolveDispute,
   admin_refund_order: refundOrder,
+  admin_refund_after_release: refundAfterRelease,
+  admin_retry_refund_recovery: retryRefundRecovery,
+  admin_cover_refund_deficit: coverRefundDeficit,
   admin_retry_operation: retryOperation,
   admin_resolve_case: resolveCase,
   admin_assign_case: assignCase,

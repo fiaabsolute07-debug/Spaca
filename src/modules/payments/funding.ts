@@ -27,6 +27,7 @@ import {
   type ReleaseInput,
   type RefundInput,
   type RefundReason,
+  type ReversalInput,
   type VerifiedEvent,
 } from './providers';
 
@@ -405,7 +406,181 @@ async function applyPaymentEvent(tx: Tx, event: VerifiedEvent): Promise<string> 
   if (event.objectType === 'funding') return applyFundingEvent(tx, event);
   if (event.objectType === 'refund') return applyRefundEvent(tx, event);
   if (event.objectType === 'dispute') return applyDisputeEvent(tx, event);
+  if (event.objectType === 'reversal') return applyReversalEvent(tx, event);
   return applyReleaseEvent(tx, event);
+}
+
+// ---------------------------------------------------------------------------
+// PAY-15: refunds after the creator was paid
+// ---------------------------------------------------------------------------
+
+const AFTER_RELEASE_REFUND_PREFIX = 'refund:after-release:';
+
+/**
+ * Finance starts a refund for an order whose creator transfer already happened. The money first has to come back from
+ * that transfer (a reversal) or be covered by the platform; until then the shortfall is a tracked deficit.
+ */
+export async function startPostReleaseRefund(tx: Tx, requestedBy: string, orderId: string, amount: bigint, reason: string): Promise<{ refundId: string; state: string }> {
+  const [order] = await tx<Row[]>`select * from app.orders where id=${orderId} for update`;
+  if (!order) throw new PaymentFlowError('Order not found', 'INVALID_STATE');
+  if (order.payment_rail === 'CRYPTO' || order.payment_rail === 'POOL') throw new PaymentFlowError('Refunds after release apply to card payments; escrow payouts are settled on chain', 'INVALID_STATE');
+  if (order.settlement_status !== 'RELEASED') throw new PaymentFlowError('The creator has not been paid for this order; use the normal refund or cancellation', 'INVALID_STATE');
+  const [release] = await tx<Row[]>`select provider_reference,outcome from app.provider_operations where order_id=${orderId} and kind='release.create'
+    and status='SUCCEEDED' and outcome->>'releaseStatus'='SUCCEEDED' order by created_at desc limit 1`;
+  if (!release) throw new PaymentFlowError('No provider-confirmed creator transfer exists for this order', 'INVALID_STATE');
+  const [active] = await tx<Row[]>`select id from app.post_release_refunds where order_id=${orderId} and status<>'REFUNDED'`;
+  if (active) throw new PaymentFlowError('A refund after release is already in progress for this order', 'INVALID_STATE');
+  const [dispute] = await tx<Row[]>`select id from app.payment_disputes where order_id=${orderId} and status in ('OPEN','LOST')`;
+  if (dispute) throw new PaymentFlowError('A card payment dispute covers this payment; the card network decides that money', 'INVALID_STATE');
+  const transferred = BigInt(String((release.outcome as Row).netAmount));
+  const [done] = await tx<Row[]>`select coalesce(sum(amount_minor),0)::text as total from app.post_release_refunds where order_id=${orderId}`;
+  if (amount > transferred - BigInt(String(done!.total))) throw new PaymentFlowError('The refund cannot exceed what was transferred to the creator', 'INVALID_STATE');
+
+  const [refund] = await tx<Row[]>`insert into app.post_release_refunds (order_id,amount_minor,currency,reason,requested_by)
+    values (${orderId},${amount.toString()},${String(order.currency)},${reason},${requestedBy}) returning *`;
+  await orderEvent(tx, orderId, 'REFUND_AFTER_RELEASE_REQUESTED', { refund_id: String(refund!.id), amount_minor: amount.toString() });
+  return { refundId: String(refund!.id), state: await attemptTransferReversal(tx, refund!, String(release.provider_reference)) };
+}
+
+/** Finance retries the same reversal operation, for example after the creator's balance recovered. */
+export async function retryPostReleaseRecovery(tx: Tx, refundId: string): Promise<string> {
+  const refund = await lockPostReleaseRefund(tx, refundId);
+  if (refund.status !== 'DEFICIT') throw new PaymentFlowError(`This refund is ${String(refund.status).toLowerCase()}, not waiting on a deficit`, 'INVALID_STATE');
+  const [release] = await tx<Row[]>`select provider_reference from app.provider_operations where order_id=${String(refund.order_id)} and kind='release.create'
+    and status='SUCCEEDED' and outcome->>'releaseStatus'='SUCCEEDED' order by created_at desc limit 1`;
+  return attemptTransferReversal(tx, refund, String(release!.provider_reference));
+}
+
+/** Finance approves paying the buyer from platform funds; the loss is booked, never taken from the creator. */
+export async function coverPostReleaseDeficit(tx: Tx, coveredBy: string, refundId: string, reason: string): Promise<string> {
+  const refund = await lockPostReleaseRefund(tx, refundId);
+  if (refund.status !== 'DEFICIT') throw new PaymentFlowError(`This refund is ${String(refund.status).toLowerCase()}, not waiting on a deficit`, 'INVALID_STATE');
+  const [inflight] = await tx<Row[]>`select id from app.provider_operations where kind='reversal.create' and outcome->>'refundId'=${refundId} and status in ('PENDING','UNKNOWN','SUCCEEDED')`;
+  if (inflight) throw new PaymentFlowError('A reversal for this refund may still move money; resolve it before covering', 'INVALID_STATE');
+  const orderId = String(refund.order_id);
+  const remaining = BigInt(String(refund.amount_minor)) - BigInt(String(refund.recovered_minor));
+  await tx`update app.post_release_refunds set covered_minor=${remaining.toString()},covered_by=${coveredBy},covered_reason=${reason},status='REFUND_PENDING',updated_at=now() where id=${refundId}`;
+  await ledger(tx, orderId, 'PLATFORM_COVERED_REFUND', `cover:${refundId}`, [[`platform_loss:${orderId}`, remaining], [`post_release_refund:${orderId}`, -remaining]], String(refund.currency));
+  await orderEvent(tx, orderId, 'REFUND_DEFICIT_COVERED', { refund_id: refundId, covered_minor: remaining.toString() });
+  return requestAfterReleaseRefund(tx, { ...refund, covered_minor: remaining.toString() });
+}
+
+async function lockPostReleaseRefund(tx: Tx, refundId: string): Promise<Row> {
+  // Order before refund row, the lock order every payment fact uses.
+  const [ref] = await tx<Row[]>`select order_id from app.post_release_refunds where id=${refundId}`;
+  if (!ref) throw new PaymentFlowError('Refund not found', 'INVALID_STATE');
+  await tx`select id from app.orders where id=${String(ref.order_id)} for update`;
+  const [refund] = await tx<Row[]>`select * from app.post_release_refunds where id=${refundId} for update`;
+  return refund!;
+}
+
+async function attemptTransferReversal(tx: Tx, refund: Row, releaseReference: string): Promise<string> {
+  const refundId = String(refund.id);
+  const orderId = String(refund.order_id);
+  const operationId = `reversal:${refundId}`;
+  const input: ReversalInput = { releaseReference, orderId, amount: BigInt(String(refund.amount_minor)), currency: String(refund.currency) };
+  const row = await journal(tx, operationId, orderId, 'reversal.create', computeRequestHash('reversal.create', input));
+  await tx`update app.provider_operations set outcome=coalesce(outcome,'{}'::jsonb)||jsonb_build_object('refundId',${refundId}::text) where id=${String(row.id)}`;
+  try {
+    const reversal = await getMockPaymentProvider().reverseTransfer(input, operationId);
+    await tx`update app.provider_operations set status='SUCCEEDED',provider_reference=${reversal.reference},outcome=coalesce(outcome,'{}'::jsonb)-'lastError',updated_at=now() where id=${String(row.id)}`;
+    await tx`update app.post_release_refunds set status='RECOVERING',updated_at=now() where id=${refundId} and status='DEFICIT'`;
+    // The provider's reversal fact (webhook) records the recovered money and requests the buyer refund.
+    return 'RECOVERING';
+  } catch (error) {
+    const result = await recordCallFailure(tx, operationId, error);
+    if (result.state === 'RETRY') return 'RETRY';
+    const available = isProviderError(error) ? error.details.available ?? null : null;
+    await tx`update app.post_release_refunds set status='DEFICIT',updated_at=now() where id=${refundId} and status in ('RECOVERING','DEFICIT')`;
+    await orderEvent(tx, orderId, 'REFUND_DEFICIT_OPENED', { refund_id: refundId, deficit_minor: String(refund.amount_minor), code: 'code' in result ? result.code : null, available_minor: available });
+    await openCase(tx, orderId, String(row.id), 'REFUND_DEFICIT', 'HIGH', 'The creator transfer could not be reversed. Nothing was recovered or refunded: retry the reversal later or approve a platform cover.');
+    return 'DEFICIT';
+  }
+}
+
+async function applyReversalEvent(tx: Tx, event: VerifiedEvent): Promise<string> {
+  const operation = await matchOperation(tx, 'reversal.create', event);
+  if (!operation?.order_id) {
+    await openCase(tx, null, operation ? String(operation.id) : null, 'UNMATCHED_REVERSAL', 'HIGH', `Match provider reversal ${event.reference} to a refund`);
+    return 'UNMATCHED';
+  }
+  const orderId = String(operation.order_id);
+  const refundId = String((operation.outcome as Row | null)?.refundId ?? '');
+  await tx`select id from app.orders where id=${orderId} for update`;
+  const [refund] = await tx<Row[]>`select * from app.post_release_refunds where id=${refundId}::uuid for update`;
+  if (!refund) {
+    await openCase(tx, orderId, String(operation.id), 'UNMATCHED_REVERSAL', 'HIGH', `Provider reversal ${event.reference} has no refund on record`);
+    return 'UNMATCHED';
+  }
+  if (event.type !== 'reversal.succeeded') return 'REVERSAL_PENDING';
+  if ((operation.outcome as Row | null)?.reversalStatus === 'SUCCEEDED') return 'DUPLICATE_FACT';
+  const currency = String(refund.currency);
+  if (event.amount !== BigInt(String(refund.amount_minor)) || event.currency !== currency) {
+    await openCase(tx, orderId, String(operation.id), 'UNEXPECTED_REVERSAL', 'HIGH', 'Provider reversal does not match the requested refund');
+    return 'UNEXPECTED_REVERSAL';
+  }
+  await tx`update app.provider_operations set outcome=coalesce(outcome,'{}'::jsonb)||jsonb_build_object('reversalStatus','SUCCEEDED','reversedAmount',${event.amount.toString()}::text,'lastEventId',${event.eventId}::text),updated_at=now()
+    where id=${String(operation.id)}`;
+  if (BigInt(String(refund.covered_minor)) > 0n) {
+    // The platform already paid the buyer; the recovered money reduces the platform's loss instead.
+    await ledger(tx, orderId, 'REVERSAL_RECOVERED_AFTER_COVER', `reversal:mock:${event.reference}`, [['provider_clearing:mock', event.amount], [`platform_loss:${orderId}`, -event.amount]], currency);
+    await openCase(tx, orderId, String(operation.id), 'REVERSAL_AFTER_COVER', 'MEDIUM', 'A reversal succeeded after the platform covered this refund; confirm the recovered amount');
+    return 'RECOVERED_AFTER_COVER';
+  }
+  await tx`update app.post_release_refunds set recovered_minor=${event.amount.toString()},status='REFUND_PENDING',updated_at=now() where id=${refundId}::uuid`;
+  await ledger(tx, orderId, 'REVERSAL_RECOVERED', `reversal:mock:${event.reference}`, [['provider_clearing:mock', event.amount], [`post_release_refund:${orderId}`, -event.amount]], currency);
+  await orderEvent(tx, orderId, 'REFUND_AFTER_RELEASE_RECOVERED', { refund_id: refundId, recovered_minor: event.amount.toString(), reference: event.reference, event_id: event.eventId });
+  const state = await requestAfterReleaseRefund(tx, { ...refund, recovered_minor: event.amount.toString() });
+  return `RECOVERED_${state}`;
+}
+
+async function requestAfterReleaseRefund(tx: Tx, refund: Row): Promise<string> {
+  const orderId = String(refund.order_id);
+  const [funding] = await tx<Row[]>`select provider_reference from app.provider_operations where order_id=${orderId} and kind='funding.create' and outcome->>'fundingStatus'='SUCCEEDED' order by created_at desc limit 1`;
+  const operationId = `${AFTER_RELEASE_REFUND_PREFIX}${String(refund.id)}`;
+  const input: RefundInput = {
+    fundingReference: String(funding!.provider_reference), orderId, amount: BigInt(String(refund.amount_minor)), currency: String(refund.currency), reason: 'OPERATOR_RESOLUTION',
+    ...(BigInt(String(refund.covered_minor)) > 0n ? { source: 'PLATFORM_BALANCE' as const } : {}),
+  };
+  const row = await journal(tx, operationId, orderId, 'refund.create', computeRequestHash('refund.create', input));
+  try {
+    const result = await getMockPaymentProvider().refund(input, operationId);
+    await tx`update app.provider_operations set status='SUCCEEDED',provider_reference=${result.reference},outcome=coalesce(outcome,'{}'::jsonb)-'lastError',updated_at=now() where id=${String(row.id)}`;
+    return 'REFUND_REQUESTED';
+  } catch (error) {
+    const result = await recordCallFailure(tx, operationId, error);
+    if (result.state === 'REJECTED') await openCase(tx, orderId, String(row.id), 'REFUND_FAILED', 'HIGH', `Provider rejected the refund after release (${result.code ?? 'unknown'}); the recovered or covered money is still held`);
+    return result.state === 'RETRY' ? 'REFUND_RETRY' : 'REFUND_REJECTED';
+  }
+}
+
+async function applyPostReleaseRefundEvent(tx: Tx, event: VerifiedEvent, operation: Row): Promise<string> {
+  const orderId = String(operation.order_id);
+  const refundId = String(operation.operation_id).slice(AFTER_RELEASE_REFUND_PREFIX.length);
+  await tx`select id from app.orders where id=${orderId} for update`;
+  const [refund] = await tx<Row[]>`select * from app.post_release_refunds where id=${refundId}::uuid for update`;
+  if (!refund) return 'UNMATCHED';
+  if (event.type === 'refund.succeeded') {
+    if (refund.status === 'REFUNDED') return 'DUPLICATE_FACT';
+    if (event.amount !== BigInt(String(refund.amount_minor)) || event.currency !== String(refund.currency) || refund.status !== 'REFUND_PENDING') {
+      await openCase(tx, orderId, String(operation.id), 'UNEXPECTED_REFUND', 'HIGH', 'Provider refund does not match the refund after release');
+      return 'UNEXPECTED_REFUND';
+    }
+    await tx`update app.post_release_refunds set status='REFUNDED',updated_at=now() where id=${refundId}::uuid`;
+    await ledger(tx, orderId, 'REFUND_SETTLED', `refund:mock:${event.reference}`, [[`post_release_refund:${orderId}`, event.amount], ['provider_clearing:mock', -event.amount]], String(refund.currency));
+    await orderEvent(tx, orderId, 'REFUND_AFTER_RELEASE_CONFIRMED', { refund_id: refundId, amount_minor: event.amount.toString(), reference: event.reference, event_id: event.eventId });
+    const [order] = await tx<Row[]>`select buyer_id from app.orders where id=${orderId}`;
+    await outbox(tx, orderId, `notify:refund.updated:SUCCEEDED:after-release:${refundId}`, {
+      templateId: 'refund.updated', recipientId: String(order!.buyer_id), params: { orderRef: orderId, amount: event.amount.toString(), currency: String(refund.currency), refundStatus: 'SUCCEEDED' },
+    });
+    return 'REFUNDED_AFTER_RELEASE';
+  }
+  if (event.type === 'refund.failed') {
+    await openCase(tx, orderId, String(operation.id), 'REFUND_FAILED', 'HIGH', 'Provider refund after release failed; the recovered or covered money is still held');
+    await orderEvent(tx, orderId, 'REFUND_FAILED', { refund_id: refundId, reference: event.reference, event_id: event.eventId });
+    return 'REFUND_FAILED';
+  }
+  return 'REFUND_PENDING';
 }
 
 /**
@@ -877,6 +1052,7 @@ async function applyRefundEvent(tx: Tx, event: VerifiedEvent): Promise<string> {
   const orderId = String(operation.order_id);
   await tx`update app.provider_operations set outcome=coalesce(outcome,'{}'::jsonb)||jsonb_build_object('refundStatus',${event.status}::text,'lastEventId',${event.eventId}::text),updated_at=now()
     where id=${String(operation.id)} and coalesce(outcome->>'refundStatus','')<>'SUCCEEDED'`;
+  if (String(operation.operation_id).startsWith(AFTER_RELEASE_REFUND_PREFIX)) return applyPostReleaseRefundEvent(tx, event, operation);
   const [order] = await tx<Row[]>`select * from app.orders where id=${orderId} for update`;
   if (!order) return 'UNMATCHED';
   const amount = BigInt(String(order.amount_minor));

@@ -2,7 +2,7 @@ import { notFound } from 'next/navigation';
 import { getOperatorOrder } from '@/modules/admin/queries';
 import { requireActorOrLoginPrompt } from '@/components/require-actor';
 import type { PageProps } from '@/components/page-props';
-import { Badge, date, humanize, money, row, rows, str } from '@/components/ui';
+import { Badge, Field, date, humanize, money, row, rows, str } from '@/components/ui';
 import { AdminCommand, AdminPage, AdminTable, operatorRead } from '@/components/admin/ui';
 import { ProviderOperations, ReviewHolds } from '@/components/admin/queue-tables';
 
@@ -59,6 +59,27 @@ export default async function OperatorOrderPage({ params, searchParams }: PagePr
       <AdminCommand command="admin_refund_order" route={route}
         values={{ order_id: str(order.id) }} label="Request refund with provider" />
     </section>
+    {str(order.settlement_status) === 'RELEASED' && <section className="panel">
+      <h2>Refund after the creator was paid</h2>
+      <p>Finance or admin only. The amount is first reversed from the creator transfer. If their balance cannot cover it, nothing is refunded
+        and the deficit stays open until a retry succeeds or you approve a platform cover.</p>
+      {data.post_release_refunds.some((r) => str(r.status) !== 'REFUNDED') ? null : <AdminCommand command="admin_refund_after_release" route={route}
+        values={{ order_id: str(order.id) }} label="Refund after release">
+        <Field name="amount" label="Amount (USD, up to what the creator received)" required placeholder="0.00" />
+      </AdminCommand>}
+    </section>}
+    <AdminTable title="Refunds after release" items={data.post_release_refunds} columns={[
+      { label: 'Refund', render: item => <>{money(item.amount_minor)}<small>{str(item.id)}</small></> },
+      { label: 'Status', render: item => <Badge>{str(item.status)}</Badge> },
+      { label: 'Recovered from creator', render: item => money(item.recovered_minor) },
+      { label: 'Covered by platform', render: item => money(item.covered_minor) },
+      { label: 'Reason', render: item => str(item.covered_reason, str(item.reason)) },
+      { label: 'Next step', render: item => str(item.status) === 'DEFICIT' ? <div className="inline-actions">
+        <AdminCommand command="admin_retry_refund_recovery" route={route} values={{ refund_id: str(item.id) }} label="Retry reversal" />
+        <AdminCommand command="admin_cover_refund_deficit" route={route} values={{ refund_id: str(item.id) }} label="Cover from platform funds" />
+      </div> : str(item.status) === 'REFUNDED' ? 'Done' : 'Waiting for the provider' },
+      { label: 'Updated', render: item => date(item.updated_at) },
+    ]} />
     <AdminTable title="Order events" items={data.events} columns={[
       { label: 'Event', render: item => str(item.kind) },
       { label: 'Actor', render: item => str(item.actor_id, 'System') },

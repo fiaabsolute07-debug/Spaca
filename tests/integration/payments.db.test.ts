@@ -417,3 +417,104 @@ describe.skipIf(!RUN_DB)('ORD-14 — card payment disputes after completion', ()
     expect(await count(sql`select count(*)::int as count from app.reconciliation_cases where order_id=${orderId} and kind='UNMATCHED_PAYMENT_DISPUTE'`)).toBe(1);
   });
 });
+
+describe.skipIf(!RUN_DB)('PAY-15 — refunds after the creator was paid', () => {
+  const reason = 'Buyer received duplicate charge; finance approved a refund.';
+  const payeeOf = (userId: string) => `acct_mock_${userId.replaceAll('-', '')}`;
+  const refundOp = (refundId: string) => sql`select status,outcome from app.provider_operations where operation_id=${`refund:after-release:${refundId}`}`;
+
+  async function financeUser(): Promise<TestUser> {
+    const { createSession } = await import('@/lib/auth');
+    const [user] = await sql<{ id: string }[]>`insert into app.users (email,display_name,roles,is_test,status) values (${`it-finance-${key('f')}@example.test`},'IT finance',${[]},true,'ACTIVE') returning id`;
+    await sql`insert into app.user_roles (user_id,role,granted_reason) values (${user!.id},'finance','Integration test operator grant')`;
+    return { id: user!.id, email: '', token: await createSession(user!.id) };
+  }
+
+  async function completedOrder(label: string, creatorBalance: bigint) {
+    const setup = await bookedOrder(label);
+    expect((await pay(setup.buyer, setup.orderId)).status).toBe(200);
+    const step = (actor: TestUser, fields: Record<string, string>) => command(actor, { idempotency_key: key('step'), order_id: setup.orderId, ...fields });
+    expect((await step(setup.creator, { command: 'start' })).status).toBe(200);
+    expect((await step(setup.creator, { command: 'deliver', body: 'Final launch thread with sources and the CTA.' })).status).toBe(200);
+    expect((await step(setup.buyer, { command: 'approve', delivery_version: '1' })).status).toBe(200);
+    const { releaseReadySettlements } = await import('@/modules/jobs');
+    await releaseReadySettlements({ orderId: setup.orderId });
+    expect(await orderRow(setup.orderId)).toMatchObject({ status: 'COMPLETED', settlement_status: 'RELEASED' });
+    // What the creator still has in their provider balance after spending part of the payout.
+    provider.setPayeeBalance(payeeOf(setup.creator.id), creatorBalance);
+    return setup;
+  }
+
+  const ledgerOf = async (orderId: string) => Object.fromEntries((await sql`select e.account,sum(e.amount_minor)::text as total from app.ledger_entries e join app.ledger_transactions t on t.id=e.transaction_id
+    where t.order_id=${orderId} group by e.account`).map((r) => [String(r.account).replace(orderId, '<order>'), r.total]));
+
+  it('PAY-15: a reversal the creator balance cannot cover leaves an open deficit, nothing recovered and nothing refunded, until a retry succeeds', async () => {
+    const { buyer, creator, orderId } = await completedOrder('pay15', 1000n);
+    const finance = await financeUser();
+    const refund = (actor: TestUser, amount: string) => command(actor, { command: 'admin_refund_after_release', idempotency_key: key('rar'), order_id: orderId, amount, reason });
+    expect((await refund(buyer, '400')).status).toBe(403);
+    expect((await refund(finance, '651')).status).toBe(409);
+
+    const started = await refund(finance, '400');
+    expect(started.status, JSON.stringify(started.body)).toBe(200);
+    const refundId = String(started.body.id);
+    expect((await sql`select status,recovered_minor,covered_minor from app.post_release_refunds where id=${refundId}`)[0]).toEqual({ status: 'DEFICIT', recovered_minor: '0', covered_minor: '0' });
+    expect(await count(sql`select count(*)::int as count from app.reconciliation_cases where order_id=${orderId} and kind='REFUND_DEFICIT' and status='OPEN'`)).toBe(1);
+    expect(await refundOp(refundId)).toHaveLength(0);
+    expect(await count(sql`select count(*)::int as count from app.outbox where semantic_key like ${`notify:refund.updated:%${refundId}`}`)).toBe(0);
+    expect((await ledgerOf(orderId))['post_release_refund:<order>']).toBeUndefined();
+    expect((await refund(finance, '100')).status).toBe(409);
+
+    // Recovery cannot be claimed without the provider's confirmed reversal, and a refund cannot be claimed without the provider's refund.
+    await expect(sql`update app.post_release_refunds set recovered_minor=40000,status='REFUND_PENDING' where id=${refundId}`).rejects.toThrow(/not backed by confirmed reversals/);
+    await expect(sql`update app.post_release_refunds set covered_minor=40000,covered_by=${finance.id},covered_reason=${reason},status='REFUNDED' where id=${refundId}`).rejects.toThrow(/provider-confirmed buyer refund/);
+
+    // The creator's balance recovers; the same reversal operation now moves the money, then the buyer refund follows.
+    provider.setPayeeBalance(payeeOf(creator.id), 50000n);
+    const retried = await command(finance, { command: 'admin_retry_refund_recovery', idempotency_key: key('rr'), refund_id: refundId, reason });
+    expect(retried.status, JSON.stringify(retried.body)).toBe(200);
+    await funding.deliverPendingMockWebhooks();
+    expect((await sql`select status,recovered_minor,covered_minor from app.post_release_refunds where id=${refundId}`)[0]).toEqual({ status: 'REFUNDED', recovered_minor: '40000', covered_minor: '0' });
+    expect(await count(sql`select count(*)::int as count from app.provider_operations where operation_id=${`reversal:${refundId}`}`)).toBe(1);
+    expect(await ledgerOf(orderId)).toMatchObject({ 'post_release_refund:<order>': '0', 'order_principal:<order>': '0' });
+    expect((await ledgerBalance(orderId))[0]).toMatchObject({ total: '0' });
+    expect(await count(sql`select count(*)::int as count from app.outbox where semantic_key=${`notify:refund.updated:SUCCEEDED:after-release:${refundId}`}`)).toBe(1);
+    expect((await orderRow(orderId)).status).toBe('COMPLETED');
+    expect(await count(sql`select count(*)::int as count from app.audit_log where entity_id=${refundId} and action like 'order.refund_after_release.%'`)).toBe(2);
+  });
+
+  it('PAY-15: finance can instead cover the deficit from platform funds, booked as a platform loss and never taken from the creator', async () => {
+    const { orderId } = await completedOrder('pay15-cover', 0n);
+    const finance = await financeUser();
+    const started = await command(finance, { command: 'admin_refund_after_release', idempotency_key: key('rar'), order_id: orderId, amount: '650', reason });
+    const refundId = String(started.body.id);
+    expect((await sql`select status from app.post_release_refunds where id=${refundId}`)[0]!.status).toBe('DEFICIT');
+
+    const covered = await command(finance, { command: 'admin_cover_refund_deficit', idempotency_key: key('cv'), refund_id: refundId, reason: 'Creator unreachable; platform refunds the buyer now.' });
+    expect(covered.status, JSON.stringify(covered.body)).toBe(200);
+    await funding.deliverPendingMockWebhooks();
+    expect((await sql`select status,recovered_minor,covered_minor,covered_by from app.post_release_refunds where id=${refundId}`)[0]).toEqual({ status: 'REFUNDED', recovered_minor: '0', covered_minor: '65000', covered_by: finance.id });
+    expect(await ledgerOf(orderId)).toMatchObject({ 'platform_loss:<order>': '65000', 'post_release_refund:<order>': '0' });
+    expect((await ledgerBalance(orderId))[0]).toMatchObject({ total: '0' });
+    expect((await provider.getFundingStatus(await (async () => String((await sql`select provider_reference from app.provider_operations where order_id=${orderId} and kind='funding.create'`)[0]!.provider_reference))())).refundedSucceeded).toBe(65000n);
+    expect((await refundOp(refundId))[0]!.status).toBe('SUCCEEDED');
+
+    expect((await command(finance, { command: 'admin_retry_refund_recovery', idempotency_key: key('rr'), refund_id: refundId, reason })).status).toBe(409);
+    expect((await command(finance, { command: 'admin_cover_refund_deficit', idempotency_key: key('cv'), refund_id: refundId, reason })).status).toBe(409);
+    await expect(sql`update app.post_release_refunds set covered_reason='rewritten later by someone' where id=${refundId}`).rejects.toThrow(/already refunded/);
+  });
+
+  it('PAY-15: orders not yet paid out, or under a card dispute, do not take this path', async () => {
+    const finance = await financeUser();
+    const { buyer, orderId } = await bookedOrder('pay15-unpaid');
+    expect((await pay(buyer, orderId)).status).toBe(200);
+    expect((await command(finance, { command: 'admin_refund_after_release', idempotency_key: key('rar'), order_id: orderId, amount: '100', reason })).status).toBe(409);
+
+    const done = await completedOrder('pay15-disputed', 100000n);
+    await provider.simulateChargeback(String((await sql`select provider_reference from app.provider_operations where order_id=${done.orderId} and kind='funding.create'`)[0]!.provider_reference));
+    await funding.deliverPendingMockWebhooks();
+    const refused = await command(finance, { command: 'admin_refund_after_release', idempotency_key: key('rar'), order_id: done.orderId, amount: '100', reason });
+    expect(refused.status).toBe(409);
+    expect(String(refused.body.error)).toMatch(/card payment dispute/);
+  });
+});
