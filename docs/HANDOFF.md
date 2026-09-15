@@ -1,34 +1,31 @@
 # HANDOFF
 
-Read `docs/MASTER_PROMPT.md`, `docs/BUILD_STATUS.md`, `docs/COLLABORATION.md`, `docs/ACCEPTANCE.md` and AGENTS.md before changes. Continue this working tree without resets or overwriting another engineer. Platform fee always **0%**.
+Start with [NEXT_SESSION.md](NEXT_SESSION.md) (Vietnamese; full rules, environment and state). Then read [MASTER_PROMPT.md](MASTER_PROMPT.md), [BUILD_STATUS.md](BUILD_STATUS.md), [ACCEPTANCE.md](ACCEPTANCE.md) and [UI_CONTRACT.md](UI_CONTRACT.md).
 
-As of 2026-09-14: **Claude coordinates, integrates, runs DB suites/browser checks and commits. Codex is dispatched via `codex exec`**, implements assigned paths and writes evidence without committing. AGENTS.md now matches this model. Claude is currently editing P4 crypto, payments, migrations, integration tests, API and order pages; C3c/C5 stay in their assigned docs and E2E paths.
+As of 2026-09-15 (commit `d898592`): Claude builds UI and backend and is the only committer; do not run `codex exec`. The platform fee is enforced at 0 and the model is undecided. Never write "0% fee" in marketing copy.
 
-Verified baseline **94792af**: **206/206 tests, 20 files with DB suites enabled; tsc exit 0** ([W5-C1](evidence/claude-W5-C1.md)); Playwright E2E **14/14** ([C5 review](evidence/claude-review-C5.md)). The count includes unit/provider tests. PostgreSQL startup/migrations/seed and DB integration work in Claude's shell. Codex cannot start PostgreSQL because the managed runner rejects IPC; do not describe this as a global database blocker or infer current process health from historical tests.
+## Rules that must hold
+- **Permission first:** no real money, mainnet, public deploys (including the Vercel waitlist), or outbound email or messages without the user's permission for that action.
+- **Secrets:** never read `.env*` or `contracts/.env.local`, and never print secrets. Sign in locally with `POST /api/dev/session`.
+- **Git:** `git add` explicit paths only, never `-A`. No reset, rebase or stash. Run `git diff --cached --stat` before committing. Do not commit `next-env.d.ts`.
+- **Honest results:** keep mock / LOCAL devnet / TESTNET / live labels separate. No PASS without a real run. Never mark settlements RELEASED by hand.
 
-| Phase | Handoff status |
-|---|---|
-| P0 / P1A | done-local |
-| P1B | done-local with MockPaymentProvider; sandbox/live payments BLOCKED |
-| P1C | docs done; staging/live BLOCKED |
-| P2 | done-local; REQ-11 PARTIAL (comparison sort/filter missing) |
-| P3 | done-local; AUC-01..14 PASS local-db+mock; payout readiness, metrics and E2E execution remain |
-| P4 | IN_PROGRESS — Claude; no results inferred from concurrent files |
-| P5 | done-local backend (W6-D); discovery UI and browser E2E pending |
-| P6 | TODO |
+## State
+Acceptance: 116 PASS / 19 PARTIAL / 0 NOT_RUN / 2 BLOCKED / 5 REMOVED. Results and gaps are in [BUILD_STATUS.md](BUILD_STATUS.md) and [the audit](evidence/claude-AUDIT-2026-09-15.md).
 
-Local adapters are `MockPaymentProvider`, `LocalStorageProvider` (signature checking, no antivirus, no Supabase adapter), in-app notifications/local email sink and in-process jobs through `POST /api/dev/jobs`. `pnpm jobs:dev` polls that route; no Inngest integration exists. `sandbox_pay` returns 403. Fund only from verified provider facts, including the existing reconciliation fetch path. Mock provider history disappears when Next restarts; provider recovery must use the original process and operation ID.
+## User decisions to keep
+- Separate buyer and creator accounts.
+- No order limit (pause only), and no ACCESS scheduling.
+- Auctions paused.
+- The profile is its own area, opened from the header avatar.
+- No tab strip above Explore, Campaigns and Auctions.
+- Visual choice cards instead of dropdowns, and color only on key elements.
 
-For Claude's local shell, existing scripts are `pnpm db:start`, `pnpm db:migrate`, `pnpm db:seed`, `pnpm db:test:prepare`, `pnpm dev`, `pnpm jobs:dev`, `pnpm typecheck`, `pnpm test:integration` and `pnpm release:check`. Run fixtures only against allowlisted local/test targets. Full recorded suite command: `RUN_DB_INTEGRATION=1 ./node_modules/.bin/vitest run`. C3c/C5 did not run DB suites, jobs or the app; exact static verification is in [C5 evidence](evidence/codex-C5.md). `test:critical` currently omits the newer order/admin/storage/request suites; use the full suite for integration until Claude expands it. `test:e2e`, `test:contracts`, `smoke:staging`, `reconcile:dry-run` and configured lint tooling are NOT IMPLEMENTED as package scripts.
-
-Next work for Claude:
-
-1. Review and integrate [C3c evidence](evidence/codex-C3c.md) and [C5 evidence](evidence/codex-C5.md), then update the collaboration board and commit only assigned paths. The ledger now totals **62 PASS, 58 PARTIAL, 20 NOT_RUN, 2 BLOCKED** across 142 rows.
-2. P4 W5-C1 (devnet checkout) and W5-C2 (campaign pools) and P5 W6-D (discovery backend, [evidence](evidence/claude-W6-D.md)) are done locally. Next is W7 = P6 (XPL-01..06). Testnet and contracts stay BLOCKED/NOT_RUN. P3 local evidence is `90004fd`; implement seller payout readiness and P3-07 bidder/uplift metrics as follow-ups.
-3. The capacity lock contract is aggregate → creator workload → order ([W7-CAP](evidence/claude-W7-CAP.md); the earlier pool → bucket → order review is in [C3 review](evidence/claude-review-C3.md)). Add real hire-funding/expiry and cancellation/auto-release races; close ORD-12 deadline amendments and ORD-14 chargeback gaps.
-4. Add package script `"test:e2e": "playwright test"`. Start Next dev on 3100 against a seeded local mock DB with system Chrome, then run C5 and record results/screenshots. Authoring and discovery do not close OPS-07/G3; keyboard/long-text, multi-hire completion, auction close/reconnect and populated case journeys need further coverage. Add P2 comparison controls/analytics/export follow-ups.
-5. Before staging: implement real provider/storage adapters and remote operation boundaries, deployed scheduler/alerts, safe reconcile dry-run, restore/rollback rehearsal and Supabase auth/storage tests. Credentials alone do not implement these integrations.
-
-Operational truth: workload counters derive from claims; approval, cancellation or refund frees the creator's place exactly once (W7-CAP). Orders become COMPLETED only after confirmed release, with ReviewHold stored separately while DELIVERED. Request budget reservations commit on funding, release on unpaid lapse/full refund; partial refunds retain commitments and pre-0007 requests need a backfill decision. Privileged roles come from active `app.user_roles` grants; `/admin` actions require reasons and append-only audits. See [runbooks](runbooks/README.md) for actual pages, commands and the ten-job local inventory, including verified `close_due_auctions` (AUC-05/06).
-
-G0–G4 remain PARTIAL; G5–G7 BLOCKED. No external email, deployment or live transaction is authorized by this handoff. Provider/identity/policy/reserve/infrastructure/launch decisions are in [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md).
+## Blocked on the user or outside
+- Arc testnet faucet funds for deployer `0x7758186cD9FE0156fd5F631e5c944445D9c1e97F`.
+- Supabase/staging (SEC-03).
+- A real payment and payout provider (PAY-19).
+- The fee model decision.
+- Legal review.
+- An independent contract audit before mainnet.
+- Rotating the Resend and Supabase service_role keys that were pasted in chat earlier.

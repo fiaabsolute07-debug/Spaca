@@ -1,30 +1,48 @@
 # BUILD_STATUS
 
-Updated 2026-09-14. Verified baseline: **94792af** (W5-C1) plus the C5 E2E run. Platform fee is always **0%**, with integer money and database fee constraints. Claude coordinates and integrates; Codex is the second engineer dispatched through `codex exec`.
+Updated 2026-09-15, end of session. Latest commit `d898592`. Claude builds UI and backend and is the only committer. The platform fee is enforced at 0 in code; the fee model is undecided.
 
-| Phase | Official status | Scope / limits |
+Everything below is LOCAL: embedded PostgreSQL, mock payment provider, local storage, local devnet and anvil. Nothing is deployed, and no testnet or live money is involved.
+
+| Phase | Status | Scope / limits |
 |---|---|---|
-| P0 | done-local | Foundation, local auth/fixtures, PostgreSQL, contracts and operational scripts; clean-clone/frozen CI still unverified. |
-| P1A | done-local | Versioned supply, immutable sold terms, per-creator active-order limit with pause (W7-CAP); remaining per-ID gaps in the ledger. |
-| P1B | done-local with mock provider | Funding, lifecycle, delivery/revision, auto-accept, mutual cancellation, reviews and operator refunds; sandbox/live payments **BLOCKED**. |
-| P1C | docs done | Readiness, runbooks, staging/restore/rollback plans; staging/live **BLOCKED**. Local operator console implemented. |
-| P2 | done-local | Versioned private quotes, budget reservations, multi-hire and campaign view; **REQ-11 PARTIAL** (no comparison sort/filter). |
-| P3 | done-local | W4-A AUC-01..14 PASS local-db+mock; payout readiness, P3-07 metrics and E2E execution gaps remain. |
-| P4 | IN_PROGRESS (Claude) | Crypto/rewards; concurrent implementation has no new verification claim here. |
-| P5 | done-local backend | W6-D search/filters/cursors, creators, ending soon, trending-v1 with COLD_START, eligible views, sitemap/robots/noindex, local DSC-06 benchmark; DSC-01/03/04/06 PASS, DSC-02/05 PARTIAL until the discovery UI exists. |
-| P6 | TODO | Cross-platform/PUBLISH/ACCESS/DIGITAL and bank funding. |
+| P0 | done-local | Foundation, local auth and fixtures, PostgreSQL, scripts. Clean-clone and frozen CI not run (FND-01/02 PARTIAL). No ESLint config, because typescript-eslint does not support TypeScript 7. |
+| P1A | done-local | Versioned supply, immutable sold terms, pause (order limit removed 2026-09-15), profile photo, separate buyer and creator accounts. |
+| P1B | done-local, mock provider | Funding, lifecycle, delivery and revision, auto-accept, cancellation, deadline amendments, card disputes, refunds after release, late costs, order receipt. Sandbox/live payments BLOCKED. |
+| P1C | docs + local rehearsal | Readiness docs, runbooks, operator console, local restore rehearsal. Staging/live BLOCKED. |
+| P2 | done-local | Requests with private quotes, budget holds, multi-hire, campaign images, buyer comparison with sort, filter and CSV. |
+| P3 | done-local, paused | Auctions work locally; further auction work is paused by the user. AUC-01 payout readiness PARTIAL. |
+| P4 | LOCAL devnet + anvil | Crypto checkout, campaign pools, `SpacaEscrow` (model A) with payout outbox. Arc testnet deployment BLOCKED on faucet funds. |
+| P5 | done-local | Discovery backend, Explore master-detail UI, benchmark. |
+| P6 | done-local | PUBLISH with linked accounts and reports, DIGITAL products, bank transfer funding (mock provider). ACCESS scheduling removed by product decision. |
 
-Latest verified results: **222/222 tests across 22 files with DB suites enabled**, **tsc exit 0**, with W6-D on `26d6680` ([W6-D](evidence/claude-W6-D.md)); earlier 214/214 at `26d6680` ([W5-C2](evidence/claude-W5-C2.md)) and 206/206 at `94792af` ([W5-C1](evidence/claude-W5-C1.md)); **Playwright E2E 14/14 passed** in system Chrome against Next dev and the seeded dev DB, with 18 screenshots at 360/768/1440 ([C5 review](evidence/claude-review-C5.md)). Earlier: 195/195 at `90004fd` ([W4-A](evidence/claude-W4-A.md)). The full run includes unit/provider tests, not 195 exclusively DB tests. C3c maps that evidence; C5 authors Playwright journeys and runs typecheck/test discovery only ([C3c](evidence/codex-C3c.md), [C5](evidence/codex-C5.md)). Browser evidence covers W1-B booking through completion, W2-S private file delivery/download and 360px layout, W3-R request hire/funding, C6 role isolation/360px flag form, and W4-A two-persona outbid polling within ≤6.5 s. C5 browser execution, full viewport and keyboard checks remain NOT_RUN.
+[Acceptance](ACCEPTANCE.md): **116 PASS, 19 PARTIAL, 0 NOT_RUN, 2 BLOCKED, 5 REMOVED (142 rows)**. Gates G0–G4 PARTIAL; G5–G7 BLOCKED.
 
-PostgreSQL runs and DB suites pass in **Claude's shell**. The Codex managed runner cannot start PostgreSQL because its IPC permissions reject bootstrap shared memory; this is a runner limitation, not a global product/database blocker. Claude runs DB suites and browser checks and makes scoped commits. Codex writes only dispatched paths and evidence. Current assignments are in [COLLABORATION.md](COLLABORATION.md). AGENTS.md matches that coordination model.
+## Latest verified results (2026-09-15, tree of `d898592`)
+- `tsc --noEmit`: exit 0.
+- `RUN_DB_INTEGRATION=1 vitest run`: 316 passed, 3 skipped (38 files). The 3 skipped are the anvil suite, which needs `RUN_ANVIL=1`.
+- `RUN_ANVIL=1` `escrow.anvil.test.ts`: 3/3. `forge test`: 17/17.
+- Release check: every item PASS. Discovery benchmark: every latency and plan check passes. Secret scan: no findings.
+- Full Playwright suite: 37/37 in 7.1 minutes.
+- Restore rehearsal: obligations conserved, 8 invariants with 0 violations, webhook replay a no-op ([audit](evidence/claude-AUDIT-2026-09-15.md)).
 
-Implemented local system:
+## UI state (2026-09-15)
+- Signed-in pages share one workspace sidebar with back links. The profile is its own area, opened from the header avatar.
+- Header links mark Explore, Campaigns and Auctions; a tab strip was removed at the user's request.
+- Color is used only on primary actions, the current location and campaign categories.
+- Post a brief uses category cards and chips.
 
-- `MockPaymentProvider`: in-memory provider state with durable application journals/inbox/ledger; local funding through verified mock webhooks or provider-API reconciliation facts. `sandbox_pay` is rejected (403), never a usable funding command. Provider calls still occur inside DB transactions; split journal commit/remote effects before a real adapter. Restarting Next loses mock provider history.
-- Capacity counters live on `app.creator_workloads`, derived by triggers from `app.workload_claims`: HELD/EXPIRY_RECONCILING are held, ACTIVE is active; the claim insert trigger refuses claims above the limit or while paused, and the order status trigger frees units on APPROVED/COMPLETED/CANCELLED/REFUNDED. Lock contract: aggregate → workload → order ([W7-CAP](evidence/claude-W7-CAP.md)); dedicated funding/expiry race coverage remains. No manual counter repair; `app.workload_counter_drift` must be empty.
-- `LocalStorageProvider`: upload intent → signed PUT → finalize with size/signature/SHA-256 checks; invalid files quarantined, private downloads expire after five minutes. **No antivirus and no Supabase Storage adapter**; signature CLEAN does not mean malware-free.
-- In-process jobs run through `POST /api/dev/jobs`, optionally polled by `pnpm jobs:dev`; durable rows survive, the mock provider does not. Ten accepted local jobs, including W4-A `close_due_auctions` (AUC-05/06), are listed in [runbooks](runbooks/README.md). **Inngest integration and reconcile:dry-run are NOT IMPLEMENTED**. External email is sink-only.
-- Operator `/admin` pages use active `app.user_roles` grants, required reasons and append-only `app.audit_log`. Checkout/bid/payout creation kill switches preserve webhooks, refunds and reconciliation; enabling live also requires an environment gate and G6 readiness.
-- Orders use the DB transition matrix, fixed funding/brief work clock, delivery versions, page-view-based ReviewHold recovery and consented mutual cancellation. Request order triggers commit/release budget; partial refunds keep budget committed. Legacy requests before migration 0007 lack budget-reservation backfill.
-
-[Acceptance](ACCEPTANCE.md): **51 PASS, 55 PARTIAL, 33 NOT_RUN, 3 BLOCKED (142 rows)**. The ledger and [traceability](REQUIREMENTS_TRACEABILITY.md) retain narrower gaps despite local phase delivery. Gates: **G0–G4 PARTIAL; G5–G7 BLOCKED**. Missing staging infrastructure, real payment/storage/email adapters, provider credentials/approval, entity/policies/reserve, launch authority and actual market evidence remain separate blockers. No sandbox, testnet, live money, deployment or production readiness is claimed.
+## Local adapters and known limits
+- `MockPaymentProvider` keeps its state in the Next process. Restarting the dev server loses provider history, and approved orders then open `PROVIDER_OBJECT_MISSING` cases.
+- `LocalStorageProvider` checks file signatures only: no antivirus and no Supabase adapter. Campaign images are neither moderated nor resized.
+- Jobs run in-process through `POST /api/dev/jobs`. There is no deployed scheduler, and email is an in-app/outbox sink.
+- PARTIAL (19): FND-01, FND-02, SEC-11, ORD-07, ORD-11, ORD-13, ORD-16, PAY-01, PAY-02, PAY-03, PAY-04, PAY-12, PAY-20, AUC-01, CRY-01, OPS-03, OPS-05, OPS-06, OPS-08.
+- BLOCKED: SEC-03 (Supabase Data API), PAY-19 (bank payouts).
+- REMOVED: CAP-01, CAP-02, CAP-07, CAP-11, XPL-03.
+- Needs from outside:
+  - Arc testnet faucet funds for deployer `0x7758186cD9FE0156fd5F631e5c944445D9c1e97F`
+  - Supabase/staging
+  - payment and payout provider accounts
+  - a platform fee decision
+  - legal review
+  - an independent contract audit before mainnet

@@ -43,3 +43,12 @@ No new secrets, environment variables or external calls were added. `tsx scripts
 - Dropped the local backup databases `creator_marketplace_bak_0011` (14 MB) and `creator_marketplace_test_bak_0011` (179 MB), after listing them first. They were copies made before migration 0011 in an earlier session.
 - `tests/integration/escrow.anvil.test.ts` now upserts its network and token, so the suite can run twice against the same test database.
 - E2E global setup aborts each warmup request after 90 seconds instead of waiting forever.
+
+## Final runs
+- `tsc --noEmit`: exit 0.
+- `RUN_DB_INTEGRATION=1 vitest run` (tree of `d898592`): 316 passed, 3 skipped, 38 files (37 passed, 1 skipped). The skipped file is the anvil suite, which needs `RUN_ANVIL=1`.
+- `RUN_DB_INTEGRATION=1 RUN_ANVIL=1 vitest run tests/integration/escrow.anvil.test.ts`: 3/3.
+- `forge test`: 17/17 (16 unit, 1 invariant).
+- `tsx scripts/release-check.ts`: every check PASS. `tsx scripts/discovery-benchmark.ts`: every latency and plan check passed. `tsx scripts/secret-scan.ts`: no findings.
+- `TZ=UTC playwright test` (full suite, system Chrome, dev server on 3100, tree of `d898592`): 37 passed in 7.1 minutes.
+- `tsx scripts/restore-rehearsal.ts`, run after the E2E suite so the dev database was quiet. Row counts for all 32 obligation tables matched the source, including `app.request_images`. The 8 hard invariants show 0 violations: duplicated chain payouts, principal paid beyond funding, double release, orphan rows, pool conservation, oversold request budget, unbalanced ledger, workload drift. The jobs dry-run at the backup instant lists 25 notification outbox rows and 7 ready settlements as due; none were executed. Webhook replay was a no-op. RESULT: restore verified.
