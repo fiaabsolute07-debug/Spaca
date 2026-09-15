@@ -1,12 +1,8 @@
 import type { PageProps } from '@/components/page-props';
-import { AuthScreen } from '@/components/auth-screen';
+import { AuthEntry } from '@/components/auth/auth-entry';
 
 export const dynamic = 'force-dynamic';
 
-export default async function SignUpPage({
-  searchParams
-}: PageProps) {
-  const query = await searchParams;
-
-  return <AuthScreen signup={true} query={query} />;
+export default async function SignUpPage({ searchParams }: PageProps) {
+  return <AuthEntry mode="signup" variant="page" query={await searchParams} />;
 }

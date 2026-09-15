@@ -10,8 +10,18 @@ export async function POST(request: Request) {
   const email = String(form.get('email') ?? '').trim().toLowerCase();
   const password = String(form.get('password') ?? '');
   const displayName = String(form.get('display_name') ?? '').trim();
-  const go = (path: string) => NextResponse.redirect(publicUrl(request, path), 303);
-  const failure = () => go(action === 'signup' ? '/sign-up?error=Unable%20to%20create%20account' : '/sign-in?error=Invalid%20credentials%20or%20authentication%20unavailable');
+  // The sign-in dialog asks for JSON so it can show errors in place; plain form posts get redirects.
+  const wantsJson = (request.headers.get('accept') ?? '').includes('application/json');
+  const requested = String(form.get('return_to') ?? '');
+  const returnTo = requested.startsWith('/') && !requested.startsWith('//') && !requested.startsWith('/sign-') ? requested : '/dashboard';
+  const go = (path: string) => wantsJson && action !== 'logout'
+    ? NextResponse.json({ redirect: publicUrl(request, path).pathname + publicUrl(request, path).search })
+    : NextResponse.redirect(publicUrl(request, path), 303);
+  const failure = () => {
+    const message = action === 'signup' ? 'Unable to create the account. Check the details or sign in instead.' : 'The email or password is not correct.';
+    return wantsJson ? NextResponse.json({ error: message }, { status: 400 })
+      : go(`${action === 'signup' ? '/sign-up' : '/sign-in'}?error=${encodeURIComponent(message)}&return_to=${encodeURIComponent(returnTo)}`);
+  };
   try {
     if (!['login','signup','logout'].includes(action)) return NextResponse.json({ error: 'Invalid action' }, { status: 400 });
     if (action !== 'logout' && (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 254 || password.length < 12 || password.length > 256)) return failure();
@@ -27,9 +37,10 @@ export async function POST(request: Request) {
       if (result.data.session && result.data.user) {
         const user = result.data.user;
         await sql`insert into app.users (id,auth_user_id,email,display_name,roles,is_test,status) values (gen_random_uuid(),${user.id},${user.email!},${String(user.user_metadata.display_name ?? 'Member').slice(0,100)},ARRAY['buyer','creator'],false,'ACTIVE') on conflict (auth_user_id) do nothing`;
-        return go('/dashboard');
+        return go(returnTo);
       }
-      return go('/sign-in?message=Check%20your%20email%20to%20verify%20your%20account');
+      return wantsJson ? NextResponse.json({ error: 'Check your email to verify your account, then sign in.' }, { status: 400 })
+        : go('/sign-in?message=Check%20your%20email%20to%20verify%20your%20account');
     }
     const jar = await cookies();
     if (action === 'logout') {
@@ -50,6 +61,6 @@ export async function POST(request: Request) {
     const previous = jar.get(SESSION_COOKIE)?.value;
     if (previous) await sql`delete from app.sessions where token_hash=${hashSessionToken(previous)}`;
     jar.set(SESSION_COOKIE, await createSession(userId), { httpOnly: true, sameSite: 'lax', secure: publicUrl(request, '/').protocol === 'https:', path: '/', maxAge: 604800 });
-    return go('/dashboard');
+    return go(returnTo);
   } catch { return failure(); }
 }

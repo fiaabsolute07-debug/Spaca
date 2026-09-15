@@ -17,7 +17,7 @@ export const metadata: Metadata = {
 // production database while collecting static metadata.
 export const dynamic = 'force-dynamic';
 
-export default async function RootLayout({ children }: { children: React.ReactNode }) {
+export default async function RootLayout({ children, auth }: { children: React.ReactNode; auth: React.ReactNode }) {
   const actor = await getActor();
   const header = <>
     <div className="sandbox-banner"><span className="live-dot" /> <strong>Local sandbox</strong> Test accounts and simulated payments. No real funds move.</div>
@@ -32,7 +32,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         <div className="header-actions">
           {actor
             ? <><Link href="/dashboard" className="button compact">Workspace</Link><form method="post" action="/api/auth"><input type="hidden" name="action" value="logout" /><button className="plain-button">Log out</button></form></>
-            : <><Link href="/sign-in" className="login-link">Log in</Link><Link href="/sign-up" className="button compact">Get started</Link></>}
+            : <><Link href="/sign-in" className="login-link" scroll={false}>Log in</Link><Link href="/sign-up" className="button compact" scroll={false}>Get started</Link></>}
         </div>
       </header>
     </div>
@@ -50,5 +50,5 @@ export default async function RootLayout({ children }: { children: React.ReactNo
     </div>
   </footer>;
   // suppressHydrationWarning: the landing theme boot script may set data-landing-theme on <html> before hydration.
-  return <html lang="en" suppressHydrationWarning><body><Script id="landing-theme" strategy="beforeInteractive">{themeBootScript}</Script><SiteChrome header={header} footer={footer}>{children}</SiteChrome></body></html>;
+  return <html lang="en" suppressHydrationWarning><body><Script id="landing-theme" strategy="beforeInteractive">{themeBootScript}</Script><SiteChrome header={header} footer={footer}>{children}</SiteChrome>{auth}</body></html>;
 }

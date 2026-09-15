@@ -1,12 +1,9 @@
 import type { PageProps } from '@/components/page-props';
-import { AuthScreen } from '@/components/auth-screen';
+import { AuthEntry } from '@/components/auth/auth-entry';
 
 export const dynamic = 'force-dynamic';
 
-export default async function SignInPage({
-  searchParams
-}: PageProps) {
-  const query = await searchParams;
-
-  return <AuthScreen signup={false} query={query} />;
+/** Direct visits and shared links show the same card on its own; in-app links open it as a dialog (app/@auth). */
+export default async function SignInPage({ searchParams }: PageProps) {
+  return <AuthEntry mode="signin" variant="page" query={await searchParams} />;
 }
