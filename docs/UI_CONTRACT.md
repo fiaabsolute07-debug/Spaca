@@ -380,3 +380,9 @@ Commands:
 - Refund states: RECOVERING → REFUND_PENDING → REFUNDED, or DEFICIT (reversal refused) → retry or cover → REFUND_PENDING → REFUNDED. `recovered_minor` comes only from provider-confirmed reversals; `covered_minor` only from an approved cover.
 - `getOperatorOrder(...).post_release_refunds = [{ id, amount_minor, currency, status, recovered_minor, covered_minor, reason, covered_reason, created_at, updated_at }]`.
 - Order events: `REFUND_AFTER_RELEASE_REQUESTED`, `REFUND_DEFICIT_OPENED`, `REFUND_AFTER_RELEASE_RECOVERED`, `REFUND_DEFICIT_COVERED`, `REFUND_AFTER_RELEASE_CONFIRMED`. The order status does not change. Buyer notification `refund.updated` (SUCCEEDED) when the provider confirms. Cases: `REFUND_DEFICIT`, `REFUND_FAILED`, `REVERSAL_AFTER_COVER`, `UNMATCHED_REVERSAL`, `UNEXPECTED_REVERSAL`.
+
+## PAY-16 additions (2026-09-15): late provider costs (drizzle/0023)
+
+- Provider webhook `funding.fee_updated` (new actual cost of a captured funding) goes to `POST /api/webhooks/mock-payment`. Policy `cost-v1` in `src/modules/payments/cost-policy.ts`; cap `LATE_COST_CAP_BPS` (default 100).
+- Order event `PROVIDER_COST_ADJUSTED {previous_fee_minor, actual_fee_minor, phase, creator_share_minor, platform_share_minor, creator_credit_minor, policy_version}`. `orders.provider_fee_minor` is the cost deducted from the creator's payout and changes only before the payout.
+- `getOperatorOrder(...).provider_cost_adjustments = [{ id, previous_fee_minor, actual_fee_minor, delta_minor, creator_share_minor, platform_share_minor, creator_credit_minor, phase, fee_payer, cap_minor, created_at }]`. Cases: `LATE_PROVIDER_COST_ABOVE_CAP`, `LATE_PROVIDER_COST_AFTER_RELEASE`, `LATE_COST_CREDIT_OWED`.

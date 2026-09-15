@@ -365,6 +365,8 @@ export type WebhookEventType =
   | 'funding.succeeded'
   | 'funding.failed'
   | 'funding.canceled'
+  /** The actual provider cost of a captured funding changed or became known after capture. */
+  | 'funding.fee_updated'
   | 'release.pending'
   | 'release.succeeded'
   | 'release.failed'
@@ -681,6 +683,7 @@ const WEBHOOK_EVENT_TYPES: ReadonlySet<string> = new Set([
   'funding.succeeded',
   'funding.failed',
   'funding.canceled',
+  'funding.fee_updated',
   'release.pending',
   'release.succeeded',
   'release.failed',
@@ -1122,6 +1125,17 @@ export class MockPaymentProvider implements PaymentProvider {
     const type: WebhookEventType =
       outcome.status === 'SUCCEEDED' ? 'funding.succeeded' : outcome.status === 'FAILED' ? 'funding.failed' : 'funding.processing';
     this.emitFundingEvent(type, funding);
+    return this.fundingSnapshot(funding);
+  }
+
+  /** Simulates the provider reporting a different actual cost for a captured funding, possibly after the payout. */
+  async simulateFeeAdjustment(reference: string, actualFee: bigint): Promise<FundingStatus> {
+    const funding = this.requireFunding(reference);
+    if (funding.status !== 'SUCCEEDED') throw new ProviderError('INVALID_STATE', 'only a captured funding has an actual cost');
+    assertAtomicAmount(actualFee, { allowZero: true, max: funding.amount, field: 'providerFee' });
+    funding.providerFee = actualFee;
+    funding.updatedAt = this.timestamp();
+    this.emitFundingEvent('funding.fee_updated', funding);
     return this.fundingSnapshot(funding);
   }
 

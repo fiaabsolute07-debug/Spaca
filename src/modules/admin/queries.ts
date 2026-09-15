@@ -78,7 +78,7 @@ export async function getOperatorOrder(actor: Actor, orderId: string) {
       o.buyer_id,bu.display_name as buyer_name,o.creator_id,cu.display_name as creator_name
     from app.orders o join app.users bu on bu.id=o.buyer_id join app.users cu on cu.id=o.creator_id where o.id=${orderId}`;
   if (!order) return null;
-  const [events, operations, cases, disputes, files, holds, paymentDisputes, afterRelease] = await Promise.all([
+  const [events, operations, cases, disputes, files, holds, paymentDisputes, afterRelease, costAdjustments] = await Promise.all([
     sql<Row[]>`select kind,actor_id,created_at from app.order_events where order_id=${orderId} order by created_at`,
     sql<Row[]>`select operation_id,kind,status,provider_reference,outcome->>'lastError' as last_error,updated_at from app.provider_operations where order_id=${orderId} order by created_at`,
     sql<Row[]>`select id,kind,severity,status,next_action,assigned_to,resolution,created_at from app.reconciliation_cases where order_id=${orderId} order by created_at`,
@@ -89,6 +89,8 @@ export async function getOperatorOrder(actor: Actor, orderId: string) {
     sql<Row[]>`select id,provider_reference,amount_minor,currency,status,order_status_at_open,settlement_status_at_open,evidence,opened_at,closed_at from app.payment_disputes where order_id=${orderId} order by opened_at`,
     // PAY-15: refunds after the creator was paid, with what was actually recovered or covered.
     sql<Row[]>`select id,amount_minor,currency,status,recovered_minor,covered_minor,reason,covered_reason,created_at,updated_at from app.post_release_refunds where order_id=${orderId} order by created_at`,
+    // PAY-16: late provider cost changes and who bore them under cost-v1.
+    sql<Row[]>`select id,previous_fee_minor,actual_fee_minor,delta_minor,creator_share_minor,platform_share_minor,creator_credit_minor,phase,fee_payer,cap_minor,created_at from app.provider_cost_adjustments where order_id=${orderId} order by created_at`,
   ]);
   return {
     order,
@@ -98,6 +100,7 @@ export async function getOperatorOrder(actor: Actor, orderId: string) {
     disputes,
     payment_disputes: paymentDisputes.map((d): Row => ({ ...d, provider_reference: redact(d.provider_reference) })),
     post_release_refunds: afterRelease,
+    provider_cost_adjustments: costAdjustments,
     files,
     review_holds: holds,
   };

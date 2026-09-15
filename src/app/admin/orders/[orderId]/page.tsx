@@ -103,6 +103,15 @@ export default async function OperatorOrderPage({ params, searchParams }: PagePr
       { label: 'Created', render: item => date(item.created_at) },
       { label: 'Resolved', render: item => item.resolved_at ? date(item.resolved_at) : 'Open' },
     ]} />
+    <AdminTable title="Provider cost changes" items={data.provider_cost_adjustments} columns={[
+      { label: 'Cost', render: item => `${money(item.previous_fee_minor)} → ${money(item.actual_fee_minor)}` },
+      { label: 'When', render: item => humanize(str(item.phase)) },
+      { label: 'Creator share', render: item => money(item.creator_share_minor) },
+      { label: 'Platform share', render: item => money(item.platform_share_minor) },
+      { label: 'Owed to creator', render: item => money(item.creator_credit_minor) },
+      { label: 'Policy', render: item => `${humanize(str(item.fee_payer))} · cap ${money(item.cap_minor)}` },
+      { label: 'Recorded', render: item => date(item.created_at) },
+    ]} />
     <AdminTable title="Card payment disputes" items={data.payment_disputes} columns={[
       { label: 'Provider dispute', render: item => str(item.provider_reference) },
       { label: 'Amount', render: item => money(item.amount_minor) },

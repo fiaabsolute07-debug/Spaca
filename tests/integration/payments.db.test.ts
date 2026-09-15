@@ -518,3 +518,106 @@ describe.skipIf(!RUN_DB)('PAY-15 — refunds after the creator was paid', () => 
     expect(String(refused.body.error)).toMatch(/card payment dispute/);
   });
 });
+
+describe.skipIf(!RUN_DB)('PAY-16 — provider costs that change after capture (cost-v1)', () => {
+  const fundingRef = async (orderId: string) => String((await sql`select provider_reference from app.provider_operations where order_id=${orderId} and kind='funding.create'`)[0]!.provider_reference);
+  const adjustments = (orderId: string) => sql`select previous_fee_minor,actual_fee_minor,delta_minor,creator_share_minor,platform_share_minor,creator_credit_minor,phase,cap_minor
+    from app.provider_cost_adjustments where order_id=${orderId} order by created_at, id`;
+  const accountTotal = async (orderId: string, account: string) => String((await sql`select coalesce(sum(e.amount_minor),0)::text as total from app.ledger_entries e join app.ledger_transactions t on t.id=e.transaction_id
+    where t.order_id=${orderId} and e.account=${account}`)[0]!.total);
+  const deliver = async () => {
+    const deliveries = provider.takeWebhookDeliveries();
+    for (const d of deliveries) expect((await postWebhook(d.rawBody, d.headers)).status).toBe(200);
+    return deliveries;
+  };
+
+  async function approvedWithFee(label: string) {
+    vi.stubEnv('MOCK_PROVIDER_FEE_BPS', '300');
+    const setup = await bookedOrder(label);
+    expect((await pay(setup.buyer, setup.orderId)).status).toBe(200);
+    const step = (actor: TestUser, fields: Record<string, string>) => command(actor, { idempotency_key: key('step'), order_id: setup.orderId, ...fields });
+    expect((await step(setup.creator, { command: 'start' })).status).toBe(200);
+    expect((await step(setup.creator, { command: 'deliver', body: 'Final launch thread with sources and the CTA.' })).status).toBe(200);
+    expect((await step(setup.buyer, { command: 'approve', delivery_version: '1' })).status).toBe(200);
+    expect(await orderRow(setup.orderId)).toMatchObject({ provider_fee_minor: '1950', settlement_status: 'READY' });
+    return setup;
+  }
+
+  it('PAY-16: before payout the creator bears a late increase only up to the 1% cap; the platform bears the rest and the payout uses the result', async () => {
+    try {
+      const { orderId } = await approvedWithFee('pay16-before');
+      const ref = await fundingRef(orderId);
+      await provider.simulateFeeAdjustment(ref, 2600n);
+      const [first] = await deliver();
+      await provider.simulateFeeAdjustment(ref, 3900n);
+      await deliver();
+      expect((await postWebhook(first!.rawBody, first!.headers)).body).toMatchObject({ duplicate: true });
+      expect(await adjustments(orderId)).toEqual([
+        { previous_fee_minor: '1950', actual_fee_minor: '2600', delta_minor: '650', creator_share_minor: '650', platform_share_minor: '0', creator_credit_minor: '0', phase: 'BEFORE_RELEASE', cap_minor: '650' },
+        { previous_fee_minor: '2600', actual_fee_minor: '3900', delta_minor: '1300', creator_share_minor: '0', platform_share_minor: '1300', creator_credit_minor: '0', phase: 'BEFORE_RELEASE', cap_minor: '650' },
+      ]);
+      expect((await orderRow(orderId)).provider_fee_minor).toBe('2600');
+      expect(await count(sql`select count(*)::int as count from app.reconciliation_cases where order_id=${orderId} and kind='LATE_PROVIDER_COST_ABOVE_CAP'`)).toBe(1);
+
+      const { releaseReadySettlements } = await import('@/modules/jobs');
+      expect((await releaseReadySettlements({ orderId })).outcomes).toEqual({ RELEASE_REQUESTED: 1 });
+      expect((await sql`select outcome->>'netAmount' as net from app.provider_operations where order_id=${orderId} and kind='release.create'`)[0]!.net).toBe('62400');
+      expect(await orderRow(orderId)).toMatchObject({ status: 'COMPLETED', settlement_status: 'RELEASED' });
+      // The platform's net cost is exactly the part above the cap; the order ledger still balances.
+      expect(await accountTotal(orderId, 'provider_fee_expense:mock')).toBe('1300');
+      expect((await ledgerBalance(orderId))[0]).toMatchObject({ total: '0' });
+
+      await expect(sql`insert into app.provider_cost_adjustments (order_id,provider,event_id,previous_fee_minor,actual_fee_minor,delta_minor,creator_share_minor,platform_share_minor,phase,fee_payer,cap_bps,cap_minor)
+        values (${orderId},'mock',${`evt_forged_${key('x')}`},3900,4900,1000,1,999,'BEFORE_RELEASE','CREATOR_AT_COST',100,650)`).rejects.toThrow(/exceeds the creator cap/);
+      await expect(sql`update app.provider_cost_adjustments set creator_share_minor=0,platform_share_minor=650 where order_id=${orderId}`).rejects.toThrow(/immutable/);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it('PAY-16: after payout nothing is taken back; an increase is a platform expense and a lower final cost becomes a credit owed to the creator', async () => {
+    try {
+      const { orderId } = await approvedWithFee('pay16-after');
+      const { releaseReadySettlements } = await import('@/modules/jobs');
+      await releaseReadySettlements({ orderId });
+      const released = await orderRow(orderId);
+      expect(released).toMatchObject({ status: 'COMPLETED', settlement_status: 'RELEASED' });
+      const ref = await fundingRef(orderId);
+
+      await provider.simulateFeeAdjustment(ref, 2450n);
+      await deliver();
+      await provider.simulateFeeAdjustment(ref, 450n);
+      await deliver();
+      expect(await adjustments(orderId)).toEqual([
+        { previous_fee_minor: '1950', actual_fee_minor: '2450', delta_minor: '500', creator_share_minor: '0', platform_share_minor: '500', creator_credit_minor: '0', phase: 'AFTER_RELEASE', cap_minor: '650' },
+        { previous_fee_minor: '2450', actual_fee_minor: '450', delta_minor: '-2000', creator_share_minor: '0', platform_share_minor: '-2000', creator_credit_minor: '1950', phase: 'AFTER_RELEASE', cap_minor: '650' },
+      ]);
+      const after = await orderRow(orderId);
+      expect({ fee: after.provider_fee_minor, version: after.version }).toEqual({ fee: released.provider_fee_minor, version: released.version });
+      expect((await sql`select outcome->>'netAmount' as net from app.provider_operations where order_id=${orderId} and kind='release.create'`)[0]!.net).toBe('63050');
+      expect(await accountTotal(orderId, `creator_cost_credit:${orderId}`)).toBe('-1950');
+      expect((await ledgerBalance(orderId))[0]).toMatchObject({ total: '0' });
+      expect((await sql`select kind from app.reconciliation_cases where order_id=${orderId} and kind like 'LATE_%' order by created_at`).map((c) => c.kind)).toEqual(['LATE_PROVIDER_COST_AFTER_RELEASE', 'LATE_COST_CREDIT_OWED']);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it('PAY-16: a cost update that arrives before its funding fact is retried from the inbox, not dropped or misapplied', async () => {
+    try {
+      const { buyer, orderId } = await bookedOrder('pay16-early');
+      const { reference, deliveries } = await providerConfirmsWithoutDelivery(buyer, orderId);
+      await provider.simulateFeeAdjustment(reference, 2000n);
+      const [feeUpdate] = provider.takeWebhookDeliveries();
+      expect((await postWebhook(feeUpdate!.rawBody, feeUpdate!.headers)).status).toBe(500);
+      expect(await adjustments(orderId)).toHaveLength(0);
+      for (const d of deliveries) expect((await postWebhook(d.rawBody, d.headers)).status).toBe(200);
+      const { reprocessWebhookInbox } = await import('@/modules/jobs');
+      expect((await reprocessWebhookInbox({ orderId, minAgeSeconds: 0 })).outcomes).toEqual({ COST_ADJUSTED_BEFORE_RELEASE: 1 });
+      // This capture reported no cost; the late 20.00 is capped at 1% of the order for the creator.
+      expect((await adjustments(orderId))[0]).toMatchObject({ previous_fee_minor: '0', actual_fee_minor: '2000', creator_share_minor: '650', platform_share_minor: '1350' });
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+});

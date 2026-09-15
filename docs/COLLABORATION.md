@@ -63,6 +63,7 @@ Status values: TODO · IN_PROGRESS · REVIEW · DONE · BLOCKED.
 | ORD-12 | Deadline extensions by agreement: immutable amendments, counterparty consent, DB guard on the delivery deadline, expiry on status change, Deadline panel. Migration 0020. Evidence `docs/evidence/claude-ORD-12.md` | ORD-12 PASS local | P6-DIGITAL | DONE |
 | ORD-14 | Card payment disputes after completion: signed mock dispute facts, immutable payment_disputes with evidence snapshot, operator cases and creator notice, loss booking without creator debit, release freeze. Migration 0021. Evidence `docs/evidence/claude-ORD-14.md` | ORD-14 PASS local | ORD-12 | DONE |
 | PAY-15 | Refunds after release: mock transfer reversals with balance checks, deficit tracking with DB-enforced recovered amounts, retry and approved platform cover, admin UI. Migration 0022. Evidence `docs/evidence/claude-PAY-15.md` | PAY-15 PASS local | ORD-14 | DONE |
+| PAY-16 | Late provider costs: cost-v1 policy (capped creator share before payout, no retro debit, credits owed after payout), signed fee updates, immutable adjustments with cap trigger, inbox retry for early facts, admin table. Migration 0023. Evidence `docs/evidence/claude-PAY-16.md` | PAY-16 PASS local | PAY-15 | DONE |
 
 ### Codex (Astra)
 

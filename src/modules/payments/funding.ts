@@ -17,6 +17,7 @@ import { activateOrderClaim } from '@/modules/capacity';
 import { recomputeWorkClock } from '@/modules/orders/lifecycle';
 import { fulfillDigitalOrder } from '@/modules/digital';
 import { isFlagEnabled } from '@/modules/admin/policy';
+import { COST_POLICY_VERSION, lateCostCapBps, lateCostShares, type CostPhase } from './cost-policy';
 import { enqueueChainPayout, registerPayoutEffects } from '@/modules/crypto/payouts';
 import { atomicToUsdMinor, escrowReference, usdMinorToAtomic } from '@/modules/crypto/registry';
 import {
@@ -411,6 +412,67 @@ async function applyPaymentEvent(tx: Tx, event: VerifiedEvent): Promise<string> 
 }
 
 // ---------------------------------------------------------------------------
+// PAY-16: provider costs that change after capture
+// ---------------------------------------------------------------------------
+
+async function applyLateProviderCost(tx: Tx, event: VerifiedEvent, operation: Row, order: Row): Promise<string> {
+  const orderId = String(order.id);
+  // Retried from the inbox until the funding fact itself has been applied.
+  if (order.payment_status !== 'SUCCEEDED' && !['REFUND_PENDING', 'REFUNDED', 'PARTIALLY_REFUNDED'].includes(String(order.payment_status))) {
+    throw new Error(`provider cost update for order ${orderId} arrived before its funding was applied`);
+  }
+  const [seen] = await tx<Row[]>`select id from app.provider_cost_adjustments where provider=${MOCK_PROVIDER} and event_id=${event.eventId}`;
+  if (seen) return 'DUPLICATE_FACT';
+  const [last] = await tx<Row[]>`select actual_fee_minor from app.provider_cost_adjustments where order_id=${orderId} order by created_at desc, id desc limit 1`;
+  const [confirmed] = await tx<Row[]>`select payload->>'provider_fee_minor' as fee from app.order_events where order_id=${orderId} and kind='PAYMENT_CONFIRMED' order by created_at limit 1`;
+  const previous = BigInt(String(last?.actual_fee_minor ?? confirmed?.fee ?? '0'));
+  const actual = event.providerFee ?? 0n;
+  const delta = actual - previous;
+  if (delta === 0n) return 'COST_UNCHANGED';
+
+  const amount = BigInt(String(order.amount_minor));
+  const refunded = order.cancellation_refund_minor == null ? 0n : BigInt(String(order.cancellation_refund_minor));
+  const creatorGross = order.status === 'REFUNDED' ? 0n : amount - refunded;
+  const phase: CostPhase = creatorGross <= 0n ? 'NO_CREATOR_SETTLEMENT'
+    : ['PENDING', 'RELEASED'].includes(String(order.settlement_status)) ? 'AFTER_RELEASE' : 'BEFORE_RELEASE';
+  const feePayer = feePayerPolicy();
+  const capBps = lateCostCapBps();
+  const capMinor = (amount * BigInt(capBps)) / 10_000n;
+  const [soFar] = await tx<Row[]>`select coalesce(sum(creator_share_minor) filter (where creator_share_minor > 0),0)::text as borne from app.provider_cost_adjustments where order_id=${orderId}`;
+  const shares = lateCostShares({
+    delta, feePayer, phase, creatorGross, capMinor,
+    creatorBorne: BigInt(String(order.provider_fee_minor ?? '0')),
+    creatorLateIncreasesSoFar: BigInt(String(soFar!.borne)),
+  });
+
+  await tx`insert into app.provider_cost_adjustments (order_id,provider,event_id,previous_fee_minor,actual_fee_minor,delta_minor,creator_share_minor,platform_share_minor,creator_credit_minor,phase,fee_payer,cap_bps,cap_minor,policy_version)
+    values (${orderId},${MOCK_PROVIDER},${event.eventId},${previous.toString()},${actual.toString()},${delta.toString()},${shares.creatorShare.toString()},${shares.platformShare.toString()},
+      ${shares.creatorCredit.toString()},${phase},${feePayer},${capBps},${capMinor.toString()},${COST_POLICY_VERSION})`;
+  // The cost deducted from the creator's payout follows their share; it is only ever changed before the payout.
+  if (shares.creatorShare !== 0n) {
+    await tx`update app.orders set provider_fee_minor=provider_fee_minor + ${shares.creatorShare.toString()}::bigint,updated_at=now() where id=${orderId}`;
+  }
+  const currency = String(order.currency);
+  const magnitude = delta < 0n ? -delta : delta;
+  await ledger(tx, orderId, 'PROVIDER_COST_ADJUSTED', `cost:mock:${event.eventId}`, delta > 0n
+    ? [['provider_fee_expense:mock', magnitude], ['provider_clearing:mock', -magnitude]]
+    : [['provider_clearing:mock', magnitude], ['provider_fee_expense:mock', -(magnitude - shares.creatorCredit)], [`creator_cost_credit:${orderId}`, -shares.creatorCredit]],
+    currency);
+  await orderEvent(tx, orderId, 'PROVIDER_COST_ADJUSTED', {
+    provider: MOCK_PROVIDER, event_id: event.eventId, previous_fee_minor: previous.toString(), actual_fee_minor: actual.toString(), phase,
+    creator_share_minor: shares.creatorShare.toString(), platform_share_minor: shares.platformShare.toString(), creator_credit_minor: shares.creatorCredit.toString(), policy_version: COST_POLICY_VERSION,
+  });
+  if (phase === 'AFTER_RELEASE' && delta > 0n) {
+    await openCase(tx, orderId, String(operation.id), 'LATE_PROVIDER_COST_AFTER_RELEASE', 'MEDIUM', 'A higher provider cost arrived after the creator payout; the platform bears it under cost-v1 and nothing is taken from the creator');
+  } else if (shares.creatorCredit > 0n) {
+    await openCase(tx, orderId, String(operation.id), 'LATE_COST_CREDIT_OWED', 'MEDIUM', 'The final provider cost is lower than what the creator paid; decide how to pay the credit owed to them');
+  } else if (delta > 0n && shares.platformShare > 0n && feePayer === 'CREATOR_AT_COST' && phase === 'BEFORE_RELEASE') {
+    await openCase(tx, orderId, String(operation.id), 'LATE_PROVIDER_COST_ABOVE_CAP', 'MEDIUM', 'A late provider cost exceeded what the creator can bear under cost-v1; the platform bears the rest');
+  }
+  return `COST_ADJUSTED_${phase}`;
+}
+
+// ---------------------------------------------------------------------------
 // PAY-15: refunds after the creator was paid
 // ---------------------------------------------------------------------------
 
@@ -720,6 +782,7 @@ async function applyFundingEvent(tx: Tx, event: VerifiedEvent): Promise<string> 
     where id=${String(operation.id)} and coalesce(outcome->>'fundingStatus','')<>'SUCCEEDED'`;
   const [order] = await tx<Row[]>`select * from app.orders where id=${orderId} for update`;
   if (!order) return 'UNMATCHED';
+  if (event.type === 'funding.fee_updated') return applyLateProviderCost(tx, event, operation, order);
 
   if (event.type === 'funding.succeeded') {
     const amount = BigInt(String(order.amount_minor));
