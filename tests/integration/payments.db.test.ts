@@ -278,7 +278,9 @@ describe.skipIf(!RUN_DB)('cancellation, late funding and refunds', () => {
     expect((await postWebhook(late.body, late.headers)).status).toBe(200);
     expect(await orderRow(orderId)).toMatchObject({ status: 'CANCELLED', payment_status: 'PENDING' });
     expect(await count(sql`select count(*)::int as count from app.reconciliation_cases where order_id=${orderId} and kind='LATE_FUNDING'`)).toBe(1);
-    expect(await count(sql`select count(*)::int as count from app.ledger_transactions where order_id=${orderId}`)).toBe(0);
+    // The captured money is recorded (owed back to the buyer), never used to fund the cancelled order.
+    expect((await sql`select kind from app.ledger_transactions where order_id=${orderId}`).map((t) => t.kind)).toEqual(['LATE_FUNDING_CAPTURED']);
+    expect((await ledgerBalance(orderId))[0]).toMatchObject({ total: '0' });
   });
 
   it('full refund is REFUNDED only after the provider confirms, and applies once', async () => {

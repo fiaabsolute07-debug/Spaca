@@ -228,6 +228,11 @@ const selectApplication: CommandHandler = async ({ tx, actor, form }) => {
   }
   if (application!.status !== 'SUBMITTED') throw new CommandError('This application already has an offer or is no longer active', 'ORDER_STATE_CONFLICT');
   if (new Date(application!.valid_until) <= new Date()) throw new CommandError('This quote has expired. Ask the creator to renew it.', 'QUOTE_EXPIRED');
+  // REQ-04: availability can change after applying; an offer to a creator who cannot take it now would only lapse.
+  const [creator] = await tx<Row[]>`select u.status, coalesce(w.accepting_orders, true) as accepting from app.users u
+    left join app.creator_workloads w on w.creator_id=u.id where u.id=${String(application!.creator_id)}`;
+  if (creator?.status !== 'ACTIVE') throw new CommandError('This creator cannot take new work right now', 'ACCOUNT_SUSPENDED');
+  if (creator.accepting !== true) throw new CommandError('This creator paused new orders after applying. Ask them to resume before sending an offer.', 'NOT_ACCEPTING_ORDERS');
   const amount = BigInt(application!.quote_minor);
   const pool = await poolTermsFor(tx, String(request.id));
   if (pool && pool.cashMinor !== amount) throw new CommandError('The pool reward changed since this application; the creator must re-apply', 'QUOTE_CHANGED');

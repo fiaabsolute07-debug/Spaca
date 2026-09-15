@@ -216,10 +216,9 @@ describe.skipIf(!RUN_DB)('CAP-10 / REQ-07 — hire timers against acceptance and
   });
 });
 
-describe.skipIf(!RUN_DB)('CAP-04 — uncertain payment keeps an exclusive sale from being sold twice', () => {
-  it('CAP-04: an UNKNOWN payment attempt keeps the exclusive license reserved through hold expiry; a competing buyer racing the expiry cannot take it', async () => {
-    const creator = await createUser('cap04-creator', ['creator']);
-    const created = await command(creator, { command: 'create_service', title: 'Exclusive launch kit', description: 'One exclusive set of launch templates for a single project.',
+async function exclusiveProduct(label: string) {
+    const creator = await createUser(`${label}-creator`, ['creator']);
+    const created = await command(creator, { command: 'create_service', title: `Exclusive launch kit ${label}`, description: 'One exclusive set of launch templates for a single project.',
       taxonomy: 'DIGITAL', price: '40', turnaround_hours: '1', digital_license: 'EXCLUSIVE', digital_rights_text: 'Exclusive use for one project. Do not resell or share the files.', digital_updates: 'LATEST', digital_download_limit: '5',
       sample_url_1: 'https://example.com/preview', sample_title_1: 'Preview' });
     expect(created.status, JSON.stringify(created.body)).toBe(200);
@@ -231,6 +230,12 @@ describe.skipIf(!RUN_DB)('CAP-04 — uncertain payment keeps an exclusive sale f
     expect((await callRoute((request) => finalizeRoute.POST(request, params({ id: String(intent.body.id) })), '/api/assets/x/finalize', creator, {})).body.state).toBe('READY');
     expect((await command(creator, { command: 'add_digital_release', service_id: serviceId, asset_ids: String(intent.body.id) })).status).toBe(200);
     expect((await command(creator, { command: 'publish_service', service_id: serviceId })).status).toBe(200);
+    return { creator, serviceId };
+}
+
+describe.skipIf(!RUN_DB)('CAP-04 — uncertain payment keeps an exclusive sale from being sold twice', () => {
+  it('CAP-04: an UNKNOWN payment attempt keeps the exclusive license reserved through hold expiry; a competing buyer racing the expiry cannot take it', async () => {
+    const { serviceId } = await exclusiveProduct('cap04');
     const buy = (buyer: TestUser) => command(buyer, { command: 'book', service_id: serviceId, accept_license: 'on', accept_terms: 'on' });
 
     const first = await createUser('cap04-first', ['buyer']);
@@ -256,5 +261,47 @@ describe.skipIf(!RUN_DB)('CAP-04 — uncertain payment keeps an exclusive sale f
     expect((await orderRow(orderId)).status).toBe('DELIVERED');
     expect((await buy(rivals[0]!)).status).toBe(409);
     expect(await count(sql`select count(*)::int as n from app.digital_entitlements where service_id=${serviceId} and state in ('HELD','EXPIRY_RECONCILING','ACTIVE')`)).toBe(1);
+  });
+});
+
+describe.skipIf(!RUN_DB)('CAP-05 — late funds after the sale went to someone else', () => {
+  it('CAP-05: money captured for a released exclusive license after it was resold is booked, refunded in full and never becomes a second license', async () => {
+    const { serviceId } = await exclusiveProduct('cap05');
+    const buy = (buyer: TestUser) => command(buyer, { command: 'book', service_id: serviceId, accept_license: 'on', accept_terms: 'on' });
+    const late = await createUser('cap05-late', ['buyer']);
+    const lateOrder = String((await buy(late)).body.id);
+    const intent = await sql.begin((tx) => funding.ensureFundingIntent(tx, late.id, lateOrder));
+    if (intent.state !== 'READY') throw new Error('intent not ready');
+    await sql`update app.digital_entitlements set expires_at=now() - interval '1 second' where order_id=${lateOrder}`;
+    expect((await jobs.expireCheckoutHolds({ orderId: lateOrder })).outcomes).toEqual({ RELEASED: 1 });
+    expect((await orderRow(lateOrder)).status).toBe('CANCELLED');
+
+    const winner = await createUser('cap05-winner', ['buyer']);
+    const winnerOrder = String((await buy(winner)).body.id);
+    expect((await pay(winner, winnerOrder)).status).toBe(200);
+    expect((await orderRow(winnerOrder)).status).toBe('DELIVERED');
+
+    // The first buyer's capture completes at the provider after all.
+    await provider.simulateLateCapture(intent.reference);
+    await funding.deliverPendingMockWebhooks();
+    expect(await orderRow(lateOrder)).toMatchObject({ status: 'CANCELLED' });
+    expect(await count(sql`select count(*)::int as n from app.reconciliation_cases where order_id=${lateOrder} and kind='LATE_FUNDING' and status='OPEN'`)).toBe(1);
+    expect(await principalOf(lateOrder)).toBe('-4000');
+    expect((await sql`select state from app.digital_entitlements where order_id=${lateOrder}`)[0]!.state).not.toBe('ACTIVE');
+    expect((await sql`select state from app.digital_entitlements where order_id=${winnerOrder}`)[0]!.state).toBe('ACTIVE');
+    expect(await count(sql`select count(*)::int as n from app.digital_entitlements where service_id=${serviceId} and state in ('HELD','EXPIRY_RECONCILING','ACTIVE')`)).toBe(1);
+
+    const finance = await financeUser();
+    const refund = () => command(finance, { command: 'admin_refund_late_funding', order_id: lateOrder, reason: 'Late capture after the license was resold; full refund.' });
+    expect((await command(late, { command: 'admin_refund_late_funding', order_id: lateOrder, reason: 'Trying to refund myself here.' })).status).toBe(403);
+    expect((await refund()).status).toBe(200);
+    await funding.deliverPendingMockWebhooks();
+    expect(await orderRow(lateOrder)).toMatchObject({ status: 'REFUNDED', payment_status: 'REFUNDED' });
+    expect(await principalOf(lateOrder)).toBe('0');
+    expect(await ledgerTotal(lateOrder)).toBe('0');
+    expect((await provider.getFundingStatus(intent.reference)).refundedSucceeded).toBe(4000n);
+    expect(await count(sql`select count(*)::int as n from app.outbox where semantic_key=${`notify:refund.updated:SUCCEEDED:${lateOrder}`}`)).toBe(1);
+    expect((await refund()).status).toBe(409);
+    expect((await sql`select state from app.digital_entitlements where order_id=${winnerOrder}`)[0]!.state).toBe('ACTIVE');
   });
 });

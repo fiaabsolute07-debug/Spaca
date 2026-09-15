@@ -114,6 +114,27 @@ const asConflict = async <T>(run: () => Promise<T>): Promise<T> => {
   }
 };
 
+/** CAP-05: money captured after the order was cancelled (a LATE_FUNDING case) goes back to the buyer in full. */
+const refundLateFunding: CommandHandler = async ({ tx, actor, form }) => {
+  requireRole(actor, ['finance', 'admin'], 'Refunding late funds');
+  const reason = reasonOf(form);
+  const orderId = uuid(form, 'order_id');
+  const [order] = await tx<Row[]>`select * from app.orders where id=${orderId} for update`;
+  if (!order) throw new CommandError('Order not found', 'NOT_FOUND');
+  const [lateCase] = await tx<Row[]>`select id from app.reconciliation_cases where order_id=${orderId} and kind='LATE_FUNDING' and status in ('OPEN','ASSIGNED') limit 1`;
+  if (!lateCase || order.status !== 'CANCELLED' || !['PENDING', 'PROCESSING', 'FAILED'].includes(String(order.payment_status))) {
+    throw new CommandError('Only a cancelled order holding late captured funds can be refunded here', 'ORDER_STATE_CONFLICT');
+  }
+  const before = orderSnapshot(order);
+  await tx`update app.orders set payment_status='REFUND_PENDING',updated_at=now() where id=${orderId}`;
+  const [fresh] = await tx<Row[]>`select * from app.orders where id=${orderId}`;
+  const result = await requestProviderRefund(tx, fresh!, 'OPERATOR_RESOLUTION');
+  if (result.state === 'REJECTED') throw new CommandError(`The provider rejected the refund (${result.code})`, 'PAYMENT_UNAVAILABLE');
+  await orderEvent(tx, orderId, actor.id, 'LATE_FUNDING_REFUND_REQUESTED', { operation_id: result.operationId, provider_state: result.state });
+  await audit(tx, actor, 'order.late_funding.refund', 'order', orderId, reason, before, { ...orderSnapshot(fresh!), operation_id: result.operationId, provider_state: result.state });
+  return { path: `/admin/orders/${orderId}`, message: result.state === 'READY' ? 'Refund of the late funds requested from the provider' : 'Provider did not confirm yet; retry uses the same operation' };
+};
+
 const RECOVERY_MESSAGE: Record<string, string> = {
   RECOVERING: 'Reversal accepted by the provider; the buyer refund follows once the reversal is confirmed',
   DEFICIT: 'The creator transfer could not be reversed. Nothing was refunded or recovered; the deficit is tracked',
@@ -299,6 +320,7 @@ export const adminCommands: Record<string, CommandHandler> = {
   admin_resolve_dispute: resolveDispute,
   admin_refund_order: refundOrder,
   admin_refund_after_release: refundAfterRelease,
+  admin_refund_late_funding: refundLateFunding,
   admin_retry_refund_recovery: retryRefundRecovery,
   admin_cover_refund_deficit: coverRefundDeficit,
   admin_retry_operation: retryOperation,

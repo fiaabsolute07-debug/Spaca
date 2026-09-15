@@ -876,6 +876,13 @@ async function applyFundingEvent(tx: Tx, event: VerifiedEvent): Promise<string> 
       const kind = order.payment_status === 'SUCCEEDED' ? 'DUPLICATE_FUNDING' : 'LATE_FUNDING';
       await openCase(tx, orderId, String(operation.id), kind, 'HIGH', 'Provider captured funds the order cannot accept; refund or reinstate with operator approval');
       await orderEvent(tx, orderId, kind, { provider: MOCK_PROVIDER, reference: event.reference, event_id: event.eventId });
+      // CAP-05: the money was captured, so it is on the books and owed back to the buyer until refunded; never used as funding.
+      const lateFee = event.providerFee ?? 0n;
+      await ledger(tx, orderId, `${kind}_CAPTURED`, `funding:mock:${event.reference}`, [
+        ['provider_clearing:mock', amount - lateFee],
+        ['provider_fee_expense:mock', lateFee],
+        [`order_principal:${orderId}`, -amount],
+      ], String(order.currency));
       return kind;
     }
     const providerFee = event.providerFee ?? 0n;

@@ -401,3 +401,9 @@ Commands:
 - My services: each non-archived card has an "Edit service" panel posting `update_service {service_id, expected_version, title, description, price, turnaround_hours}` (409 on a stale version). Saving a PUBLISHED/PAUSED service creates a new immutable version; buyers holding the old `service_version_id` get `QUOTE_CHANGED` on booking. Paused services show "Resume selling" (`publish_service`).
 - Command forms that can fail (booking, accepting an offer) pass `returnTo` so errors come back to the same page.
 - A creator viewing an unpaid order sees a waiting message instead of actions.
+
+## 2026-09-15 additions: late funds and creator availability at selection
+
+- `admin_refund_late_funding {order_id, reason}` (finance/admin, audited): only for a CANCELLED order with an open LATE_FUNDING case and payment PENDING/PROCESSING/FAILED (409 otherwise). It refunds the late capture in full through the provider; the order becomes REFUNDED when the provider confirms. Event `LATE_FUNDING_REFUND_REQUESTED`. The admin order page shows "Refund late funds" while such a case is open.
+- Late or duplicate captures are booked as `LATE_FUNDING_CAPTURED` / `DUPLICATE_FUNDING_CAPTURED` ledger transactions (owed to the buyer), never as funding.
+- `select_application` returns 409 `NOT_ACCEPTING_ORDERS` when the creator paused new orders after applying, and 403 when the creator is suspended.

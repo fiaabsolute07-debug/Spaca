@@ -59,6 +59,11 @@ export default async function OperatorOrderPage({ params, searchParams }: PagePr
       <AdminCommand command="admin_refund_order" route={route}
         values={{ order_id: str(order.id) }} label="Request refund with provider" />
     </section>
+    {data.cases.some((c) => str(c.kind) === 'LATE_FUNDING' && ['OPEN', 'ASSIGNED'].includes(str(c.status))) && <section className="panel">
+      <h2>Refund late funds</h2>
+      <p>The provider captured money after this order could no longer use it. Refund it to the buyer in full; nothing is taken from any other order.</p>
+      <AdminCommand command="admin_refund_late_funding" route={route} values={{ order_id: str(order.id) }} label="Refund late funds" />
+    </section>}
     {str(order.settlement_status) === 'RELEASED' && <section className="panel">
       <h2>Refund after the creator was paid</h2>
       <p>Finance or admin only. The amount is first reversed from the creator transfer. If their balance cannot cover it, nothing is refunded

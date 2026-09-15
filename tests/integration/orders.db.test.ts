@@ -132,6 +132,24 @@ describe.skipIf(!RUN_DB)('ORD — work clock and gating', () => {
     expect((await step(buyer, orderId, { command: 'submit_brief', brief })).status).toBe(422);
   });
 
+  it('ORD-03: a booked CREATE order with its brief starts the clock at funding and is due one turnaround later', async () => {
+    const creator = await createUser('ord03c-creator');
+    const buyer = await createUser('ord03c-buyer');
+    const { serviceId } = await createPublishedService(command, creator);
+    const orderId = String((await command(buyer, { command: 'book', idempotency_key: key('book'), service_id: serviceId, brief, accept_terms: 'on' })).body.id);
+    const booked = await orderRow(orderId);
+    expect(booked).toMatchObject({ status: 'AWAITING_PAYMENT', work_start_at: null, delivery_due_at: null, funded_at: null });
+    expect(booked.brief_ready_at).not.toBeNull();
+    // The brief was complete hours before the buyer paid: the clock starts at funding, not at the brief.
+    await sql`update app.orders set brief_ready_at=now() - interval '6 hours' where id=${orderId}`;
+    expect((await pay(buyer, orderId)).status).toBe(200);
+    const funded = await orderRow(orderId);
+    expect(funded.status).toBe('FUNDED');
+    expect(new Date(funded.work_start_at).getTime()).toBe(new Date(funded.funded_at).getTime());
+    expect(new Date(funded.delivery_due_at).getTime() - new Date(funded.funded_at).getTime()).toBe(Number((funded.terms as { turnaround_hours: number }).turnaround_hours) * 3600_000);
+    expect(new Date(funded.delivery_due_at).getTime()).toBeGreaterThan(Date.now());
+  });
+
   it('ORD-04: starting late does not move the agreed deadline', async () => {
     const { creator, orderId } = await funded('ord04');
     const before = await orderRow(orderId);

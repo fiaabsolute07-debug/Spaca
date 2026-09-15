@@ -19,6 +19,7 @@ import { join } from 'node:path';
 import postgres from 'postgres';
 import { backupObjects, loadBackup, restoreObjects, writeBackup } from './lib/logical-backup';
 import { OBLIGATION_QUERIES, dueJobWorkQuery } from './lib/restore-obligations';
+import { assertLocalDatabaseTarget } from '../src/lib/fixtures';
 
 if (process.env.NODE_ENV === 'production') throw new Error('The restore rehearsal is local only');
 const args = process.argv.slice(2);
@@ -31,6 +32,8 @@ const HOST = '127.0.0.1';
 const PORT = '55432';
 const PASSWORD = 'local_dev_only';
 const adminUrl = (db: string) => `postgres://postgres:${PASSWORD}@${HOST}:${PORT}/${db}`;
+// FND-07: refuse production/staging environments before touching any database.
+assertLocalDatabaseTarget(adminUrl(source));
 
 function run(command: string, commandArgs: string[], env: Record<string, string> = {}) {
   const started = performance.now();

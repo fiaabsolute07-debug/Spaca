@@ -68,6 +68,7 @@ Status values: TODO · IN_PROGRESS · REVIEW · DONE · BLOCKED.
 | OPS-02 | Local restore rehearsal: snapshot logical backup (tables + files), isolated restore, obligations/invariants/jobs dry-run comparison, webhook replay as app role, fault self-test, runbook. Evidence `docs/evidence/claude-OPS-02.md` | OPS-02 PASS local | BNK | DONE |
 | SEC-RACE | Security matrices (foreign buyer/creator, forged money fields, expired sessions, suspended obligations, crypto-off, wrong environment) and DB concurrency races (refund vs release, cumulative refunds, UNKNOWN payment vs rival buyers, hire funding vs expiry, offer acceptance vs expiry). Evidence `docs/evidence/claude-SEC-RACE.md` | 14 rows PARTIAL→PASS | OPS-02 | DONE |
 | BROWSER | Browser journeys for accounts, honest empty states, forged redirects, markup, changed terms, offline auctions, keyboard and long text; fixes: signed notices, word breaking, error return paths, service edit/resume UI, creator waiting message. Evidence `docs/evidence/claude-BROWSER.md` | 10 rows PARTIAL→PASS | SEC-RACE | DONE |
+| GAPS | Late captured funds booked and refundable (CAP-05), availability at selection (REQ-04), CREATE clock (ORD-03), precision matrix (PAY-17), script guards (FND-07), PAY-08 via ORD-14. Evidence `docs/evidence/claude-GAPS.md` | 6 rows PARTIAL→PASS | BROWSER | DONE |
 
 ### Codex (Astra)
 

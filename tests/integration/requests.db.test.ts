@@ -143,6 +143,27 @@ describe.skipIf(!RUN_DB)('REQ-04/05/09 — selection', () => {
     expect((await sql`select count(*)::int as n from app.hire_offers where request_id=${requestId}`)[0]!.n).toBe(0);
   });
 
+  it('REQ-04: a creator who paused new orders or was suspended after applying cannot be sent an offer until available again', async () => {
+    const buyer = await createUser('req04b-buyer');
+    const maker = await creator('req04b-creator');
+    const requestId = await createRequest(buyer);
+    await applyTo(requestId, maker, '200');
+    expect((await command(maker, { command: 'set_accepting_orders', idempotency_key: key('p'), accepting: 'false' })).status).toBe(200);
+    const paused = await select(buyer, await applicationOf(requestId, maker));
+    expect(paused.status).toBe(409);
+    expect(String(paused.body.error)).toMatch(/paused new orders/);
+    await sql`update app.users set status='SUSPENDED' where id=${maker.id}`;
+    try {
+      expect((await select(buyer, await applicationOf(requestId, maker))).status).toBe(403);
+    } finally {
+      await sql`update app.users set status='ACTIVE' where id=${maker.id}`;
+    }
+    expect((await sql`select count(*)::int as n from app.hire_offers where request_id=${requestId}`)[0]!.n).toBe(0);
+    expect((await sql`select reserved_minor from app.requests where id=${requestId}`)[0]!.reserved_minor).toBe('0');
+    expect((await command(maker, { command: 'set_accepting_orders', idempotency_key: key('p'), accepting: 'true' })).status).toBe(200);
+    expect((await select(buyer, await applicationOf(requestId, maker))).status).toBe(200);
+  });
+
   it('REQ-05: concurrent selections never exceed the budget or the hire count', async () => {
     const buyer = await createUser('req05-buyer');
     const makers = await Promise.all(['a', 'b', 'c'].map((label) => creator(`req05-${label}`)));

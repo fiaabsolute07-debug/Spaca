@@ -1149,6 +1149,20 @@ export class MockPaymentProvider implements PaymentProvider {
     return this.fundingSnapshot(funding);
   }
 
+  /**
+   * Simulates a capture that completes at the provider even though the platform already cancelled the attempt (the
+   * capture was in flight). Emits `funding.succeeded` for a CANCELED funding.
+   */
+  async simulateLateCapture(reference: string): Promise<FundingStatus> {
+    const funding = this.requireFunding(reference);
+    if (funding.status !== 'CANCELED') throw new ProviderError('INVALID_STATE', 'only a cancelled attempt can be captured late');
+    funding.status = 'SUCCEEDED';
+    funding.providerFee = funding.providerFee ?? 0n;
+    funding.updatedAt = this.timestamp();
+    this.emitFundingEvent('funding.succeeded', funding);
+    return this.fundingSnapshot(funding);
+  }
+
   /** Simulates the buyer's bank returning a settled bank transfer (for example a closed account). Emits `funding.returned`. */
   async simulateBankReturn(reference: string): Promise<FundingStatus> {
     const funding = this.requireFunding(reference);
