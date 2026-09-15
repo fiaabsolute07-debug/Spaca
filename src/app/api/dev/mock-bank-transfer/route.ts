@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { sql } from '@/lib/db';
 import { getActor, isSameOrigin, publicUrl } from '@/lib/auth';
+import { withNotice } from '@/lib/notices';
 import { deliverPendingMockWebhooks, getMockPaymentProvider, mockPaymentsEnabled } from '@/modules/payments/funding';
 import { isProviderError } from '@/modules/payments/providers';
 
@@ -19,7 +20,7 @@ export async function POST(request: Request) {
   const form = await request.formData();
   const orderId = String(form.get('order_id') ?? '');
   const outcome = String(form.get('outcome') ?? '') as (typeof OUTCOMES)[number];
-  const back = (kind: 'message' | 'error', message: string) => NextResponse.redirect(publicUrl(request, `/orders/${UUID.test(orderId) ? orderId : ''}?${kind}=${encodeURIComponent(message)}`), 303);
+  const back = (kind: 'message' | 'error', message: string) => NextResponse.redirect(publicUrl(request, withNotice(`/orders/${UUID.test(orderId) ? orderId : ''}`, kind, message)), 303);
   if (!UUID.test(orderId) || !OUTCOMES.includes(outcome)) return back('error', 'Unknown sandbox bank action');
   const [transfer] = await sql`select p.provider_reference from app.provider_operations p join app.orders o on o.id=p.order_id
     where p.order_id=${orderId} and o.buyer_id=${actor.id} and p.kind='funding.create' and p.outcome->>'method'='BANK_TRANSFER' and p.provider_reference is not null

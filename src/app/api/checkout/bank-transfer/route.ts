@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getActor, isSameOrigin, publicUrl } from '@/lib/auth';
+import { withNotice } from '@/lib/notices';
 import { PaymentFlowError, mockPaymentsEnabled, startBankTransfer } from '@/modules/payments/funding';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -19,7 +20,7 @@ export async function POST(request: Request) {
   const wantsJson = (request.headers.get('accept') ?? '').includes('application/json');
   const respond = (status: number, body: Record<string, unknown>, message: string, kind: 'message' | 'error') => wantsJson
     ? NextResponse.json(body, { status })
-    : NextResponse.redirect(publicUrl(request, `/orders/${UUID.test(orderId) ? orderId : ''}?${kind}=${encodeURIComponent(message)}`), 303);
+    : NextResponse.redirect(publicUrl(request, withNotice(`/orders/${UUID.test(orderId) ? orderId : ''}`, kind, message)), 303);
   if (!UUID.test(orderId)) return respond(400, { error: 'order_id is invalid' }, 'Order reference is invalid', 'error');
   try {
     const { intent, holdUntil } = await startBankTransfer(actor.id, orderId);

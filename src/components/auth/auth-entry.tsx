@@ -1,4 +1,5 @@
 import { localAuthEnabled } from '@/lib/auth';
+import { verifiedNotice } from '@/lib/notices';
 import type { Query } from '@/components/page-props';
 import { AuthDialog, type TestAccount } from './auth-dialog';
 
@@ -24,8 +25,8 @@ export function AuthEntry({ mode, variant, query }: { mode: 'signin' | 'signup';
     variant={variant}
     returnTo={safePath(text(query, 'return_to'))}
     defaultRole={text(query, 'role') === 'creator' ? 'creator' : 'buyer'}
-    initialError={text(query, 'error') || null}
-    initialMessage={text(query, 'message') || null}
+    initialError={verifiedNotice(query, 'error')}
+    initialMessage={verifiedNotice(query, 'message')}
     testAccounts={showTestAccounts ? TEST_ACCOUNTS : []}
   />;
 }

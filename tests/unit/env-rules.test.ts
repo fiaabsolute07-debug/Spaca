@@ -15,6 +15,7 @@ const productionEnv = {
   DEV_SESSIONS: 'off',
   STORAGE_PROVIDER: 'supabase',
   VIEW_HASH_SALT: 'production-view-salt-example',
+  NOTICE_SIGNING_SECRET: 'production-notice-signing-secret-example',
   PAYMENT_MODE: 'sandbox',
   LIVE_PAYMENTS_ENABLED: 'false',
 };

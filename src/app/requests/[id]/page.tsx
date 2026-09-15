@@ -56,7 +56,7 @@ function ApplicationCard({ application: a, owner, route }: { application: Row; o
     />}
     {owner && liveOffer && <CommandForm command="withdraw_offer" label="Withdraw offer" values={{ offer_id: str(a.offer_id) }} returnTo={route} />}
     {!owner && liveOffer && <>
-      <CommandForm command="accept_offer" label="Accept offer" values={{ offer_id: str(a.offer_id) }}>
+      <CommandForm command="accept_offer" label="Accept offer" values={{ offer_id: str(a.offer_id) }} returnTo={route}>
         <p className="muted">Accepting creates the order. The buyer funds it before work starts.</p>
       </CommandForm>
       <CommandForm command="decline_offer" label="Decline offer" values={{ offer_id: str(a.offer_id) }} returnTo={route}>

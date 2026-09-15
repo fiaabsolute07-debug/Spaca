@@ -85,11 +85,21 @@ export default async function CreatorServicesPage({
             <Field name="notes" label="What changed (optional)" />
           </CommandForm>}
         </div>}
+        {str(s.status) !== 'ARCHIVED' && <details className="service-edit">
+          <summary>Edit service</summary>
+          <CommandForm command="update_service" label="Save changes" values={{ service_id: str(s.id), expected_version: str(s.version) }} returnTo={route}>
+            <p className="muted">{str(s.status) === 'DRAFT' ? 'Changes stay in the draft until you publish.' : 'Saving creates a new version of the terms. New checkouts use it; existing orders keep the version they bought.'}</p>
+            <Field name="title" label="Service title" value={str(s.title)} required />
+            <Field name="description" label="Scope and deliverables" type="textarea" value={str(s.description)} required />
+            <Field name="price" label="Price (USD)" type="number" value={(num(s.price_minor) / 100).toFixed(2)} required />
+            <Field name="turnaround_hours" label="Delivery time (hours)" type="number" value={String(num(s.turnaround_hours))} required />
+          </CommandForm>
+        </details>}
         <div className="inline-actions">
           <Link className="text-link" href={`/services/${str(s.id)}`}>Open public page ›</Link>
-          {str(s.status) === 'DRAFT' && <CommandForm
+          {['DRAFT', 'PAUSED'].includes(str(s.status)) && <CommandForm
             command="publish_service"
-            label="Publish"
+            label={str(s.status) === 'PAUSED' ? 'Resume selling' : 'Publish'}
             values={{
               service_id: str(s.id)
             }}

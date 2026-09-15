@@ -1,4 +1,5 @@
 import { cookies } from 'next/headers';
+import { withNotice } from '../../../lib/notices';
 import { NextResponse } from 'next/server';
 import { sql } from '../../../lib/db';
 import { createSession, hashPassword, hashSessionToken, isSameOrigin, localAuthEnabled, SESSION_COOKIE, supabaseAuth, verifyPassword, publicUrl } from '../../../lib/auth';
@@ -22,7 +23,7 @@ export async function POST(request: Request) {
   const failure = () => {
     const message = action === 'signup' ? 'Unable to create the account. Check the details or sign in instead.' : 'The email or password is not correct.';
     return wantsJson ? NextResponse.json({ error: message }, { status: 400 })
-      : go(`${action === 'signup' ? '/sign-up' : '/sign-in'}?error=${encodeURIComponent(message)}&return_to=${encodeURIComponent(returnTo)}`);
+      : go(withNotice(`${action === 'signup' ? '/sign-up' : '/sign-in'}?return_to=${encodeURIComponent(returnTo)}`, 'error', message));
   };
   try {
     if (!['login','signup','logout'].includes(action)) return NextResponse.json({ error: 'Invalid action' }, { status: 400 });
@@ -42,7 +43,7 @@ export async function POST(request: Request) {
         return go(returnTo);
       }
       return wantsJson ? NextResponse.json({ error: 'Check your email to verify your account, then sign in.' }, { status: 400 })
-        : go('/sign-in?message=Check%20your%20email%20to%20verify%20your%20account');
+        : go(withNotice('/sign-in', 'message', 'Check your email to verify your account'));
     }
     const jar = await cookies();
     if (action === 'logout') {

@@ -56,6 +56,10 @@ export function OrderNextStepPanel({ order: o, buyer, creator, actorId, reviews,
 
     {status === 'AWAITING_PAYMENT' && buyer && str(bankTransfer?.funding_status) !== 'PROCESSING' && <CryptoPaymentPanel orderId={orderId} intent={cryptoPayment} options={cryptoOptions} route={route} />}
 
+    {status === 'AWAITING_PAYMENT' && creator && <p className="muted">
+      Waiting for the buyer&apos;s payment to be confirmed by the payment provider. Work can start once it is funded{briefReady ? '' : ' and the brief is complete'}.
+    </p>}
+
     {status === 'FUNDED' && creator && (briefReady
       ? <CommandForm command="start" label="Start work" values={base} returnTo={route}>
           <p className="muted">Due {date(o.delivery_due_at)}. Starting later does not move this date.</p>

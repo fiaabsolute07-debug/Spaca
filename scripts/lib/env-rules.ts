@@ -97,6 +97,7 @@ export function checkEnvironment(env: Environment, target: EnvironmentTarget): E
   add('LOCAL_CHAIN', false, (value) => deployed ? value === 'off' : ['on', 'off'].includes(value));
   // Eligible-view hashing (P5-04) must use a real secret salt when deployed.
   add('VIEW_HASH_SALT', deployed, (value) => value.length >= 16);
+  add('NOTICE_SIGNING_SECRET', deployed, (value) => value.length >= 32);
   for (const name of ['SUPABASE_SERVER_SECRET_KEY', 'STORAGE_PUBLIC_BUCKET', 'STORAGE_PRIVATE_BUCKETS',
     'SUPPORT_CONTACT', 'POLICY_VERSION', 'WALLET_PROVIDER_CONFIG']) add(name);
   const arc = env.PAYMENT_PROVIDER === 'arc_usdc';

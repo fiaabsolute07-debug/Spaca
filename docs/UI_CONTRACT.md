@@ -394,3 +394,10 @@ Commands:
 - `getOrderData(...).bank_transfer` (buyer only) = `{ enabled, reference, funding_status (REQUIRES_ACTION|PROCESSING|SUCCEEDED|FAILED|CANCELED|RETURNED), hold_until }`. Orders expose `funding_method` (CARD|BANK_TRANSFER) and `payment_status` may be RETURNED.
 - Events: `BANK_TRANSFER_REQUESTED {reference, hold_until, policy_version: 'bank-v1'}`, `BANK_FUNDS_RETURNED {order_status_before, action}`. Notification `payment.returned {orderRef}`. Cases: `BANK_FUNDS_RETURNED`, `BANK_RETURN_AFTER_RELEASE`, `UNEXPECTED_BANK_RETURN`.
 - UI: `<BankTransferPanel>` inside the next-step panel. Card and crypto payment are hidden while a transfer is PROCESSING.
+
+## 2026-09-15 additions: signed notices, service editing
+
+- Flash notices: redirects carry `message` or `error` plus `notice_sig` (HMAC over kind and text, `src/lib/notices.ts`). `<Notices>` and the sign-in dialog display a notice only when the signature is valid. Build redirect URLs with `withNotice(path, kind, text)`; never hand-write `?message=`. Production needs `NOTICE_SIGNING_SECRET` (32+ characters).
+- My services: each non-archived card has an "Edit service" panel posting `update_service {service_id, expected_version, title, description, price, turnaround_hours}` (409 on a stale version). Saving a PUBLISHED/PAUSED service creates a new immutable version; buyers holding the old `service_version_id` get `QUOTE_CHANGED` on booking. Paused services show "Resume selling" (`publish_service`).
+- Command forms that can fail (booking, accepting an offer) pass `returnTo` so errors come back to the same page.
+- A creator viewing an unpaid order sees a waiting message instead of actions.

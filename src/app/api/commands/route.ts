@@ -4,6 +4,7 @@
  * per-domain `commands.ts` files under `src/modules/` (registry: `src/modules/commands.ts`).
  */
 import { accountTypeMessage, requiredAccountType } from '@/lib/account';
+import { withNotice } from '@/lib/notices';
 import { createHash, randomUUID } from 'node:crypto';
 import { NextResponse } from 'next/server';
 import { getActor, isSameOrigin, publicUrl } from '@/lib/auth';
@@ -17,7 +18,6 @@ const SUSPENDED_ALLOWED_COMMANDS = new Set(['start', 'deliver', 'revision', 'app
 const safeReturnTo = (value: string | null, fallback: string) =>
   value && value.startsWith('/') && !value.startsWith('//') && value.length < 300 ? value : fallback;
 
-const withQuery = (path: string, key: string, value: string) => `${path}${path.includes('?') ? '&' : '?'}${key}=${encodeURIComponent(value)}`;
 
 const hashInput = (input: Record<string, string>) =>
   createHash('sha256').update(JSON.stringify(Object.entries(input).sort(([a], [b]) => a.localeCompare(b)))).digest('hex');
@@ -75,10 +75,10 @@ export async function POST(request: Request) {
     if (wantsJson) return NextResponse.json(result);
     // Operator consoles act on queues; they return to the page the form came from rather than the entity page.
     const destination = operatorCommand && form.get('return_to') ? returnTo : result.path || returnTo;
-    return NextResponse.redirect(publicUrl(request, withQuery(destination, 'message', result.message)), 303);
+    return NextResponse.redirect(publicUrl(request, withNotice(destination, 'message', result.message)), 303);
   } catch (error) {
     const { status, message } = errorResponse(error);
     if (wantsJson) return NextResponse.json({ error: message }, { status });
-    return NextResponse.redirect(publicUrl(request, withQuery(returnTo, 'error', message)), 303);
+    return NextResponse.redirect(publicUrl(request, withNotice(returnTo, 'error', message)), 303);
   }
 }

@@ -151,6 +151,7 @@ export default async function ServicePage({
               service_id: str(s.id),
               service_version_id: str(s.service_version_id)
             }}
+            returnTo={`/services/${str(s.id)}`}
           >
             {isDigital ? <label className="field">
               <span>
