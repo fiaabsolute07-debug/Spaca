@@ -11,6 +11,7 @@ import {
   assertZeroPlatformFee,
   canonicalize,
   computeRequestHash,
+  isProviderError,
   parseAtomicAmount,
   platformFeeFor,
   signMockWebhook,
@@ -72,6 +73,20 @@ async function fundedOrder(provider: MockPaymentProvider, amount = 10_000n, prov
   await provider.simulateFundingOutcome(intent.reference, { status: 'SUCCEEDED', providerFee });
   return intent;
 }
+
+describe('provider error identity', () => {
+  it('recognises provider errors thrown by another bundled copy of the provider module', () => {
+    // Next dev bundles providers.ts per route while the mock provider instance is shared, so instanceof alone is not enough.
+    class ForeignProviderError extends Error { readonly code = 'NOT_FOUND'; }
+    const foreign = new ForeignProviderError('funding reference not found');
+    expect(isProviderError(foreign)).toBe(false);
+    Object.defineProperty(foreign, Symbol.for('spaca.payments.ProviderError'), { value: true });
+    expect(isProviderError(foreign, 'NOT_FOUND')).toBe(true);
+    expect(isProviderError(foreign, 'PAYEE_NOT_CAPABLE')).toBe(false);
+    expect(isProviderError(new ProviderError('NOT_FOUND', 'x'), 'NOT_FOUND')).toBe(true);
+    expect(isProviderError(Object.assign(new Error('x'), { code: 'NOT_FOUND' }))).toBe(false);
+  });
+});
 
 describe('platform fee is always zero', () => {
   it('exposes zero constants and zero fee for any amount', () => {

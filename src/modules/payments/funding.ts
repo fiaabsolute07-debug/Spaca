@@ -293,6 +293,10 @@ export async function requestCreatorRelease(tx: Tx, order: Row): Promise<Provide
     if (isProviderError(error, 'PAYEE_NOT_CAPABLE')) {
       await openCase(tx, orderId, String(row.id), 'PAYOUT_CAPABILITY_MISSING', 'MEDIUM', 'Creator must finish payout onboarding; the job retries the same release operation');
     }
+    if (isProviderError(error, 'NOT_FOUND')) {
+      // Locally this is the in-memory mock after a restart. Nothing is released; an operator verifies the funding.
+      await openCase(tx, orderId, String(row.id), 'PROVIDER_OBJECT_MISSING', 'HIGH', 'Provider has no record of the funding for this release; verify manually before releasing');
+    }
     return result;
   }
 }

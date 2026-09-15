@@ -124,6 +124,11 @@ export type ProviderErrorCode =
 export type ProviderErrorOutcome = 'NOT_APPLIED' | 'UNKNOWN';
 
 const RETRYABLE_CODES: ReadonlySet<ProviderErrorCode> = new Set(['PROVIDER_TIMEOUT', 'PROVIDER_UNAVAILABLE']);
+/**
+ * The mock provider is shared on globalThis, but Next dev bundles this module once per route, so an error it throws can
+ * come from another copy of this class. A registry symbol identifies provider errors from every copy.
+ */
+const PROVIDER_ERROR_BRAND = Symbol.for('spaca.payments.ProviderError');
 
 export class ProviderError extends Error {
   readonly code: ProviderErrorCode;
@@ -143,6 +148,7 @@ export class ProviderError extends Error {
   ) {
     super(message);
     this.name = 'ProviderError';
+    Object.defineProperty(this, PROVIDER_ERROR_BRAND, { value: true });
     this.code = code;
     this.retryable = RETRYABLE_CODES.has(code);
     this.outcome = options.outcome ?? (code === 'PROVIDER_TIMEOUT' ? 'UNKNOWN' : 'NOT_APPLIED');
@@ -152,7 +158,8 @@ export class ProviderError extends Error {
 }
 
 export function isProviderError(error: unknown, code?: ProviderErrorCode): error is ProviderError {
-  return error instanceof ProviderError && (code === undefined || error.code === code);
+  const branded = error instanceof ProviderError || (error instanceof Error && (error as unknown as Record<symbol, unknown>)[PROVIDER_ERROR_BRAND] === true);
+  return branded && (code === undefined || (error as ProviderError).code === code);
 }
 
 // ---------------------------------------------------------------------------

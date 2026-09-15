@@ -189,6 +189,18 @@ describe.skipIf(!RUN_DB)('release_ready_settlements (PAY-02/03/12)', () => {
     expect(await count(sql`select count(*)::int as count from app.outbox where semantic_key like ${`notify:payout.%:${orderId}%`}`)).toBe(0);
   });
 
+  it('a provider with no record of the funding releases nothing and opens one case instead of failing the job', async () => {
+    const { orderId } = await completedOrder('release-missing-funding');
+    // A fresh provider has never seen this order's funding (as after a local restart of the in-memory mock).
+    useProvider();
+    expect((await jobs.releaseReadySettlements({ orderId })).outcomes).toEqual({ RELEASE_REJECTED_NOT_FOUND: 1 });
+    expect((await jobs.releaseReadySettlements({ orderId })).outcomes).toEqual({ RELEASE_REJECTED_NOT_FOUND: 1 });
+    const order = await orderRow(orderId);
+    expect([order.status, order.settlement_status]).toEqual(['APPROVED', 'READY']);
+    expect(await count(sql`select count(*)::int as count from app.reconciliation_cases where order_id=${orderId} and kind='PROVIDER_OBJECT_MISSING' and status='OPEN'`)).toBe(1);
+    expect(await count(sql`select count(*)::int as count from app.order_events where order_id=${orderId} and kind like 'SETTLEMENT_%'`)).toBe(0);
+  });
+
   it('an open dispute freezes release', async () => {
     const { buyer, orderId } = await completedOrder('release-dispute');
     await sql`insert into app.disputes (order_id,opened_by,reason) values (${orderId},${buyer.id},'Chargeback-style dispute opened after completion')`;
