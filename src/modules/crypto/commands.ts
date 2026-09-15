@@ -20,7 +20,7 @@ const createCryptoPayment: CommandHandler = async ({ tx, actor, form }) => {
   if (!hold) throw new CommandError('The checkout hold expired; book again to pay', 'SLOT_EXPIRED');
   const [cardAttempt] = await tx<Row[]>`select 1 from app.provider_operations where order_id=${orderId} and kind='funding.create'
     and (status in ('PENDING','UNKNOWN') or coalesce(outcome->>'fundingStatus','') in ('PROCESSING','SUCCEEDED')) limit 1`;
-  if (cardAttempt) throw new CommandError('A card payment for this order is already in progress', 'ORDER_STATE_CONFLICT');
+  if (cardAttempt) throw new CommandError('A card or bank payment for this order is already in progress with the provider', 'ORDER_STATE_CONFLICT');
 
   const chainId = integer(text(form, 'chain_id'), 'chain_id', 1, Number.MAX_SAFE_INTEGER);
   const network = await enabledNetwork(tx, chainId);

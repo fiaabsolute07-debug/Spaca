@@ -194,7 +194,9 @@ export interface Capabilities {
   currencySupported: boolean | null;
 }
 
-export type FundingStatusCode = 'REQUIRES_ACTION' | 'PROCESSING' | 'SUCCEEDED' | 'FAILED' | 'CANCELED';
+/** RETURNED: a settled bank transfer that the buyer's bank later sent back. */
+export type FundingStatusCode = 'REQUIRES_ACTION' | 'PROCESSING' | 'SUCCEEDED' | 'FAILED' | 'CANCELED' | 'RETURNED';
+export type FundingMethod = 'CARD' | 'BANK_TRANSFER';
 export type TransferStatusCode = 'PENDING' | 'SUCCEEDED' | 'FAILED';
 /** Card payment disputes (chargebacks) raised by the buyer's bank against a captured funding. */
 export type DisputeStatusCode = 'OPEN' | 'WON' | 'LOST';
@@ -209,6 +211,8 @@ export interface FundingInput {
   /** Snapshot of the order fee. Must be 0n. */
   platformFee: AtomicAmount;
   description?: string;
+  /** Omitted: card. BANK_TRANSFER: the buyer pays by bank transfer; the provider confirms asynchronously, often days later. */
+  method?: 'BANK_TRANSFER';
 }
 
 export interface FundingIntent {
@@ -220,8 +224,9 @@ export interface FundingIntent {
   amount: AtomicAmount;
   currency: string;
   platformFee: AtomicAmount;
-  /** The buyer confirms with the provider (hosted flow). Browser redirects never mark funding paid. */
-  nextAction: 'BUYER_CONFIRMS_WITH_PROVIDER';
+  /** The buyer confirms with the provider (hosted flow) or sends a bank transfer. Browser redirects never mark funding paid. */
+  nextAction: 'BUYER_CONFIRMS_WITH_PROVIDER' | 'BUYER_SENDS_BANK_TRANSFER';
+  method: FundingMethod;
   createdAt: string;
 }
 
@@ -367,6 +372,7 @@ export type WebhookEventType =
   | 'funding.canceled'
   /** The actual provider cost of a captured funding changed or became known after capture. */
   | 'funding.fee_updated'
+  | 'funding.returned'
   | 'release.pending'
   | 'release.succeeded'
   | 'release.failed'
@@ -589,6 +595,8 @@ export interface MockPaymentProviderOptions {
   maxAtomicAmount?: bigint;
   partialRefund?: boolean;
   payeesWithoutPayouts?: readonly string[];
+  /** Whether buyers may fund by bank transfer on this account (default false). Bank payouts to creators do not imply it. */
+  bankTransferFunding?: boolean;
   /** Available balance per payee account for transfer reversals; payees not listed can always be reversed. */
   payeeBalances?: Readonly<Record<string, bigint>>;
   /** 'immediate' settles to SUCCEEDED on creation; 'pending' waits for simulate*Outcome. */
@@ -614,6 +622,7 @@ export interface SimulatedFundingOutcome {
 interface FundingRecord {
   reference: string;
   operationId: string;
+  method: FundingMethod;
   orderId: string;
   buyerId: string;
   payeeAccountId: string;
@@ -684,6 +693,7 @@ const WEBHOOK_EVENT_TYPES: ReadonlySet<string> = new Set([
   'funding.failed',
   'funding.canceled',
   'funding.fee_updated',
+  'funding.returned',
   'release.pending',
   'release.succeeded',
   'release.failed',
@@ -695,7 +705,7 @@ const WEBHOOK_EVENT_TYPES: ReadonlySet<string> = new Set([
   'dispute.won',
   'dispute.lost',
 ]);
-const FUNDING_STATUSES: ReadonlySet<string> = new Set(['REQUIRES_ACTION', 'PROCESSING', 'SUCCEEDED', 'FAILED', 'CANCELED']);
+const FUNDING_STATUSES: ReadonlySet<string> = new Set(['REQUIRES_ACTION', 'PROCESSING', 'SUCCEEDED', 'FAILED', 'CANCELED', 'RETURNED']);
 const TRANSFER_STATUSES: ReadonlySet<string> = new Set(['PENDING', 'SUCCEEDED', 'FAILED']);
 const DISPUTE_STATUSES: ReadonlySet<string> = new Set(['OPEN', 'WON', 'LOST']);
 
@@ -724,6 +734,7 @@ export class MockPaymentProvider implements PaymentProvider {
   private readonly maxAmount: bigint;
   private readonly partialRefund: boolean;
   private readonly payeesWithoutPayouts: ReadonlySet<string>;
+  private readonly bankTransferFunding: boolean;
   private readonly payeeBalances: Map<string, bigint>;
   private readonly releaseSettlement: 'immediate' | 'pending';
   private readonly refundSettlement: 'immediate' | 'pending';
@@ -759,6 +770,7 @@ export class MockPaymentProvider implements PaymentProvider {
     this.maxAmount = options.maxAtomicAmount ?? DEFAULT_MAX_ATOMIC_AMOUNT;
     this.partialRefund = options.partialRefund ?? true;
     this.payeesWithoutPayouts = new Set(options.payeesWithoutPayouts ?? []);
+    this.bankTransferFunding = options.bankTransferFunding === true;
     this.payeeBalances = new Map(Object.entries(options.payeeBalances ?? {}));
     this.releaseSettlement = options.releaseSettlement ?? 'immediate';
     this.refundSettlement = options.refundSettlement ?? 'immediate';
@@ -805,6 +817,10 @@ export class MockPaymentProvider implements PaymentProvider {
     if (input.description !== undefined && (typeof input.description !== 'string' || input.description.length > 500)) {
       throw new ProviderError('INVALID_INPUT', 'description must be a string of at most 500 chars');
     }
+    if (input.method !== undefined && input.method !== 'BANK_TRANSFER') throw new ProviderError('INVALID_INPUT', 'method must be BANK_TRANSFER when given');
+    if (input.method === 'BANK_TRANSFER' && !this.bankTransferFunding) {
+      throw new ProviderError('UNSUPPORTED_CAPABILITY', 'bank transfer funding is not enabled for this account', { details: { method: 'BANK_TRANSFER' } });
+    }
 
     const payload = {
       orderId: input.orderId,
@@ -814,12 +830,14 @@ export class MockPaymentProvider implements PaymentProvider {
       currency: input.currency,
       platformFee: input.platformFee,
       description: input.description,
+      method: input.method,
     };
     return this.runIdempotent('funding.create', operationId, payload, () => {
       const at = this.timestamp();
       const record: FundingRecord = {
         reference: this.referenceFor('fund', operationId),
         operationId,
+        method: input.method ?? 'CARD',
         orderId: input.orderId,
         buyerId: input.buyerId,
         payeeAccountId: input.payeeAccountId,
@@ -840,7 +858,8 @@ export class MockPaymentProvider implements PaymentProvider {
         amount: record.amount,
         currency: record.currency,
         platformFee: PLATFORM_FEE_ATOMIC,
-        nextAction: 'BUYER_CONFIRMS_WITH_PROVIDER',
+        nextAction: record.method === 'BANK_TRANSFER' ? 'BUYER_SENDS_BANK_TRANSFER' : 'BUYER_CONFIRMS_WITH_PROVIDER',
+        method: record.method,
         createdAt: at,
       };
       return { reference: record.reference, result };
@@ -863,7 +882,8 @@ export class MockPaymentProvider implements PaymentProvider {
           result: { reference, operationId, status: 'CANCELED', alreadyCanceled: true, canceledAt: funding.updatedAt },
         };
       }
-      if (funding.status !== 'REQUIRES_ACTION' && funding.status !== 'PROCESSING') {
+      // A bank transfer the buyer already sent cannot be called back; the provider settles or fails it.
+      if (funding.status !== 'REQUIRES_ACTION' && !(funding.status === 'PROCESSING' && funding.method === 'CARD')) {
         throw new ProviderError('INVALID_STATE', `cannot cancel funding in status ${funding.status}; use refund`, {
           operationId,
           details: { status: funding.status },
@@ -1109,6 +1129,7 @@ export class MockPaymentProvider implements PaymentProvider {
       SUCCEEDED: [],
       FAILED: [],
       CANCELED: [],
+      RETURNED: [],
     };
     if (!allowed[funding.status].includes(outcome.status)) {
       throw new ProviderError('INVALID_STATE', `funding cannot move from ${funding.status} to ${outcome.status}`);
@@ -1125,6 +1146,18 @@ export class MockPaymentProvider implements PaymentProvider {
     const type: WebhookEventType =
       outcome.status === 'SUCCEEDED' ? 'funding.succeeded' : outcome.status === 'FAILED' ? 'funding.failed' : 'funding.processing';
     this.emitFundingEvent(type, funding);
+    return this.fundingSnapshot(funding);
+  }
+
+  /** Simulates the buyer's bank returning a settled bank transfer (for example a closed account). Emits `funding.returned`. */
+  async simulateBankReturn(reference: string): Promise<FundingStatus> {
+    const funding = this.requireFunding(reference);
+    if (funding.method !== 'BANK_TRANSFER' || funding.status !== 'SUCCEEDED') {
+      throw new ProviderError('INVALID_STATE', 'only a settled bank transfer can be returned');
+    }
+    funding.status = 'RETURNED';
+    funding.updatedAt = this.timestamp();
+    this.emitFundingEvent('funding.returned', funding);
     return this.fundingSnapshot(funding);
   }
 

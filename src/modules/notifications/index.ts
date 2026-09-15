@@ -56,6 +56,7 @@ export interface NotificationTemplateParams {
   'order.deadline_extension_requested': OrderRef & { newDueAt: string };
   'order.deadline_extension_resolved': OrderRef & { outcome: 'ACCEPTED' | 'REJECTED' };
   'payment.disputed': OrderRef & { stage: 'OPENED' | 'WON' | 'LOST' };
+  'payment.returned': OrderRef;
   'payout.succeeded': OrderRef & Money;
   'payout.failed': OrderRef;
   'refund.updated': OrderRef & Money & { refundStatus: 'PENDING' | 'SUCCEEDED' | 'FAILED' };
@@ -324,6 +325,16 @@ export const NOTIFICATION_TEMPLATES: { readonly [K in NotificationTemplateId]: N
       WON: 'The card payment dispute for this order was decided in favour of the payment. Nothing changes on the order.',
       LOST: 'The card network returned this payment to the buyer. Your delivered work stays on record; support will contact you about next steps.',
     })[p.stage],
+    linkPath: orderLink,
+  }),
+  'payment.returned': template({
+    id: 'payment.returned',
+    category: 'transactional',
+    subject: 'Bank transfer returned',
+    allowedChannels: BOTH,
+    defaultChannels: BOTH,
+    params: { orderRef: 'ref' },
+    body: () => "The buyer's bank sent the transfer for this order back. Nothing will be paid out for it; check the order page for what happens next.",
     linkPath: orderLink,
   }),
   'payout.succeeded': template({

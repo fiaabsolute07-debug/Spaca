@@ -155,6 +155,14 @@ export async function getOrderData(actor: Actor, id: string) {
     where n.enabled and a.usd_pegged and a.allowlisted and n.mode in ('LOCAL','TESTNET') ${process.env.NODE_ENV === 'production' ? sql`and n.mode <> 'LOCAL'` : sql``}
     order by n.chain_id, (a.kind='NATIVE') desc`) : [];
   const [paymentConfirmed] = asRows(await sql`select payload from app.order_events where order_id=${id} and kind='PAYMENT_CONFIRMED' order by created_at desc limit 1`);
+  // BNK-01: the buyer sees whether bank transfer is offered and their latest transfer with its reservation.
+  const bankTransfer = isBuyer ? await (async () => {
+    const [op] = asRows(await sql`select provider_reference,outcome->>'fundingStatus' as funding_status from app.provider_operations
+      where order_id=${id} and kind='funding.create' and outcome->>'method'='BANK_TRANSFER' and provider_reference is not null order by created_at desc limit 1`);
+    const [hold] = asRows(await sql`select expires_at from app.workload_claims where order_id=${id} and state in ('HELD','EXPIRY_RECONCILING')
+      union all select expires_at from app.digital_entitlements where order_id=${id} and state in ('HELD','EXPIRY_RECONCILING')`);
+    return { enabled: order.status === 'AWAITING_PAYMENT' && await isFlagEnabled(sql, 'BANK_FUNDING_ENABLED'), reference: op?.provider_reference ?? null, funding_status: op?.funding_status ?? null, hold_until: hold?.expires_at ?? null };
+  })() : null;
   // Unattached delivery uploads stay private to their uploader until they are part of a submitted delivery.
   const files = asRows(assets).filter((file) => file.purpose !== 'DELIVERY' || String(file.owner_id) === actor.id || (file.attachments as unknown[]).length > 0);
   const terms = (order.terms ?? {}) as Record<string, unknown>;
@@ -177,6 +185,7 @@ export async function getOrderData(actor: Actor, id: string) {
     active_review_hold: asRows(holds).find((h) => h.resolved_at === null) ?? null,
     files,
     payment_receipt: paymentConfirmed ? paymentConfirmed.payload : null,
+    bank_transfer: bankTransfer,
     crypto_payment: cryptoIntent ? { ...cryptoIntent, amount_display: formatAtomic(BigInt(String(cryptoIntent.amount_atomic)), Number(cryptoIntent.decimals)) } : null,
     crypto_options: cryptoOptions.map((option) => ({ ...option, amount_display: formatAtomic(usdMinorToAtomic(BigInt(String(order.amount_minor)), Number(option.decimals)), Number(option.decimals)) })),
   };

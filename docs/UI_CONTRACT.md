@@ -386,3 +386,11 @@ Commands:
 - Provider webhook `funding.fee_updated` (new actual cost of a captured funding) goes to `POST /api/webhooks/mock-payment`. Policy `cost-v1` in `src/modules/payments/cost-policy.ts`; cap `LATE_COST_CAP_BPS` (default 100).
 - Order event `PROVIDER_COST_ADJUSTED {previous_fee_minor, actual_fee_minor, phase, creator_share_minor, platform_share_minor, creator_credit_minor, policy_version}`. `orders.provider_fee_minor` is the cost deducted from the creator's payout and changes only before the payout.
 - `getOperatorOrder(...).provider_cost_adjustments = [{ id, previous_fee_minor, actual_fee_minor, delta_minor, creator_share_minor, platform_share_minor, creator_credit_minor, phase, fee_payer, cap_minor, created_at }]`. Cases: `LATE_PROVIDER_COST_ABOVE_CAP`, `LATE_PROVIDER_COST_AFTER_RELEASE`, `LATE_COST_CREDIT_OWED`.
+
+## BNK additions (2026-09-15): bank transfer funding (drizzle/0024)
+
+- Flag `BANK_FUNDING_ENABLED` (off by default). `POST /api/checkout/bank-transfer {order_id}` (buyer; form posts redirect to the order with `message`/`error`, JSON returns `{state, reference, hold_until}`): 422 `FEATURE_DISABLED` while off, 400 `UNSUPPORTED_CAPABILITY`, 403 not the buyer, 409 state conflicts (for example a card attempt that cannot be cancelled).
+- Sandbox only: `POST /api/dev/mock-bank-transfer {order_id, outcome: SENT|SETTLED|FAILED|RETURNED}`.
+- `getOrderData(...).bank_transfer` (buyer only) = `{ enabled, reference, funding_status (REQUIRES_ACTION|PROCESSING|SUCCEEDED|FAILED|CANCELED|RETURNED), hold_until }`. Orders expose `funding_method` (CARD|BANK_TRANSFER) and `payment_status` may be RETURNED.
+- Events: `BANK_TRANSFER_REQUESTED {reference, hold_until, policy_version: 'bank-v1'}`, `BANK_FUNDS_RETURNED {order_status_before, action}`. Notification `payment.returned {orderRef}`. Cases: `BANK_FUNDS_RETURNED`, `BANK_RETURN_AFTER_RELEASE`, `UNEXPECTED_BANK_RETURN`.
+- UI: `<BankTransferPanel>` inside the next-step panel. Card and crypto payment are hidden while a transfer is PROCESSING.

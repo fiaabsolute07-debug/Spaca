@@ -1,6 +1,6 @@
 # Acceptance ledger
 
-As of 2026-09-15, verified baseline **90004fd**, crypto rows from W5-C1/W5-C2, DSC rows from W6-D, CAP rows from W7-CAP (active-order limit), PUBLISH/MOD/SUP-05/06 rows from W8-PUB, CRY rows from W9-ARC. One row per master §18 ID, including unstarted work. Platform fee is enforced at 0 in code; the fee model is undecided. P3 is done-local from W4-A; P4 is in progress by Claude. ACCESS rows from P6-ACCESS, DIGITAL rows (XPL-04..06) from P6-DIGITAL. Counts: **77 PASS, 54 PARTIAL, 4 NOT_RUN, 2 BLOCKED, 5 REMOVED by product decision (142 total)**. 2026-09-15: the order limit and ACCESS scheduling were removed (drizzle/0017).
+As of 2026-09-15, verified baseline **90004fd**, crypto rows from W5-C1/W5-C2, DSC rows from W6-D, CAP rows from W7-CAP (active-order limit), PUBLISH/MOD/SUP-05/06 rows from W8-PUB, CRY rows from W9-ARC. One row per master §18 ID, including unstarted work. Platform fee is enforced at 0 in code; the fee model is undecided. P3 is done-local from W4-A; P4 is in progress by Claude. ACCESS rows from P6-ACCESS, DIGITAL rows (XPL-04..06) from P6-DIGITAL. Counts: **80 PASS, 54 PARTIAL, 1 NOT_RUN, 2 BLOCKED, 5 REMOVED by product decision (142 total)**. 2026-09-15: the order limit and ACCESS scheduling were removed (drizzle/0017).
 
 | Gate | Status | Evidence / remaining work |
 |---|---|---|
@@ -17,7 +17,7 @@ Gate statuses remain consistent with [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md
 
 PASS requires an executed, passed evidence-table test covering the criterion; PARTIAL retains narrower proof or the evidence's own qualification. NOT_RUN means no mapped execution; BLOCKED means a required external credential/provider/environment is absent. Environment describes evidence or the blocked target. `doc-only` is not execution. Pure contracts are `unit`; mock-provider DB tests are `local-db+mock`; `foundry` is Solidity unit/fuzz/invariant tests; `local-evm` is anvil with the compiled contract. No sandbox, testnet or live PASS is permitted. Phase delivery and gate/acceptance completion are separate.
 
-Sources: [P0](evidence/p0-foundation.md), [provider report](CLAUDE_REPORT.md), [DB](evidence/claude-db-integration.md), [W1-A](evidence/claude-W1-A.md), [W1-B](evidence/claude-W1-B.md), [C4](evidence/claude-C4.md), [C1](evidence/codex-C1.md), [C2](evidence/codex-C2.md), [W2-B](evidence/claude-W2-B.md), [W2-S](evidence/claude-W2-S.md), [W3-R](evidence/claude-W3-R.md), [C6](evidence/codex-C6.md), [C6 review](evidence/claude-review-C6.md), [W4-A](evidence/claude-W4-A.md), [C3 review](evidence/claude-review-C3.md), [W6-D](evidence/claude-W6-D.md), [W7-CAP](evidence/claude-W7-CAP.md), [W8-PUB](evidence/claude-W8-PUB.md), [W9-ARC](evidence/claude-W9-ARC.md), [P6-DIGITAL](evidence/claude-P6-DIGITAL.md), [ORD-12](evidence/claude-ORD-12.md), [ORD-14](evidence/claude-ORD-14.md), [PAY-15](evidence/claude-PAY-15.md), [PAY-16](evidence/claude-PAY-16.md). Later evidence supersedes older status prose. Table labels identify reported tests; commits identify the corresponding implementation, not a fresh C3 execution.
+Sources: [P0](evidence/p0-foundation.md), [provider report](CLAUDE_REPORT.md), [DB](evidence/claude-db-integration.md), [W1-A](evidence/claude-W1-A.md), [W1-B](evidence/claude-W1-B.md), [C4](evidence/claude-C4.md), [C1](evidence/codex-C1.md), [C2](evidence/codex-C2.md), [W2-B](evidence/claude-W2-B.md), [W2-S](evidence/claude-W2-S.md), [W3-R](evidence/claude-W3-R.md), [C6](evidence/codex-C6.md), [C6 review](evidence/claude-review-C6.md), [W4-A](evidence/claude-W4-A.md), [C3 review](evidence/claude-review-C3.md), [W6-D](evidence/claude-W6-D.md), [W7-CAP](evidence/claude-W7-CAP.md), [W8-PUB](evidence/claude-W8-PUB.md), [W9-ARC](evidence/claude-W9-ARC.md), [P6-DIGITAL](evidence/claude-P6-DIGITAL.md), [ORD-12](evidence/claude-ORD-12.md), [ORD-14](evidence/claude-ORD-14.md), [PAY-15](evidence/claude-PAY-15.md), [PAY-16](evidence/claude-PAY-16.md), [BNK](evidence/claude-BNK.md). Later evidence supersedes older status prose. Table labels identify reported tests; commits identify the corresponding implementation, not a fresh C3 execution.
 
 | Family | PASS | PARTIAL | NOT_RUN | BLOCKED | REMOVED |
 |---|---:|---:|---:|---:|---:|
@@ -29,14 +29,14 @@ Sources: [P0](evidence/p0-foundation.md), [provider report](CLAUDE_REPORT.md), [
 | ORD | 7 | 9 | 0 | 0 | 0 |
 | REV | 2 | 1 | 0 | 0 | 0 |
 | PAY | 6 | 13 | 0 | 1 | 0 |
-| BNK | 0 | 0 | 3 | 0 | 0 |
+| BNK | 3 | 0 | 0 | 0 | 0 |
 | REQ | 8 | 3 | 0 | 0 | 0 |
 | AUC | 12 | 2 | 0 | 0 | 0 |
 | CRY | 13 | 1 | 0 | 0 | 0 |
 | DSC | 4 | 2 | 0 | 0 | 0 |
 | XPL | 5 | 0 | 0 | 0 | 1 |
 | OPS | 1 | 6 | 1 | 0 | 0 |
-| **Total** | 77 | 54 | 4 | 2 | 5 |
+| **Total** | 80 | 54 | 1 | 2 | 5 |
 
 | ID | Summary (≤12 words) | Status | Environment | Evidence (file + test name or commit) | Gap/next task |
 |---|---|---|---|---|---|
@@ -120,9 +120,9 @@ Sources: [P0](evidence/p0-foundation.md), [provider report](CLAUDE_REPORT.md), [
 | PAY-18 | Fail release checks if any platform fee becomes nonzero | PASS | unit | [C4](evidence/claude-C4.md): `d05f9a2`, nonzero/missing/dropped fee CHECK failures; release-check 4 PASS | Static/unit guard plus W1-A DB zero constraint; no live acceptance. |
 | PAY-19 | Keep bank payout failure separate from fulfillment and transfer | BLOCKED | sandbox | [Provider report](CLAUDE_REPORT.md): mock release only; [C2](evidence/codex-C2.md): e762801 readiness blockers; `e762801` | Provider bank payout integration/capability/keys missing; local modeling can proceed. |
 | PAY-20 | Reconcile missing webhooks and keep unresolved cases owned | PARTIAL | local-db+mock | [W2B](evidence/claude-W2-B.md): `90678f8`, OPS-05 same-operation retry/audit; DB lost-webhook reconciliation | Daily deployed scheduler, full outage-window and owner rehearsal remain. |
-| BNK-01 | Wait for verified asynchronous bank funding before work | NOT_RUN | doc-only | — | P6-09 bank funding adapter/policy and pending-state tests. |
-| BNK-02 | Apply bank-specific holds, late-funding and return recovery policies | NOT_RUN | doc-only | — | P6-09 bounded bank holds/returns; never reuse card hold duration. |
-| BNK-03 | Reject disabled or unsupported bank funding through direct API | NOT_RUN | doc-only | — | P6-09 negative feature/capability tests independent of payout support. |
+| BNK-01 | Wait for verified asynchronous bank funding before work | PASS | local-db+mock + e2e | [BNK](evidence/claude-BNK.md): bank intent with its own 120 h reservation; PROCESSING never funds; start refused; card/crypto blocked while a transfer is on its way; FUNDED only on the signed provider fact; no upload for payment proof (E2E) | Mock provider and sandbox bank only. |
+| BNK-02 | Apply bank-specific holds, late-funding and return recovery policies | PASS | local-db+mock | [BNK](evidence/claude-BNK.md): bank-v1 hold, expiry while in flight reconciles then funds, unsent released, failed released next run; returns cancel unstarted orders, freeze release after work with a HIGH case, book a loss after payout; ledger balances; NULL-safe RETURNED CHECK | Fixed 120 h hold, no business-day calendar or maximum reconciliation period. |
+| BNK-03 | Reject disabled or unsupported bank funding through direct API | PASS | local-db+mock | [BNK](evidence/claude-BNK.md): flag off → 422 FEATURE_DISABLED with no provider call; provider account without bank funding (but with payouts) → 400 UNSUPPORTED_CAPABILITY; card checkout unaffected | Local mock capability only. |
 | REQ-01 | Publish requests and preserve owned application quote versions | PASS | local-db+mock | [W3R](evidence/claude-W3-R.md): `3b0c0aa`, REQ-01 budget/cap/deadline/self-apply guards | Version/sample/expiry persistence supplied by W3-R. |
 | REQ-02 | Keep one logical application with immutable update history | PASS | local-db+mock | [W3R](evidence/claude-W3-R.md): `3b0c0aa`, REQ-02 one application, immutable version history | Local duplicate/update test. |
 | REQ-03 | Keep competing creators from reading each other's private quotes | PASS | local-db+mock | [W3R](evidence/claude-W3-R.md): `3b0c0aa`, REQ-03 creator-only quotes, buyer all, anonymous none | Local read-model isolation. |

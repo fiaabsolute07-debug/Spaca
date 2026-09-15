@@ -92,6 +92,7 @@ export default async function OrderPage({
           activeHold={d.active_review_hold ? row(d.active_review_hold) : null}
           cryptoPayment={d.crypto_payment ? row(d.crypto_payment) : null}
           cryptoOptions={rows(d.crypto_options)}
+          bankTransfer={d.bank_transfer ? row(d.bank_transfer) : null}
           digital={Boolean(d.digital)}
           route={route}
         />

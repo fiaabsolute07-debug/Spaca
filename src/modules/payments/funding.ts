@@ -25,6 +25,7 @@ import {
   computeRequestHash,
   isProviderError,
   type FundingInput,
+  type FundingMethod,
   type ReleaseInput,
   type RefundInput,
   type RefundReason,
@@ -64,6 +65,8 @@ export function getMockPaymentProvider(): MockPaymentProvider {
   providerStore.__ccmMockPaymentProvider ??= new MockPaymentProvider({
     accountId: MOCK_ACCOUNT_ID,
     webhookSecrets: [process.env.MOCK_PAYMENT_WEBHOOK_SECRET || LOCAL_MOCK_WEBHOOK_SECRET],
+    // The local sandbox account can take bank transfers; buyers still need BANK_FUNDING_ENABLED (off by default).
+    bankTransferFunding: process.env.MOCK_BANK_TRANSFERS !== 'off',
   });
   return providerStore.__ccmMockPaymentProvider;
 }
@@ -119,9 +122,11 @@ async function lockCheckoutHold(tx: Tx, orderId: string): Promise<Row | undefine
  * Creates (or replays) the funding intent for an order the buyer owns. Commits the journal row even
  * when the provider outcome is UNKNOWN, so the next attempt reuses the same operation id.
  */
-export async function ensureFundingIntent(tx: Tx, buyerId: string, orderId: string): Promise<ProviderCallResult> {
+export async function ensureFundingIntent(tx: Tx, buyerId: string, orderId: string, method: FundingMethod = 'CARD'): Promise<ProviderCallResult> {
   const provider = getMockPaymentProvider();
   if (!(await isFlagEnabled(tx, 'CHECKOUT_CREATION_ENABLED'))) throw new PaymentFlowError('Checkout is temporarily paused; existing payments and refunds continue', 'UNAVAILABLE');
+  // BNK-03: bank funding is its own switch; a provider that pays creators to banks does not make it available to buyers.
+  if (method === 'BANK_TRANSFER' && !(await isFlagEnabled(tx, 'BANK_FUNDING_ENABLED'))) throw new PaymentFlowError('Bank transfer payments are not available', 'UNAVAILABLE');
   const [order] = await tx<Row[]>`select id,buyer_id,creator_id,status,payment_status,amount_minor,platform_fee_minor,currency from app.orders where id=${orderId} for update`;
   if (!order || String(order.buyer_id) !== buyerId) throw new PaymentFlowError('Order not found or not funded by this account', 'FORBIDDEN');
   if (order.status !== 'AWAITING_PAYMENT' || !['PENDING', 'PROCESSING', 'FAILED'].includes(String(order.payment_status))) {
@@ -131,11 +136,18 @@ export async function ensureFundingIntent(tx: Tx, buyerId: string, orderId: stri
   if (claim?.state !== 'HELD') throw new PaymentFlowError('The reservation for this order is no longer active', 'INVALID_STATE');
 
   // Reuse the latest attempt unless the provider reported it FAILED/CANCELED or rejected it outright.
-  const attempts = await tx<Row[]>`select operation_id,status,outcome from app.provider_operations where order_id=${orderId} and kind='funding.create' order by created_at asc`;
-  const latest = attempts.at(-1);
-  const latestFundingStatus = String((latest?.outcome as Row | null)?.fundingStatus ?? '');
-  const reuse = latest && latest.status !== 'FAILED' && !['FAILED', 'CANCELED'].includes(latestFundingStatus);
-  const operationId = reuse ? String(latest.operation_id) : `fund:${orderId}:${attempts.length + 1}`;
+  let attempts = await tx<Row[]>`select operation_id,status,outcome from app.provider_operations where order_id=${orderId} and kind='funding.create' order by created_at asc`;
+  let latest = attempts.at(-1);
+  const methodOf = (row: Row | undefined) => String((row?.outcome as Row | null)?.method ?? 'CARD');
+  const openStatus = (row: Row | undefined) => row && row.status !== 'FAILED' && !['FAILED', 'CANCELED'].includes(String((row.outcome as Row | null)?.fundingStatus ?? ''));
+  if (openStatus(latest) && methodOf(latest) !== method) {
+    // Switching between card and bank transfer: the open attempt is cancelled first, so one order is never paid twice.
+    await cancelOpenFunding(tx, orderId);
+    attempts = await tx<Row[]>`select operation_id,status,outcome from app.provider_operations where order_id=${orderId} and kind='funding.create' order by created_at asc`;
+    latest = attempts.at(-1);
+  }
+  const reuse = openStatus(latest) && methodOf(latest) === method;
+  const operationId = reuse ? String(latest!.operation_id) : `fund:${orderId}:${attempts.length + 1}`;
 
   const input: FundingInput = {
     orderId,
@@ -144,8 +156,10 @@ export async function ensureFundingIntent(tx: Tx, buyerId: string, orderId: stri
     amount: BigInt(String(order.amount_minor)),
     currency: String(order.currency),
     platformFee: BigInt(String(order.platform_fee_minor)),
+    ...(method === 'BANK_TRANSFER' ? { method } : {}),
   };
   await journal(tx, operationId, orderId, 'funding.create', computeRequestHash('funding.create', input));
+  if (method === 'BANK_TRANSFER') await tx`update app.provider_operations set outcome=coalesce(outcome,'{}'::jsonb)||jsonb_build_object('method','BANK_TRANSFER') where operation_id=${operationId}`;
   if (!reuse && order.payment_status === 'FAILED') {
     await tx`update app.orders set payment_status='PENDING',version=version+1,updated_at=now() where id=${orderId}`;
   }
@@ -157,6 +171,27 @@ export async function ensureFundingIntent(tx: Tx, buyerId: string, orderId: stri
   } catch (error) {
     return recordCallFailure(tx, operationId, error);
   }
+}
+
+/** bank-v1: a bank transfer keeps the reservation this long; the card hold (15 minutes) is never reused for it (BNK-02). */
+export const BANK_HOLD_HOURS = 120;
+export const BANK_POLICY_VERSION = 'bank-v1';
+
+/**
+ * BNK-01: the buyer asks to pay by bank transfer. The provider returns a transfer reference; the order stays awaiting
+ * payment until the provider confirms the money arrived. The reservation moves to the bank hold.
+ */
+export async function startBankTransfer(buyerId: string, orderId: string): Promise<{ intent: ProviderCallResult; holdUntil: string | null }> {
+  return sql.begin(async (tx) => {
+    const intent = await ensureFundingIntent(tx, buyerId, orderId, 'BANK_TRANSFER');
+    if (intent.state !== 'READY') return { intent, holdUntil: null };
+    const holdUntil = new Date(Date.now() + BANK_HOLD_HOURS * 3_600_000).toISOString();
+    await tx`update app.workload_claims set expires_at=greatest(expires_at,${holdUntil}::timestamptz) where order_id=${orderId} and state='HELD'`;
+    await tx`update app.digital_entitlements set expires_at=greatest(expires_at,${holdUntil}::timestamptz) where order_id=${orderId} and state='HELD'`;
+    const [already] = await tx<Row[]>`select id from app.order_events where order_id=${orderId} and kind='BANK_TRANSFER_REQUESTED' and payload->>'reference'=${intent.reference}`;
+    if (!already) await orderEvent(tx, orderId, 'BANK_TRANSFER_REQUESTED', { reference: intent.reference, hold_until: holdUntil, policy_version: BANK_POLICY_VERSION });
+    return { intent, holdUntil };
+  });
 }
 
 /** Local stand-in for the provider's hosted checkout: the buyer confirms at the "provider", which then sends signed webhooks. */
@@ -185,9 +220,9 @@ export async function cancelOpenFunding(tx: Tx, orderId: string): Promise<void> 
   await tx`update app.crypto_payment_intents set status='CANCELLED',status_reason='Order cancelled before a deposit arrived',updated_at=now()
     where order_id=${orderId} and status='AWAITING_DEPOSIT'`;
   if (!mockPaymentsEnabled()) return;
-  const [open] = await tx<Row[]>`select operation_id,provider_reference from app.provider_operations
+  const [open] = await tx<Row[]>`select operation_id,provider_reference,outcome->>'method' as method from app.provider_operations
     where order_id=${orderId} and kind='funding.create' and status='SUCCEEDED' and provider_reference is not null
-      and coalesce(outcome->>'fundingStatus','') not in ('FAILED','CANCELED','SUCCEEDED')
+      and coalesce(outcome->>'fundingStatus','') not in ('FAILED','CANCELED','SUCCEEDED','RETURNED')
     order by created_at desc limit 1`;
   const [unresolved] = await tx<Row[]>`select operation_id from app.provider_operations
     where order_id=${orderId} and kind='funding.create' and status in ('PENDING','UNKNOWN') limit 1`;
@@ -203,7 +238,9 @@ export async function cancelOpenFunding(tx: Tx, orderId: string): Promise<void> 
       where operation_id=${String(open.operation_id)} and coalesce(outcome->>'fundingStatus','')<>'SUCCEEDED'`;
   } catch (error) {
     if (isProviderError(error, 'INVALID_STATE')) {
-      throw new PaymentFlowError('The provider already confirmed this payment; wait for confirmation, then cancel for a refund', 'INVALID_STATE');
+      throw new PaymentFlowError(open.method === 'BANK_TRANSFER'
+        ? 'A bank transfer for this order is already on its way; wait for the bank to settle or fail it'
+        : 'The provider already confirmed this payment; wait for confirmation, then cancel for a refund', 'INVALID_STATE');
     }
     const recorded = await recordCallFailure(tx, operationId, error);
     const code = recorded.state === 'READY' ? 'UNKNOWN' : recorded.code;
@@ -409,6 +446,46 @@ async function applyPaymentEvent(tx: Tx, event: VerifiedEvent): Promise<string> 
   if (event.objectType === 'dispute') return applyDisputeEvent(tx, event);
   if (event.objectType === 'reversal') return applyReversalEvent(tx, event);
   return applyReleaseEvent(tx, event);
+}
+
+// ---------------------------------------------------------------------------
+// BNK-02: a settled bank transfer that the buyer's bank sends back
+// ---------------------------------------------------------------------------
+
+async function applyBankReturn(tx: Tx, event: VerifiedEvent, operation: Row, order: Row): Promise<string> {
+  const orderId = String(order.id);
+  if (order.payment_status === 'RETURNED') return 'DUPLICATE_FACT';
+  if (order.funding_method !== 'BANK_TRANSFER' || !['SUCCEEDED', 'REFUND_PENDING'].includes(String(order.payment_status))) {
+    await openCase(tx, orderId, String(operation.id), 'UNEXPECTED_BANK_RETURN', 'HIGH', 'Provider reported a returned bank transfer the order does not show as settled');
+    return 'UNEXPECTED_BANK_RETURN';
+  }
+  const amount = BigInt(String(order.amount_minor));
+  const currency = String(order.currency);
+  const status = String(order.status);
+  const notify = async (recipient: unknown) => outbox(tx, orderId, `notify:payment.returned:${orderId}:${String(recipient)}`, {
+    templateId: 'payment.returned', recipientId: String(recipient), params: { orderRef: orderId },
+  });
+  if (status === 'FUNDED') {
+    // Nothing was started: the order ends and its reservation is released (the status trigger frees the claim).
+    await tx`update app.orders set status='CANCELLED',payment_status='RETURNED',settlement_status='NOT_READY',cancelled_at=now(),version=version+1,updated_at=now() where id=${orderId}`;
+    await ledger(tx, orderId, 'BANK_FUNDS_RETURNED', `bank-return:mock:${event.eventId}`, [[`order_principal:${orderId}`, amount], ['provider_clearing:mock', -amount]], currency);
+    await orderEvent(tx, orderId, 'BANK_FUNDS_RETURNED', { reference: event.reference, event_id: event.eventId, order_status_before: status, action: 'CANCELLED' });
+    await notify(order.buyer_id);
+    await notify(order.creator_id);
+    return 'RETURNED_CANCELLED';
+  }
+  const released = ['PENDING', 'RELEASED'].includes(String(order.settlement_status));
+  // Work began or finished: the order keeps its history; nothing more is released and an operator recovers the money.
+  await tx`update app.orders set payment_status='RETURNED',updated_at=now() where id=${orderId}`;
+  await ledger(tx, orderId, 'BANK_FUNDS_RETURNED', `bank-return:mock:${event.eventId}`,
+    released ? [[`bank_return_loss:${orderId}`, amount], ['provider_clearing:mock', -amount]] : [[`order_principal:${orderId}`, amount], ['provider_clearing:mock', -amount]], currency);
+  await orderEvent(tx, orderId, 'BANK_FUNDS_RETURNED', { reference: event.reference, event_id: event.eventId, order_status_before: status, action: released ? 'LOSS_AFTER_RELEASE' : 'SETTLEMENT_FROZEN' });
+  await openCase(tx, orderId, String(operation.id), released ? 'BANK_RETURN_AFTER_RELEASE' : 'BANK_FUNDS_RETURNED', 'HIGH',
+    released ? 'The bank returned funds after the creator payout; decide recovery (see refunds after release); nothing is taken automatically'
+      : 'The bank returned the funds after work started; nothing will be released. Ask the buyer to pay again or agree a cancellation with the creator');
+  await notify(order.buyer_id);
+  await notify(order.creator_id);
+  return released ? 'RETURNED_AFTER_RELEASE' : 'RETURNED_SETTLEMENT_FROZEN';
 }
 
 // ---------------------------------------------------------------------------
@@ -783,6 +860,7 @@ async function applyFundingEvent(tx: Tx, event: VerifiedEvent): Promise<string> 
   const [order] = await tx<Row[]>`select * from app.orders where id=${orderId} for update`;
   if (!order) return 'UNMATCHED';
   if (event.type === 'funding.fee_updated') return applyLateProviderCost(tx, event, operation, order);
+  if (event.type === 'funding.returned') return applyBankReturn(tx, event, operation, order);
 
   if (event.type === 'funding.succeeded') {
     const amount = BigInt(String(order.amount_minor));
@@ -801,7 +879,8 @@ async function applyFundingEvent(tx: Tx, event: VerifiedEvent): Promise<string> 
       return kind;
     }
     const providerFee = event.providerFee ?? 0n;
-    await tx`update app.orders set status='FUNDED',payment_status='SUCCEEDED',provider_fee_minor=${providerFee.toString()},funded_at=now(),
+    const fundingMethod = String((operation.outcome as Row | null)?.method ?? 'CARD');
+    await tx`update app.orders set status='FUNDED',payment_status='SUCCEEDED',funding_method=${fundingMethod},provider_fee_minor=${providerFee.toString()},funded_at=now(),
       version=version+1,updated_at=now() where id=${orderId}`;
     // Work clock = max(funded_at, brief_ready_at) + sold turnaround, fixed once set (ORD-03/04).
     await recomputeWorkClock(tx, orderId);
