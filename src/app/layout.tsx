@@ -6,8 +6,6 @@ import { SiteChrome } from '@/components/site-chrome';
 import { HeaderNav } from '@/components/header-nav';
 import { WorkspaceBack, WorkspaceSidebar } from '@/components/workspace-sidebar';
 import { accountTypeOf } from '@/lib/account';
-import { Avatar } from '@/components/avatar';
-import { getWorkspaceIdentity } from '@/lib/read-model';
 import { SpacaLockup } from '@/components/brand/spaca-logo';
 import { themeBootScript } from '@/components/landing/theme-boot';
 import './globals.css';
@@ -24,7 +22,6 @@ export const dynamic = 'force-dynamic';
 
 export default async function RootLayout({ children, auth }: { children: React.ReactNode; auth: React.ReactNode }) {
   const actor = await getActor();
-  const identity = actor ? await getWorkspaceIdentity(actor.id) : null;
   const header = <>
     <div className="sandbox-banner"><span className="live-dot" /> <strong>Local sandbox</strong> Test accounts and simulated payments. No real funds move.</div>
     <div className="header-shell">
@@ -37,7 +34,7 @@ export default async function RootLayout({ children, auth }: { children: React.R
         </form>
         <div className="header-actions">
           {actor
-            ? <><Link href="/dashboard" className="button compact">Workspace</Link><Link href="/settings/profile" className="header-profile" aria-label="Your profile" title={actor.display_name}><Avatar name={actor.display_name} assetId={identity?.avatar_asset_id} size={32} /></Link><form method="post" action="/api/auth"><input type="hidden" name="action" value="logout" /><button className="plain-button">Log out</button></form></>
+            ? <><Link href="/dashboard" className="button compact">Workspace</Link><form method="post" action="/api/auth"><input type="hidden" name="action" value="logout" /><button className="plain-button">Log out</button></form></>
             : <><Link href="/sign-in" className="login-link" scroll={false}>Log in</Link><Link href="/sign-up" className="button compact" scroll={false}>Get started</Link></>}
         </div>
       </header>

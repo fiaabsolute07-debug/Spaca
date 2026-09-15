@@ -4,7 +4,7 @@ import { useSelectedLayoutSegment } from 'next/navigation';
 import type { ReactNode } from 'react';
 
 /** Top-level routes a signed-in account uses inside the workspace frame (sidebar + back link). */
-const WORKSPACE_SEGMENTS = new Set(['dashboard', 'buyer', 'creator', 'orders', 'requests', 'auctions', 'services', 'creators', 'explore']);
+const WORKSPACE_SEGMENTS = new Set(['dashboard', 'buyer', 'creator', 'orders', 'settings', 'requests', 'auctions', 'services', 'creators', 'explore']);
 
 /**
  * Marketplace header/footer. The marketing landing at `/` renders its own navigation, so the app chrome is hidden there.

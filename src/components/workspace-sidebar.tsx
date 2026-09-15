@@ -16,6 +16,8 @@ const BUYER_NAV: NavGroup[] = [
   { title: 'Hire', links: [{ href: '/explore', label: 'Find creators' }, { href: '/buyer/requests/new', label: 'Post a brief' }, { href: '/auctions', label: 'Auctions' }] },
 ];
 
+const ACCOUNT_NAV: NavGroup = { title: 'Account', links: [{ href: '/settings/profile', label: 'Profile' }] };
+
 /** Pages that belong to a sidebar entry without being under its URL. */
 const ALIASES: [RegExp, string][] = [[/^\/orders\//, '/buyer/orders']];
 
@@ -30,12 +32,12 @@ function activeHref(pathname: string, groups: NavGroup[]): string | null {
 }
 
 /**
- * Workspace navigation only (the profile is its own area, reached from the header), rendered once by the root layout for signed-in accounts. It stays mounted while the pages beside
+ * Workspace navigation (no identity block; the profile opens from Account › Profile), rendered once by the root layout for signed-in accounts. It stays mounted while the pages beside
  * it change, so moving around the workspace happens in one frame.
  */
 export function WorkspaceSidebar({ type }: { type: AccountType | null }) {
   const pathname = usePathname();
-  const groups = type === 'creator' ? CREATOR_NAV : BUYER_NAV;
+  const groups = [...(type === 'creator' ? CREATOR_NAV : BUYER_NAV), ACCOUNT_NAV];
   const active = activeHref(pathname, groups);
   return <aside className="sidebar" aria-label="Workspace">
     <nav aria-label="Workspace sections">

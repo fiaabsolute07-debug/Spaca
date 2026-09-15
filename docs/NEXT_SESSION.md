@@ -53,10 +53,10 @@ Nghĩa là:
 - **Workspace một khung:**
   - Thanh bên cố định, có link "‹ Back to …".
   - Không mở tab mới trong luồng app.
-- **Profile là một khu riêng:**
-  - Không có khối tên/email/avatar và không có mục Profile trong thanh bên.
-  - Vào profile từ avatar "Your profile" trên header.
-  - Trang `/settings/profile` nằm ngoài khung workspace, có "‹ Back to workspace".
+- **Profile:**
+  - Thanh bên **không** có khối tên/email/avatar (user yêu cầu xóa).
+  - **Không** có avatar/nút profile trên header (đã làm rồi user yêu cầu xóa).
+  - Vào profile từ mục Account › Profile ở cuối thanh bên; trang profile nằm trong khung workspace như cũ.
 - **Explore / Campaigns / Auctions:**
   - Chỉ link trên header tô xanh mục đang xem.
   - User **không muốn** thanh tab Services/Campaigns/Auctions phía trên danh sách (đã làm rồi xóa).
@@ -171,13 +171,13 @@ cd contracts && forge test
 - **Loại tài khoản:** `src/lib/account.ts` — `CREATOR_COMMANDS` / `BUYER_COMMANDS`. Lệnh mới phải thêm vào đúng danh sách.
 - **Log lỗi server:** luôn dùng `logError(context, error, ids)` trong `src/lib/log.ts`. Không `console.error(error)` thô, vì lỗi Postgres mang dữ liệu dòng trong `detail`.
 - **Flash notice ký HMAC:** `withNotice` / `verifiedNotice` (`src/lib/notices.ts`).
-- **Read model:** `src/lib/read-model.ts` (`getOrderData`, `getRequestData`, `getDashboardData`, `getWorkspaceIdentity`…).
+- **Read model:** `src/lib/read-model.ts` (`getOrderData`, `getRequestData`, `getDashboardData`…).
 - **Module:** `src/modules/*`
   - `payments/funding.ts`: mọi dữ kiện funding/refund/release, gồm dispute, refund sau release, late cost, bank.
   - `crypto`, `pools`, `requests` (có `compare.ts` cho REQ-11), `storage` (purpose `REQUEST_IMAGE` → bucket `public-campaigns`).
   - Còn lại: `publish`, `digital`, `moderation`, `jobs`, `notifications`, `discovery`, `admin`, `orders`, `catalog`, `capacity`, `auctions`.
 - **UI:**
-  - `src/components/site-chrome.tsx`: header/footer, khung workspace cho các segment `dashboard`, `buyer`, `creator`, `orders`, `requests`, `auctions`, `services`, `creators`, `explore`.
+  - `src/components/site-chrome.tsx`: header/footer, khung workspace cho các segment `dashboard`, `buyer`, `creator`, `orders`, `settings`, `requests`, `auctions`, `services`, `creators`, `explore`.
   - `workspace-sidebar.tsx` (client): nav và bản đồ "Back to".
   - `header-nav.tsx`: link header có trạng thái active.
   - `category.tsx`: thẻ loại campaign và màu. `order-workspace/receipt-panel.tsx`: biên nhận đơn.
@@ -205,7 +205,7 @@ cd contracts && forge test
 
 ## 4. Đã xong và đã commit (mới nhất ở trên)
 
-- `d898592`: khung workspace, profile tách riêng, màu nhấn, Post a brief bằng thẻ/chip, ảnh campaign (0025), biên nhận đơn (ORD-01), so sánh báo giá sort/filter/CSV (REQ-11), log an toàn + quét secret (SEC-11), E2E checkout cũ sau khi pause (DSC-05).
+- `d898592`: khung workspace, màu nhấn, Post a brief bằng thẻ/chip, ảnh campaign (0025), biên nhận đơn (ORD-01), so sánh báo giá sort/filter/CSV (REQ-11), log an toàn + quét secret (SEC-11), E2E checkout cũ sau khi pause (DSC-05).
 - `ee89ffd`: tiền về muộn được ghi sổ và refund được; availability lúc chọn hồ sơ, đồng hồ CREATE, độ chính xác tiền.
 - `11c9e65`: hành trình trình duyệt đóng 10 dòng; sửa notice giả mạo, tràn chữ, sửa dịch vụ.
 - `14ee834`: PAY-11/OPS-01 — crash sau chuyển tiền không trả hai lần.

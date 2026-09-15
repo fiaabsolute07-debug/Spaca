@@ -426,12 +426,6 @@ textarea { resize: vertical; min-height: 110px; }
 .app-frame .breadcrumbs { display: none; }
 .sidebar nav > div { display: contents; }
 .sidebar nav > div:first-child h4 { margin-top: 0; }
-/* Header link to the account's own profile area. */
-.header-profile { display: inline-flex; border-radius: 50%; }
-.header-profile .avatar { width: 32px; height: 32px; font-size: 13px; transition: box-shadow 0.15s; }
-.header-profile:hover .avatar { box-shadow: 0 0 0 2px var(--line-strong); }
-.profile-back { display: inline-flex; align-items: center; gap: 6px; margin-bottom: 18px; font-size: 13px; color: var(--muted); }
-.profile-back:hover { color: var(--accent); }
 .workspace-back { display: inline-flex; align-items: center; gap: 6px; margin-bottom: 18px; font-size: 13px; color: var(--muted); }
 .workspace-back:hover { color: var(--ink); }
 /* Short cells (status, amount, date, action) never break inside a word; long titles in the first column still may. */

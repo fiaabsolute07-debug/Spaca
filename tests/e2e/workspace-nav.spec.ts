@@ -26,15 +26,14 @@ test('the workspace is one frame: the sidebar stays while pages change in the sa
   await expect(campaigns).toHaveAttribute('aria-current', 'page');
   await expect(page.getByRole('link', { name: 'Back to My campaigns', exact: true })).toBeVisible();
 
-  // The profile is its own area: not in the sidebar, reached from the header, outside the workspace frame.
-  await expect(sidebar.getByRole('link', { name: 'Profile' })).toHaveCount(0);
-  const profile = page.getByRole('banner').getByRole('link', { name: 'Your profile' });
+  // Profile opens from the sidebar's Account section inside the same frame; there is no identity block or header avatar.
+  const profile = sidebar.getByRole('link', { name: 'Profile', exact: true });
   await Promise.all([page.waitForURL(/\/settings\/profile$/), profile.click()]);
   await expect(page.getByRole('heading', { level: 1, name: 'Your public profile' })).toBeVisible();
-  await expect(page.getByRole('complementary', { name: 'Workspace' })).toHaveCount(0);
+  await expect(profile).toHaveAttribute('aria-current', 'page');
+  await expect(page.getByRole('banner').getByRole('link', { name: 'Your profile' })).toHaveCount(0);
   await expect(page.getByText('Buyer account', { exact: true })).toBeVisible();
-  await Promise.all([page.waitForURL(/\/dashboard$/), page.getByRole('link', { name: 'Back to workspace' }).click()]);
-  await expect(page.getByRole('complementary', { name: 'Workspace' })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Back to Overview', exact: true })).toBeVisible();
   expect(page.context().pages()).toHaveLength(1);
 });
 

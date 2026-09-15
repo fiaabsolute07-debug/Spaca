@@ -39,7 +39,7 @@ test('Get started opens account creation in the dialog and signs the new account
   await expect(page.getByRole('banner').getByRole('link', { name: 'Workspace' })).toBeVisible();
   // Accounts are one type; without a choice a new account hires.
   const sidebar = page.getByRole('complementary', { name: 'Workspace' });
-  await expect(page.getByRole('banner').getByRole('link', { name: 'Your profile' })).toBeVisible();
+  await expect(sidebar.getByRole('link', { name: 'Profile', exact: true })).toBeVisible();
   await expect(sidebar.getByRole('link', { name: 'Post a brief' })).toBeVisible();
   await expect(sidebar.getByRole('link', { name: 'My services' })).toHaveCount(0);
 });
@@ -59,7 +59,7 @@ test('a creator account sells: its workspace has no hiring tools and booking ask
   await Promise.all([page.waitForURL(/\/dashboard$/), dialog.getByRole('button', { name: 'Create account' }).click()]);
 
   const sidebar = page.getByRole('complementary', { name: 'Workspace' });
-  await expect(page.getByRole('banner').getByRole('link', { name: 'Your profile' })).toBeVisible();
+  await expect(sidebar.getByRole('link', { name: 'Profile', exact: true })).toBeVisible();
   await expect(sidebar.getByRole('link', { name: 'My services' })).toBeVisible();
   await expect(sidebar.getByRole('link', { name: 'Post a brief' })).toHaveCount(0);
 

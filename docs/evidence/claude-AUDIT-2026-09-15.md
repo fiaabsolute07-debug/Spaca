@@ -29,9 +29,9 @@ Each item names the risk looked for and what the code does about it.
   - Only name, first message line (long quoted values redacted), code, constraint, table, routine and 4 frames are kept. A unit test uses a PostgreSQL-shaped error carrying a brief and an email.
 - `scripts/secret-scan.ts`
   - Prints file:line and a label only, never the match. Its one exclusion is the detector's own unit test, by exact path.
-- Workspace frame (`site-chrome.tsx`, `workspace-sidebar.tsx`, `header-nav.tsx`, `getWorkspaceIdentity`)
+- Workspace frame (`site-chrome.tsx`, `workspace-sidebar.tsx`, `header-nav.tsx`)
   - Risk: showing another account's data or navigation to the wrong account type.
-  - The sidebar shows only the signed-in actor's own name, email, photo id and account type, taken from the server session.
+  - The sidebar shows only the navigation for the signed-in actor's account type, taken from the server session, and no identity data.
   - Links do not grant access: every page still checks the account type (FND-04 E2E).
 - `OrderReceiptPanel`
   - Risk: inventing money facts.

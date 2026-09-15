@@ -27,7 +27,7 @@ Everything below is LOCAL: embedded PostgreSQL, mock payment provider, local sto
 - Restore rehearsal: obligations conserved, 8 invariants with 0 violations, webhook replay a no-op ([audit](evidence/claude-AUDIT-2026-09-15.md)).
 
 ## UI state (2026-09-15)
-- Signed-in pages share one workspace sidebar with back links. The profile is its own area, opened from the header avatar.
+- Signed-in pages share one workspace sidebar with back links. The sidebar has no identity block; the profile opens from its Account › Profile entry.
 - Header links mark Explore, Campaigns and Auctions; a tab strip was removed at the user's request.
 - Color is used only on primary actions, the current location and campaign categories.
 - Post a brief uses category cards and chips.

@@ -418,9 +418,3 @@ export async function getExploreData(query: QueryInput) {
   });
   return { items, matched: result.matched, next_cursor: result.next_cursor, filters, niches: asRows(niches).map((n) => String(n.niche)), error };
 }
-
-/** The signed-in account's photo for the workspace sidebar; null when the profile has none. */
-export async function getWorkspaceIdentity(userId: string): Promise<{ avatar_asset_id: string | null }> {
-  const [profile] = await sql<{ avatar_asset_id: string | null }[]>`select avatar_asset_id from app.profiles where user_id=${userId}`;
-  return { avatar_asset_id: profile?.avatar_asset_id ?? null };
-}
