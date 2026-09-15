@@ -1,6 +1,6 @@
 # Acceptance ledger
 
-As of 2026-09-15, verified baseline **90004fd**, crypto rows from W5-C1/W5-C2, DSC rows from W6-D, CAP rows from W7-CAP (active-order limit), PUBLISH/MOD/SUP-05/06 rows from W8-PUB, CRY rows from W9-ARC. One row per master §18 ID, including unstarted work. Platform fee is enforced at 0 in code; the fee model is undecided. P3 is done-local from W4-A; P4 is in progress by Claude. ACCESS rows from P6-ACCESS, DIGITAL rows (XPL-04..06) from P6-DIGITAL. Counts: **73 PASS, 54 PARTIAL, 8 NOT_RUN, 2 BLOCKED, 5 REMOVED by product decision (142 total)**. 2026-09-15: the order limit and ACCESS scheduling were removed (drizzle/0017).
+As of 2026-09-15, verified baseline **90004fd**, crypto rows from W5-C1/W5-C2, DSC rows from W6-D, CAP rows from W7-CAP (active-order limit), PUBLISH/MOD/SUP-05/06 rows from W8-PUB, CRY rows from W9-ARC. One row per master §18 ID, including unstarted work. Platform fee is enforced at 0 in code; the fee model is undecided. P3 is done-local from W4-A; P4 is in progress by Claude. ACCESS rows from P6-ACCESS, DIGITAL rows (XPL-04..06) from P6-DIGITAL. Counts: **74 PASS, 54 PARTIAL, 7 NOT_RUN, 2 BLOCKED, 5 REMOVED by product decision (142 total)**. 2026-09-15: the order limit and ACCESS scheduling were removed (drizzle/0017).
 
 | Gate | Status | Evidence / remaining work |
 |---|---|---|
@@ -17,7 +17,7 @@ Gate statuses remain consistent with [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md
 
 PASS requires an executed, passed evidence-table test covering the criterion; PARTIAL retains narrower proof or the evidence's own qualification. NOT_RUN means no mapped execution; BLOCKED means a required external credential/provider/environment is absent. Environment describes evidence or the blocked target. `doc-only` is not execution. Pure contracts are `unit`; mock-provider DB tests are `local-db+mock`; `foundry` is Solidity unit/fuzz/invariant tests; `local-evm` is anvil with the compiled contract. No sandbox, testnet or live PASS is permitted. Phase delivery and gate/acceptance completion are separate.
 
-Sources: [P0](evidence/p0-foundation.md), [provider report](CLAUDE_REPORT.md), [DB](evidence/claude-db-integration.md), [W1-A](evidence/claude-W1-A.md), [W1-B](evidence/claude-W1-B.md), [C4](evidence/claude-C4.md), [C1](evidence/codex-C1.md), [C2](evidence/codex-C2.md), [W2-B](evidence/claude-W2-B.md), [W2-S](evidence/claude-W2-S.md), [W3-R](evidence/claude-W3-R.md), [C6](evidence/codex-C6.md), [C6 review](evidence/claude-review-C6.md), [W4-A](evidence/claude-W4-A.md), [C3 review](evidence/claude-review-C3.md), [W6-D](evidence/claude-W6-D.md), [W7-CAP](evidence/claude-W7-CAP.md), [W8-PUB](evidence/claude-W8-PUB.md), [W9-ARC](evidence/claude-W9-ARC.md), [P6-DIGITAL](evidence/claude-P6-DIGITAL.md). Later evidence supersedes older status prose. Table labels identify reported tests; commits identify the corresponding implementation, not a fresh C3 execution.
+Sources: [P0](evidence/p0-foundation.md), [provider report](CLAUDE_REPORT.md), [DB](evidence/claude-db-integration.md), [W1-A](evidence/claude-W1-A.md), [W1-B](evidence/claude-W1-B.md), [C4](evidence/claude-C4.md), [C1](evidence/codex-C1.md), [C2](evidence/codex-C2.md), [W2-B](evidence/claude-W2-B.md), [W2-S](evidence/claude-W2-S.md), [W3-R](evidence/claude-W3-R.md), [C6](evidence/codex-C6.md), [C6 review](evidence/claude-review-C6.md), [W4-A](evidence/claude-W4-A.md), [C3 review](evidence/claude-review-C3.md), [W6-D](evidence/claude-W6-D.md), [W7-CAP](evidence/claude-W7-CAP.md), [W8-PUB](evidence/claude-W8-PUB.md), [W9-ARC](evidence/claude-W9-ARC.md), [P6-DIGITAL](evidence/claude-P6-DIGITAL.md), [ORD-12](evidence/claude-ORD-12.md). Later evidence supersedes older status prose. Table labels identify reported tests; commits identify the corresponding implementation, not a fresh C3 execution.
 
 | Family | PASS | PARTIAL | NOT_RUN | BLOCKED | REMOVED |
 |---|---:|---:|---:|---:|---:|
@@ -26,7 +26,7 @@ Sources: [P0](evidence/p0-foundation.md), [provider report](CLAUDE_REPORT.md), [
 | MOD | 2 | 0 | 0 | 0 | 0 |
 | SUP | 4 | 2 | 0 | 0 | 0 |
 | CAP | 5 | 3 | 0 | 0 | 4 |
-| ORD | 5 | 9 | 2 | 0 | 0 |
+| ORD | 6 | 9 | 1 | 0 | 0 |
 | REV | 2 | 1 | 0 | 0 | 0 |
 | PAY | 4 | 13 | 2 | 1 | 0 |
 | BNK | 0 | 0 | 3 | 0 | 0 |
@@ -36,7 +36,7 @@ Sources: [P0](evidence/p0-foundation.md), [provider report](CLAUDE_REPORT.md), [
 | DSC | 4 | 2 | 0 | 0 | 0 |
 | XPL | 5 | 0 | 0 | 0 | 1 |
 | OPS | 1 | 6 | 1 | 0 | 0 |
-| **Total** | 73 | 54 | 8 | 2 | 5 |
+| **Total** | 74 | 54 | 7 | 2 | 5 |
 
 | ID | Summary (≤12 words) | Status | Environment | Evidence (file + test name or commit) | Gap/next task |
 |---|---|---|---|---|---|
@@ -92,7 +92,7 @@ Sources: [P0](evidence/p0-foundation.md), [provider report](CLAUDE_REPORT.md), [
 | ORD-09 | Automatically accept eligible deliveries once with consent evidence | PASS | local-db+mock | [W1B](evidence/claude-W1-B.md): `3564912`, ORD-09/16 consent/view/window with concurrent replays, one approval | Mock release subsequently completes; email is sink-only. |
 | ORD-10 | Serialize dispute or revision against automatic acceptance | PARTIAL | local-db+mock | [W1B](evidence/claude-W1-B.md): `3564912`, ORD-10 concurrent approve/revision/dispute/auto-accept, one outcome | Shared-principal refund versus release recovery race not proved. |
 | ORD-11 | Hold review after notification failure and restore sufficient review time | PARTIAL | local-db+mock | [W1B](evidence/claude-W1-B.md): `3564912`, ORD-11 no-view hold and full-window restart on buyer view | Permanent notification-delivery failure/recovery not simulated; page-view evidence only. |
-| ORD-12 | Record mutually agreed deadline extensions as immutable amendments | NOT_RUN | doc-only | — | Versioned consent/amendment and metric tests; assign lifecycle follow-up. |
+| ORD-12 | Record mutually agreed deadline extensions as immutable amendments | PASS | local-db+mock | [ORD-12](evidence/claude-ORD-12.md): propose/accept/decline/withdraw with counterparty-only consent, immutable amendment rows, DB guard so a set delivery deadline moves only with an accepted amendment, expiry on status change, lateness and on-time rate from the agreed deadline; E2E propose → accept | Revision deadlines are not DB-pinned; extensions only (no agreed shortening). |
 | ORD-13 | Support policy-based late-work cancellation with confirmed refund workflow | PARTIAL | local-db+mock | [W1B](evidence/claude-W1-B.md): `3564912`, ORD-13 overdue notice and post-start cancellation request | Complete no-start/late-policy eligibility and refund UI matrix not recorded. |
 | ORD-14 | Preserve completed work history through later chargebacks | NOT_RUN | doc-only | — | Separate payment-dispute webhook/evidence/alert implementation. |
 | ORD-15 | Serialize agreed cancellation amounts against delivery and release | PARTIAL | local-db+mock | [W1B](evidence/claude-W1-B.md): `3564912`, ORD-15 agreed partial refund/remainder and delivery/acceptance race | Auto-release versus cancellation acceptance race not explicitly recorded. |

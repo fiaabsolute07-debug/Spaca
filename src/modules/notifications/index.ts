@@ -53,6 +53,8 @@ export interface NotificationTemplateParams {
   'order.completed': OrderRef;
   'order.cancellation_requested': OrderRef;
   'order.cancellation_resolved': OrderRef & { outcome: 'ACCEPTED' | 'REJECTED' | 'EXPIRED' };
+  'order.deadline_extension_requested': OrderRef & { newDueAt: string };
+  'order.deadline_extension_resolved': OrderRef & { outcome: 'ACCEPTED' | 'REJECTED' };
   'payout.succeeded': OrderRef & Money;
   'payout.failed': OrderRef;
   'refund.updated': OrderRef & Money & { refundStatus: 'PENDING' | 'SUCCEEDED' | 'FAILED' };
@@ -287,6 +289,26 @@ export const NOTIFICATION_TEMPLATES: { readonly [K in NotificationTemplateId]: N
     defaultChannels: ['in_app'],
     params: { orderRef: 'ref', outcome: 'cancellationOutcome' },
     body: (p) => ({ ACCEPTED: 'The cancellation was accepted with the agreed refund.', REJECTED: 'The cancellation request was declined; the order continues.', EXPIRED: 'The cancellation request expired because the order changed.' })[p.outcome],
+    linkPath: orderLink,
+  }),
+  'order.deadline_extension_requested': template({
+    id: 'order.deadline_extension_requested',
+    category: 'transactional',
+    subject: 'New deadline proposed',
+    allowedChannels: BOTH,
+    defaultChannels: BOTH,
+    params: { orderRef: 'ref', newDueAt: 'instant' },
+    body: (p) => `The other party proposed moving the deadline to ${formatInstant(p.newDueAt)}. The current deadline stays unless you accept on the order page.`,
+    linkPath: orderLink,
+  }),
+  'order.deadline_extension_resolved': template({
+    id: 'order.deadline_extension_resolved',
+    category: 'transactional',
+    subject: 'Deadline proposal answered',
+    allowedChannels: BOTH,
+    defaultChannels: ['in_app'],
+    params: { orderRef: 'ref', outcome: 'cancellationOutcome' },
+    body: (p) => (p.outcome === 'ACCEPTED' ? 'Your proposed deadline was accepted and is now the order deadline.' : 'Your proposed deadline was declined; the current deadline stays.'),
     linkPath: orderLink,
   }),
   'payout.succeeded': template({

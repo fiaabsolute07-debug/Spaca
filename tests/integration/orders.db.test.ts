@@ -45,6 +45,23 @@ async function funded(label: string, options: { consent?: boolean } = {}): Promi
 
 const step = (actor: TestUser, orderId: string, fields: Record<string, string>) => command(actor, { idempotency_key: key('step'), order_id: orderId, ...fields });
 
+/**
+ * A funded order whose work clock started `hours` ago. Built through Buy Now (funded without a brief, so no deadline yet);
+ * the clock inputs are backdated and the real clock rule sets the deadline, since a set deadline cannot be moved (drizzle/0020).
+ */
+async function clockStartedHoursAgo(label: string, hours: number) {
+  const creator = await createUser(`${label}-creator`);
+  const buyer = await createUser(`${label}-buyer`);
+  const { serviceId } = await createPublishedService(command, creator, { capacity: 1 });
+  const auction = await command(creator, { command: 'create_auction', idempotency_key: key('auc'), service_id: serviceId, starting_price: '100', minimum_increment: '10', buy_now_price: '200',
+    starts_at: commandInstant(new Date(Date.now() - 60_000)), ends_at: commandInstant(new Date(Date.now() + 3_600_000)) });
+  const orderId = String((await command(buyer, { command: 'buy_now', idempotency_key: key('bn'), auction_id: String(auction.body.id) })).body.id);
+  expect((await pay(buyer, orderId)).status).toBe(200);
+  await sql`update app.orders set brief=${brief},brief_ready_at=now() - make_interval(hours => ${hours}),funded_at=now() - make_interval(hours => ${hours}) where id=${orderId} and delivery_due_at is null`;
+  await sql.begin((tx) => lifecycle.recomputeWorkClock(tx, orderId));
+  return { creator, buyer, orderId };
+}
+
 async function delivered(label: string, options: { consent?: boolean } = {}) {
   const setup = await funded(label, options);
   expect((await step(setup.creator, setup.orderId, { command: 'start' })).status).toBe(200);
@@ -118,11 +135,11 @@ describe.skipIf(!RUN_DB)('ORD — work clock and gating', () => {
   it('ORD-04: starting late does not move the agreed deadline', async () => {
     const { creator, orderId } = await funded('ord04');
     const before = await orderRow(orderId);
-    await sql`update app.orders set delivery_due_at=${new Date(Date.now() + 10 * 3600_000).toISOString()} where id=${orderId}`;
-    const fixed = (await orderRow(orderId)).delivery_due_at;
+    // A set deadline moves only through an accepted amendment (ORD-12); a direct write is refused.
+    await expect(sql`update app.orders set delivery_due_at=${new Date(Date.now() + 10 * 3600_000).toISOString()} where id=${orderId}`).rejects.toThrow(/accepted amendment/);
     expect((await step(creator, orderId, { command: 'start' })).status).toBe(200);
     const after = await orderRow(orderId);
-    expect(new Date(after.delivery_due_at).toISOString()).toBe(new Date(fixed).toISOString());
+    expect(new Date(after.delivery_due_at).toISOString()).toBe(new Date(before.delivery_due_at).toISOString());
     expect(new Date(after.work_start_at).toISOString()).toBe(new Date(before.work_start_at).toISOString());
   });
 });
@@ -241,16 +258,16 @@ describe.skipIf(!RUN_DB)('ORD — auto-accept and review holds', () => {
 
 describe.skipIf(!RUN_DB)('ORD — cancellation after work starts', () => {
   it('ORD-13: an overdue order notifies the buyer; unilateral cancel is refused after work starts', async () => {
-    const { buyer, creator, orderId } = await funded('ord13');
+    // The work clock started 80 hours ago and the service turnaround is 72 hours, so the order is 8 hours overdue.
+    const { buyer, creator, orderId } = await clockStartedHoursAgo('ord13', 80);
     expect((await step(creator, orderId, { command: 'start' })).status).toBe(200);
-    await sql`update app.orders set delivery_due_at=now() - interval '1 hour' where id=${orderId}`;
     expect((await jobs.sendOrderReminders({ orderId })).outcomes).toEqual({ OVERDUE: 1 });
     const unilateral = await step(buyer, orderId, { command: 'cancel' });
     expect(unilateral.status).toBe(409);
     expect(String(unilateral.body.error)).toMatch(/request a cancellation/);
-    const request = await step(buyer, orderId, { command: 'request_cancellation', refund_amount: '650', reason: 'Work is overdue and no update was shared.' });
+    const request = await step(buyer, orderId, { command: 'request_cancellation', refund_amount: '200', reason: 'Work is overdue and no update was shared.' });
     expect(request.status).toBe(200);
-    expect((await step(buyer, orderId, { command: 'request_cancellation', refund_amount: '650', reason: 'Duplicate request attempt.' })).status).toBe(409);
+    expect((await step(buyer, orderId, { command: 'request_cancellation', refund_amount: '200', reason: 'Duplicate request attempt.' })).status).toBe(409);
     expect((await orderRow(orderId)).status).toBe('IN_PROGRESS');
   });
 
@@ -350,5 +367,90 @@ describe.skipIf(!RUN_DB)('DB guards', () => {
     await expect(sql`update app.orders set status='AWAITING_PAYMENT',version=version+1 where id=${orderId}`).rejects.toThrow(/invalid order transition/);
     await expect(sql`update app.orders set status='APPROVED' where id=${orderId}`).rejects.toThrow(/must increment version/);
     await expect(sql`delete from app.deliveries where order_id=${orderId}`).rejects.toThrow(/immutable/);
+  });
+});
+
+describe.skipIf(!RUN_DB)('ORD-12 — deadline extensions by agreement', () => {
+  const amendmentsOf = async (orderId: string) => sql`select status,deadline,old_due_at,new_due_at,proposed_by from app.order_amendments where order_id=${orderId} order by created_at`;
+  const hoursFrom = (from: Date | string, hours: number) => commandInstant(new Date(new Date(from).getTime() + hours * 3600_000));
+
+  it('ORD-12: a proposal changes nothing until the other party accepts; the agreed deadline is recorded and cannot be rewritten', async () => {
+    const { buyer, creator, orderId } = await funded('ord12-accept');
+    expect((await step(creator, orderId, { command: 'start' })).status).toBe(200);
+    const original = (await orderRow(orderId)).delivery_due_at;
+    const newDue = hoursFrom(original, 48);
+
+    const proposed = await step(creator, orderId, { command: 'request_deadline_extension', new_due_at: newDue, reason: 'The buyer added two extra audiences to the brief.' });
+    expect(proposed.status, JSON.stringify(proposed.body)).toBe(200);
+    const amendmentId = String(proposed.body.id);
+    expect(new Date((await orderRow(orderId)).delivery_due_at).toISOString()).toBe(new Date(original).toISOString());
+    expect((await sql`select count(*)::int as n from app.outbox where semantic_key=${`notify:order.deadline_extension_requested:${amendmentId}`}`)[0]!.n).toBe(1);
+
+    // Only the other party decides; the proposer cannot accept their own proposal and outsiders see nothing.
+    const respond = (actor: TestUser, decision: string) => command(actor, { command: 'respond_deadline_extension', idempotency_key: key('amend'), amendment_id: amendmentId, decision });
+    expect((await respond(creator, 'accept')).status).toBe(403);
+    expect((await respond(await createUser('ord12-outsider'), 'accept')).status).toBe(403);
+    expect((await respond(buyer, 'withdraw')).status).toBe(403);
+    expect((await step(buyer, orderId, { command: 'request_deadline_extension', new_due_at: hoursFrom(original, 24), reason: 'A second proposal while one is open.' })).status).toBe(409);
+
+    expect((await respond(buyer, 'accept')).status).toBe(200);
+    const after = await orderRow(orderId);
+    expect(new Date(after.delivery_due_at).toISOString()).toBe(new Date(`${newDue}Z`).toISOString());
+    expect(await amendmentsOf(orderId)).toMatchObject([{ status: 'ACCEPTED', deadline: 'DELIVERY', proposed_by: creator.id }]);
+    expect((await sql`select payload from app.order_events where order_id=${orderId} and kind='DEADLINE_EXTENDED'`)[0]!.payload).toMatchObject({ amendment_id: amendmentId, deadline: 'DELIVERY' });
+    expect((await respond(buyer, 'accept')).status).toBe(409);
+
+    // The record is immutable, and the deadline cannot be moved again without a new accepted amendment.
+    await expect(sql`update app.order_amendments set new_due_at=new_due_at + interval '1 day' where id=${amendmentId}`).rejects.toThrow(/immutable/);
+    await expect(sql`update app.order_amendments set status='REJECTED' where id=${amendmentId}`).rejects.toThrow(/already ACCEPTED/);
+    await expect(sql`delete from app.order_amendments where id=${amendmentId}`).rejects.toThrow();
+    await expect(sql`update app.orders set delivery_due_at=delivery_due_at + interval '1 day' where id=${orderId}`).rejects.toThrow(/accepted amendment/);
+  });
+
+  it('ORD-12: dates must move later within the cap; declined and withdrawn proposals keep the deadline', async () => {
+    const { buyer, creator, orderId } = await funded('ord12-rules');
+    const due = (await orderRow(orderId)).delivery_due_at;
+    const propose = (actor: TestUser, newDue: string, reason = 'Waiting on the buyer’s launch date confirmation.') => step(actor, orderId, { command: 'request_deadline_extension', new_due_at: newDue, reason });
+    expect((await propose(creator, hoursFrom(due, -1))).status).toBe(400);
+    expect((await propose(creator, hoursFrom(due, 91 * 24))).status).toBe(400);
+    expect((await propose(creator, hoursFrom(due, 24), 'short')).status).toBe(400);
+
+    // Proposed while funded, still valid after work starts (starting does not change the deadline); then declined.
+    const declined = await propose(buyer, hoursFrom(due, 24));
+    expect(declined.status).toBe(200);
+    expect((await step(creator, orderId, { command: 'start' })).status).toBe(200);
+    expect((await command(creator, { command: 'respond_deadline_extension', idempotency_key: key('amend'), amendment_id: String(declined.body.id), decision: 'reject' })).status).toBe(200);
+    const withdrawn = await propose(creator, hoursFrom(due, 12));
+    expect((await command(creator, { command: 'respond_deadline_extension', idempotency_key: key('amend'), amendment_id: String(withdrawn.body.id), decision: 'withdraw' })).status).toBe(200);
+    expect(new Date((await orderRow(orderId)).delivery_due_at).toISOString()).toBe(new Date(due).toISOString());
+    expect((await amendmentsOf(orderId)).map((a) => a.status)).toEqual(['REJECTED', 'WITHDRAWN']);
+  });
+
+  it('ORD-12: a delivery expires the open proposal, so consent never outlives the order it was given for', async () => {
+    const { buyer, creator, orderId } = await funded('ord12-expire');
+    expect((await step(creator, orderId, { command: 'start' })).status).toBe(200);
+    const due = (await orderRow(orderId)).delivery_due_at;
+    const proposed = await step(creator, orderId, { command: 'request_deadline_extension', new_due_at: hoursFrom(due, 24), reason: 'Need one more day for the video edit.' });
+    expect((await step(creator, orderId, { command: 'deliver', body: note('V1') })).status).toBe(200);
+    expect((await amendmentsOf(orderId)).map((a) => a.status)).toEqual(['EXPIRED']);
+    expect((await sql`select count(*)::int as n from app.order_events where order_id=${orderId} and kind='DEADLINE_EXTENSION_EXPIRED'`)[0]!.n).toBe(1);
+    expect((await command(buyer, { command: 'respond_deadline_extension', idempotency_key: key('amend'), amendment_id: String(proposed.body.id), decision: 'accept' })).status).toBe(409);
+    expect((await step(buyer, orderId, { command: 'request_deadline_extension', new_due_at: hoursFrom(due, 24), reason: 'Nothing is due while I review.' })).status).toBe(409);
+  });
+
+  it('ORD-12: lateness and the on-time metric use the agreed deadline', async () => {
+    // 8 hours overdue on the original deadline; both sides agree to 24 hours from now, then the creator delivers.
+    const { buyer, creator, orderId } = await clockStartedHoursAgo('ord12-metric', 80);
+    expect((await step(creator, orderId, { command: 'start' })).status).toBe(200);
+    const proposed = await step(creator, orderId, { command: 'request_deadline_extension', new_due_at: commandInstant(new Date(Date.now() + 24 * 3600_000)), reason: 'Launch moved; buyer asked to include the new date.' });
+    expect(proposed.status, JSON.stringify(proposed.body)).toBe(200);
+    expect((await command(buyer, { command: 'respond_deadline_extension', idempotency_key: key('amend'), amendment_id: String(proposed.body.id), decision: 'accept' })).status).toBe(200);
+    expect((await step(creator, orderId, { command: 'deliver', body: note('V1') })).status).toBe(200);
+    expect((await sql`select payload->>'late' as late from app.order_events where order_id=${orderId} and kind='DELIVERED'`)[0]!.late).toBe('false');
+    expect((await step(buyer, orderId, { command: 'approve', delivery_version: '1' })).status).toBe(200);
+    await jobs.releaseReadySettlements({ orderId });
+    expect((await orderRow(orderId)).status).toBe('COMPLETED');
+    vi.stubEnv('REPUTATION_INCLUDE_TEST_DATA', 'true');
+    expect(await lifecycle.creatorReputation(sql, creator.id)).toMatchObject({ completed_jobs: 1, on_time_sample: 1, on_time_rate: 1 });
   });
 });

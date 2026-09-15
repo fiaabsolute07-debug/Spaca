@@ -4,6 +4,7 @@ import { OrderTimelinePanel } from '@/components/order-workspace/timeline-panel'
 import { OrderDeliveryPanel } from '@/components/order-workspace/delivery-panel';
 import { ReportForm } from '@/components/report-form';
 import { OrderBriefPanel } from '@/components/order-workspace/brief-panel';
+import { OrderDeadlinePanel } from '@/components/order-workspace/deadline-panel';
 import { OrderFilesPanel } from '@/components/order-workspace/files-panel';
 import { OrderDigitalPanel } from '@/components/order-workspace/digital-panel';
 import { NetworkBadge } from '@/components/crypto/crypto-payment-panel';
@@ -73,6 +74,7 @@ export default async function OrderPage({
       <div>
         {d.digital ? <OrderDigitalPanel order={o} digital={row(d.digital)} buyer={buyer} route={route} /> : null}
         <OrderBriefPanel order={o} digital={Boolean(d.digital)} />
+        {d.digital ? null : <OrderDeadlinePanel order={o} actorId={actor.id} amendments={rows(d.amendments)} active={d.active_amendment ? row(d.active_amendment) : null} route={route} />}
         <OrderFilesPanel order={o} files={files} buyer={buyer} />
         <OrderDeliveryPanel order={o} delivery={delivery} files={files} creator={creator} route={route} publishTerms={d.publish_terms} proofs={rows(d.publish_proofs)} />
         <OrderTimelinePanel events={events} />

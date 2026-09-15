@@ -12,7 +12,7 @@ import { sql } from '@/lib/db';
 import { commandHandlers } from '@/modules/commands';
 import { PaymentFlowError, deliverPendingMockWebhooks, mockPaymentsEnabled } from '@/modules/payments/funding';
 
-const SUSPENDED_ALLOWED_COMMANDS = new Set(['start', 'deliver', 'revision', 'approve', 'dispute', 'cancel', 'request_cancellation', 'respond_cancellation', 'refund', 'review', 'message', 'mark_delivery_viewed', 'submit_brief', 'pause_service', 'archive_service']);
+const SUSPENDED_ALLOWED_COMMANDS = new Set(['start', 'deliver', 'revision', 'approve', 'dispute', 'cancel', 'request_cancellation', 'respond_cancellation', 'request_deadline_extension', 'respond_deadline_extension', 'refund', 'review', 'message', 'mark_delivery_viewed', 'submit_brief', 'pause_service', 'archive_service']);
 
 const safeReturnTo = (value: string | null, fallback: string) =>
   value && value.startsWith('/') && !value.startsWith('//') && value.length < 300 ? value : fallback;

@@ -119,7 +119,7 @@ export async function getOrderData(actor: Actor, id: string) {
     from app.orders o join app.users bu on bu.id=o.buyer_id join app.users cu on cu.id=o.creator_id
     where o.id=${id} and (o.buyer_id=${actor.id} or o.creator_id=${actor.id})`);
   if (!order) return null;
-  const [deliveries, events, messages, reviews, cancellations, holds, assets, proofs] = await Promise.all([
+  const [deliveries, events, messages, reviews, cancellations, holds, assets, proofs, amendments] = await Promise.all([
     sql`select id,order_id,body,url,version,validation_status,buyer_viewed_at,created_at from app.deliveries where order_id=${id} order by version desc`,
     sql`select id,kind,payload,created_at from app.order_events where order_id=${id} order by created_at asc`,
     sql`select m.id,m.body,m.created_at,u.display_name from app.messages m join app.users u on u.id=m.sender_id where m.order_id=${id} order by m.created_at asc`,
@@ -132,9 +132,10 @@ export async function getOrderData(actor: Actor, id: string) {
       where a.order_id=${id} and a.lifecycle_state <> 'DELETED' group by a.id order by a.created_at`,
     sql`select p.id,p.delivery_id,d.version as delivery_version,p.platform,p.channel_url,p.post_url,p.post_id,p.published_at,p.disclosure_text,p.disclosure_attested,p.link_check,p.late,p.created_at
       from app.publish_proofs p join app.deliveries d on d.id=p.delivery_id where p.order_id=${id} order by d.version desc`,
+    sql`select a.id,a.deadline,a.proposed_by,a.counterparty_id,u.display_name as proposed_by_name,a.reason,a.old_due_at,a.new_due_at,a.status,a.created_at,a.responded_at
+      from app.order_amendments a join app.users u on u.id=a.proposed_by where a.order_id=${id} order by a.created_at desc`,
   ]);
   const isBuyer = actor.id === String(order.buyer_id);
-  // XPL-03: the session and its private meeting link are read only by the two parties (this query is already scoped to them).
   // XPL-06: the buyer sees which releases their license includes; files are fetched only through the entitlement route.
   const [entitlement] = asRows(await sql`select * from app.digital_entitlements where order_id=${id}`);
   const digital = entitlement ? {
@@ -170,6 +171,9 @@ export async function getOrderData(actor: Actor, id: string) {
     reviews: asRows(reviews),
     cancellation_requests: asRows(cancellations),
     active_cancellation_request: asRows(cancellations).find((c) => c.status === 'REQUESTED') ?? null,
+    // ORD-12: agreed deadline changes, newest first, and the proposal waiting for an answer.
+    amendments: asRows(amendments),
+    active_amendment: asRows(amendments).find((a) => a.status === 'REQUESTED') ?? null,
     active_review_hold: asRows(holds).find((h) => h.resolved_at === null) ?? null,
     files,
     payment_receipt: paymentConfirmed ? paymentConfirmed.payload : null,

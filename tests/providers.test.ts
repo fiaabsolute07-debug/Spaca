@@ -580,6 +580,8 @@ describe('notifications', () => {
       'order.completed': { orderRef: 'ord_1' },
       'order.cancellation_requested': { orderRef: 'ord_1' },
       'order.cancellation_resolved': { orderRef: 'ord_1', outcome: 'ACCEPTED' },
+      'order.deadline_extension_requested': { orderRef: 'ord_1', newDueAt: '2026-09-20T10:00:00Z' },
+      'order.deadline_extension_resolved': { orderRef: 'ord_1', outcome: 'REJECTED' },
       'payout.succeeded': { orderRef: 'ord_1', amount: 9_700n, currency: 'USD' },
       'payout.failed': { orderRef: 'ord_1' },
       'refund.updated': { orderRef: 'ord_1', amount: 10_000n, currency: 'USD', refundStatus: 'PENDING' },

@@ -356,3 +356,12 @@ Commands:
 - Pages: `requireActorOrLoginPrompt(route, query, 'buyer' | 'creator')` shows "This page is for buyer/creator accounts" to the other type. Buyer pages: `/buyer/requests`, `/buyer/requests/new`. Creator pages: `/creator/services`, `/creator/services/new`, `/creator/auctions/new`, `/creator/requests`.
 - Workspace: the sidebar and dashboard follow the account type (badge "Creator account"/"Buyer account"). `/creator/requests` lists the creator's applications (`getDashboardData().applications`) with offer state; `/buyer/requests` lists the buyer's briefs. Dashboard stats add `sales_minor` (completed orders as creator) and `funded_minor` (funded, not cancelled/refunded, as buyer).
 - Service page: a creator account sees "Booking needs a buyer account" (or "This is your service"); request page: a buyer account sees "Applying needs a creator account"; auction page: a creator account sees "Bidding needs a buyer account". Profile: linked accounts and the sample check show for creators only.
+
+## ORD-12 additions (2026-09-15): deadline extensions (drizzle/0020)
+
+- `request_deadline_extension {order_id, new_due_at, reason}` — either party. `new_due_at` is a UTC `datetime-local`. Allowed on FUNDED/IN_PROGRESS (moves the delivery deadline) and REVISION_REQUESTED (moves the revision deadline); not on DIGITAL purchases. 400 for a date not after the current deadline, less than 1 h from now, more than 90 days later, or a reason under 10 characters; 409 when a proposal is already open or nothing is due. Returns `id` (the amendment).
+- `respond_deadline_extension {amendment_id, decision}` — `accept`/`reject` by the other party, `withdraw` by the proposer (403 otherwise). 409 when already decided/expired or the deadline changed since the proposal; 422 when the proposed date has passed.
+- A set delivery deadline cannot change any other way (DB guard). Any status change except starting work expires the open proposal.
+- `getOrderData(...).amendments = [{ id, deadline: DELIVERY|REVISION, proposed_by, counterparty_id, proposed_by_name, reason, old_due_at, new_due_at, status, created_at, responded_at }]` (newest first) and `active_amendment` (the REQUESTED one or null).
+- Events: `DEADLINE_EXTENSION_REQUESTED`, `DEADLINE_EXTENDED`, `DEADLINE_EXTENSION_REJECTED`, `DEADLINE_EXTENSION_WITHDRAWN`, `DEADLINE_EXTENSION_EXPIRED`. Notifications: `order.deadline_extension_requested {orderRef, newDueAt}`, `order.deadline_extension_resolved {orderRef, outcome ACCEPTED|REJECTED}`.
+- UI: `<OrderDeadlinePanel>` on the order page (region "Deadline").
