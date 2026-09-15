@@ -29,8 +29,9 @@ export async function getOperatorQueues(actor: Actor) {
     sql<Row[]>`select d.id,d.order_id,d.status,d.created_at,d.assigned_to,o.status_before_dispute,o.amount_minor,o.currency,extract(epoch from now()-d.created_at)::int as age_seconds
       from app.disputes d join app.orders o on o.id=d.order_id where d.status in ('OPEN','UNDER_REVIEW') order by d.created_at limit 200`,
     finance ? sql<Row[]>`select h.order_id,h.reason,h.delivery_version,h.created_at from app.review_holds h where h.resolved_at is null order by h.created_at limit 200` : [],
+    // Unresolved outcomes (PENDING, UNKNOWN) come before settled failures so an old FAILED backlog never hides them.
     finance ? sql<Row[]>`select p.operation_id,p.kind,p.status,p.order_id,p.provider_reference,p.outcome->>'lastError' as last_error,p.updated_at
-      from app.provider_operations p where p.status in ('PENDING','UNKNOWN','FAILED') order by p.updated_at limit 200` : [],
+      from app.provider_operations p where p.status in ('PENDING','UNKNOWN','FAILED') order by (p.status='FAILED'), p.updated_at limit 200` : [],
     finance ? sql<Row[]>`select id,semantic_key,status,attempts,available_at from app.outbox where status='FAILED' order by available_at limit 200` : [],
     finance ? sql<Row[]>`select c.order_id,c.creator_id,u.display_name as creator_name,c.units,c.expires_at from app.workload_claims c join app.users u on u.id=c.creator_id
       where c.state='EXPIRY_RECONCILING' order by c.expires_at limit 200` : [],

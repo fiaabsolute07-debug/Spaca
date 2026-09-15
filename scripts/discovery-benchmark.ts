@@ -40,7 +40,7 @@ try {
   await client.begin(async (tx) => {
     const t0 = performance.now();
     await tx`insert into app.users (email,display_name,roles,is_test,status)
-      select 'bench-creator-'||g||'@example.test','Bench creator '||g,array['buyer','creator'],true,'ACTIVE' from generate_series(1,1000) g`;
+      select 'bench-creator-'||g||'@example.test','Bench creator '||g,array['creator'],true,'ACTIVE' from generate_series(1,1000) g`;
     await tx`insert into app.users (email,display_name,roles,is_test,status)
       select 'bench-buyer-'||g||'@example.test','Bench buyer '||g,array['buyer'],true,'ACTIVE' from generate_series(1,2000) g`;
     await tx`create temp table bench_creators on commit drop as select id, row_number() over (order by email) as n from app.users where email like 'bench-creator-%'`;
@@ -49,6 +49,9 @@ try {
       select id,'bench'||n,'Independent creator focused on launches, video and newsletters #'||n,
         (array['launch writing','video editing','podcast production','newsletter','ux copy','illustration','community','tutorials','reviews','brand strategy'])[1 + (n % 10)]
       from bench_creators`;
+    // PUBLISH listings name the creator's own channel (drizzle/0013): one self-reported X account each.
+    await tx`insert into app.social_accounts (creator_id,platform,handle,canonical_url) select id,'X','bench'||n,'https://x.com/bench'||n from bench_creators`;
+    await tx`create temp table bench_channels on commit drop as select a.creator_id,a.id as account_id,a.handle,a.canonical_url from app.social_accounts a join bench_creators c on c.id=a.creator_id where a.removed_at is null`;
     // Every twentieth creator paused new orders, so the availability filter has work to do.
     await tx`insert into app.creator_workloads (creator_id,accepting_orders,active_units)
       select id,(n % 20 <> 0),(n % 5) from bench_creators`;
@@ -58,14 +61,25 @@ try {
           || (array['package','sprint','series','audit','kit','plan','campaign','session','pack','draft'])[1 + ((g / 7) % 10)] || ' ' || g as title,
         (array['CREATE','PUBLISH','ACCESS','DIGITAL'])[1 + (g % 4)] as taxonomy, (5000 + (g * 37) % 200000)::bigint as price_minor, (12 + (g % 20) * 12) as turnaround_hours
       from generate_series(1, 5000) g join bench_creators p on p.n = 1 + (g % 1000)`;
-    // ACCESS listings state their session length; other categories leave it null.
-    await tx`insert into app.services (id,creator_id,title,description,taxonomy,price_minor,currency,turnaround_hours,status,access_session_minutes)
-      select id,creator_id,title,'Scope for '||title||' including deliverables, revisions and usage notes.',taxonomy,price_minor,'USD',turnaround_hours,'DRAFT',
-        case when taxonomy='ACCESS' then 60 end from bench_services`;
+    // Each category carries the terms its CHECK constraints require: ACCESS session length, PUBLISH channel, DIGITAL license.
+    await tx`insert into app.services (id,creator_id,title,description,taxonomy,price_minor,currency,turnaround_hours,status,access_session_minutes,
+        publish_account_id,publish_format,min_live_hours,disclosure_text,digital_license,digital_rights_text,digital_updates,digital_download_limit)
+      select s.id,s.creator_id,s.title,'Scope for '||s.title||' including deliverables, revisions and usage notes.',s.taxonomy,s.price_minor,'USD',s.turnaround_hours,'DRAFT',
+        case when s.taxonomy='ACCESS' then 60 end,
+        case when s.taxonomy='PUBLISH' then c.account_id end,case when s.taxonomy='PUBLISH' then 'POST' end,case when s.taxonomy='PUBLISH' then 48 end,case when s.taxonomy='PUBLISH' then '#ad' end,
+        case when s.taxonomy='DIGITAL' then 'NON_EXCLUSIVE' end,case when s.taxonomy='DIGITAL' then 'Use in your own projects; do not resell the files.' end,
+        case when s.taxonomy='DIGITAL' then 'LATEST' end,case when s.taxonomy='DIGITAL' then 10 end
+      from bench_services s join bench_channels c on c.creator_id=s.creator_id`;
     await tx`insert into app.service_versions (service_id,version,title,description,taxonomy,price_minor,currency,turnaround_hours,revision_limit,created_by,created_at,
-        access_session_minutes)
-      select id,1,title,'Scope for '||title||' including deliverables, revisions and usage notes.',taxonomy,price_minor,'USD',turnaround_hours,1,creator_id,now() - (g * interval '1 minute'),
-        case when taxonomy='ACCESS' then 60 end from bench_services`;
+        access_session_minutes,publish_account_id,publish_platform,publish_handle,publish_url,publish_format,min_live_hours,disclosure_text,
+        digital_license,digital_rights_text,digital_updates,digital_download_limit)
+      select s.id,1,s.title,'Scope for '||s.title||' including deliverables, revisions and usage notes.',s.taxonomy,s.price_minor,'USD',s.turnaround_hours,1,s.creator_id,now() - (s.g * interval '1 minute'),
+        case when s.taxonomy='ACCESS' then 60 end,
+        case when s.taxonomy='PUBLISH' then c.account_id end,case when s.taxonomy='PUBLISH' then 'X' end,case when s.taxonomy='PUBLISH' then c.handle end,case when s.taxonomy='PUBLISH' then c.canonical_url end,
+        case when s.taxonomy='PUBLISH' then 'POST' end,case when s.taxonomy='PUBLISH' then 48 end,case when s.taxonomy='PUBLISH' then '#ad' end,
+        case when s.taxonomy='DIGITAL' then 'NON_EXCLUSIVE' end,case when s.taxonomy='DIGITAL' then 'Use in your own projects; do not resell the files.' end,
+        case when s.taxonomy='DIGITAL' then 'LATEST' end,case when s.taxonomy='DIGITAL' then 10 end
+      from bench_services s join bench_channels c on c.creator_id=s.creator_id`;
     await tx`update app.services s set status='PUBLISHED',published_version_id=v.id from app.service_versions v where v.service_id=s.id and s.id in (select id from bench_services)`;
     await tx`create temp table bench_auctions on commit drop as
       select gen_random_uuid() as id, s.id as service_id, s.creator_id, s.title, series.n as g from generate_series(1, 500) as series(n) join bench_services s on s.g = series.n * 10`;

@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { chooseOption, expectNoHorizontalOverflow, expectOrderState, login, orderPath, payOrder, submit, uniqueSuffix, visit } from './helpers';
+import { chooseOption, expectNoHorizontalOverflow, expectOrderState, login, orderPath, submit, uniqueSuffix, visit, waitForHydration } from './helpers';
 
 test('a DIGITAL product is released, bought, delivered on payment and downloaded only by its buyer', async ({ page }) => {
   const suffix = uniqueSuffix();
@@ -28,7 +28,10 @@ test('a DIGITAL product is released, bought, delivered on payment and downloaded
 
   const card = page.locator('div.panel').filter({ has: page.getByRole('heading', { name: title, exact: true }) });
   await expect(card.getByText('Upload the product file before publishing.')).toBeVisible();
-  await card.locator('input[type="file"]').setInputFiles({ name: 'launch-kit.zip', mimeType: 'application/zip', buffer: fileBytes });
+  const fileInput = card.locator('input[type="file"]');
+  // The upload field is a client component: files chosen before hydration would never be sent.
+  await waitForHydration(fileInput);
+  await fileInput.setInputFiles({ name: 'launch-kit.zip', mimeType: 'application/zip', buffer: fileBytes });
   await expect(card.getByText('Ready', { exact: true })).toBeVisible();
   await submit(page, card.getByRole('button', { name: 'Add product file', exact: true }));
   await expect(card.getByText('Version 1 · launch-kit.zip')).toBeVisible();
@@ -43,17 +46,19 @@ test('a DIGITAL product is released, bought, delivered on payment and downloaded
   await page.getByRole('checkbox', { name: /I accept the license above for version 1/ }).check();
   await submit(page, page.getByRole('button', { name: 'Buy license', exact: true }));
   const path = orderPath(page);
-  await payOrder(page);
+  // Paying delivers a DIGITAL purchase at once: there is no FUNDED step to wait on.
+  await expectOrderState(page, 'AWAITING_PAYMENT');
+  await submit(page, page.getByRole('button', { name: 'Pay with local test provider', exact: true }));
   await expectOrderState(page, 'DELIVERED');
+  await expect(page.getByRole('status')).toContainText('Your files are ready to download');
 
   const files = page.getByRole('heading', { name: 'Files for this purchase', exact: true }).locator('..');
   await expect(files).toContainText('0 of 3 used');
   await expect(page.getByRole('button', { name: 'Cancel before downloading', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: /Request included revision/ })).toHaveCount(0);
-  const [download] = await Promise.all([
-    page.waitForEvent('download'),
-    files.getByRole('button', { name: 'Download version 1', exact: true }).click(),
-  ]);
+  const downloadButton = files.getByRole('button', { name: 'Download version 1', exact: true });
+  await waitForHydration(downloadButton);
+  const [download] = await Promise.all([page.waitForEvent('download'), downloadButton.click()]);
   expect(download.suggestedFilename()).toBe('launch-kit.zip');
   const saved = await download.path();
   expect(saved).toBeTruthy();

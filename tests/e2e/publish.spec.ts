@@ -25,6 +25,10 @@ test('a PUBLISH order is delivered with the post link on the sold X channel and 
   await page.getByLabel('Sample URL 1', { exact: true }).fill(`https://x.com/${handle}/status/1000000000001`);
   await page.getByLabel('Sample title 1', { exact: true }).fill('A past launch thread');
   await submit(page, page.getByRole('button', { name: 'Save draft service', exact: true }));
+  // The journey books creator_d, so new orders must be open (manual QA on the shared dev database may have paused them).
+  const resume = page.getByRole('button', { name: 'Resume new orders', exact: true });
+  if (await resume.isVisible()) await submit(page, resume);
+  await expect(page.getByRole('button', { name: 'Pause new orders', exact: true })).toBeVisible();
   const card = page.locator('div.panel').filter({ has: page.getByRole('heading', { name: title, exact: true }) });
   await submit(page, card.getByRole('button', { name: 'Publish', exact: true }));
   await expect(card.getByText('Published', { exact: true })).toBeVisible();

@@ -92,7 +92,7 @@ export function OrderNextStepPanel({ order: o, buyer, creator, actorId, reviews,
     </div>}
 
     {!cancellation && ACTIVE_WORK.includes(status) && (buyer || creator) && <CommandForm variant="danger" command="request_cancellation" label="Request cancellation" values={base} returnTo={route}>
-      <p className="muted">Work has started, so both sides must agree on the refund amount.</p>
+      <p className="muted">{digital ? 'The files were delivered, so both sides must agree on the refund amount.' : 'Work has started, so both sides must agree on the refund amount.'}</p>
       <Field name="refund_amount" label={`Refund amount (USD, up to ${money(o.amount_minor)})`} required placeholder="0.00" />
       <Field name="reason" label="Reason" type="textarea" required />
     </CommandForm>}

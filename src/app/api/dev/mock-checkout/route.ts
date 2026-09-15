@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getActor, isSameOrigin, publicUrl } from '@/lib/auth';
+import { sql } from '@/lib/db';
 import { isProviderError } from '@/modules/payments/providers';
 import { PaymentFlowError, completeMockCheckout, mockPaymentsEnabled } from '@/modules/payments/funding';
 
@@ -32,7 +33,10 @@ export async function POST(request: Request) {
       return respond(intent.state === 'RETRY' ? 503 : 400, { error: message, state: intent.state, code: intent.code, operationId: intent.operationId }, message, 'error');
     }
     const funded = receipts.some((r) => r.outcome === 'FUNDED');
-    const message = funded ? 'Payment confirmed by the provider. The creator can start work.' : 'Payment submitted; waiting for provider confirmation.';
+    // DIGITAL purchases are delivered on payment (XPL-05), so there is no work for the creator to start.
+    const [order] = funded ? await sql<{ digital: boolean }[]>`select (terms ? 'digital') as digital from app.orders where id=${orderId}` : [];
+    const message = !funded ? 'Payment submitted; waiting for provider confirmation.'
+      : order?.digital ? 'Payment confirmed by the provider. Your files are ready to download.' : 'Payment confirmed by the provider. The creator can start work.';
     return respond(200, { state: intent.state, reference: intent.reference, receipts }, message, 'message');
   } catch (error) {
     if (error instanceof PaymentFlowError) return respond(error.code === 'FORBIDDEN' ? 403 : 400, { error: error.message }, error.message, 'error');

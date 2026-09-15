@@ -72,7 +72,7 @@ export default async function OrderPage({
     <div className="split">
       <div>
         {d.digital ? <OrderDigitalPanel order={o} digital={row(d.digital)} buyer={buyer} route={route} /> : null}
-        <OrderBriefPanel order={o} />
+        <OrderBriefPanel order={o} digital={Boolean(d.digital)} />
         <OrderFilesPanel order={o} files={files} buyer={buyer} />
         <OrderDeliveryPanel order={o} delivery={delivery} files={files} creator={creator} route={route} publishTerms={d.publish_terms} proofs={rows(d.publish_proofs)} />
         <OrderTimelinePanel events={events} />

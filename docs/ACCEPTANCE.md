@@ -1,6 +1,6 @@
 # Acceptance ledger
 
-As of 2026-09-15, verified baseline **90004fd**, crypto rows from W5-C1/W5-C2, DSC rows from W6-D, CAP rows from W7-CAP (active-order limit), PUBLISH/MOD/SUP-05/06 rows from W8-PUB, CRY rows from W9-ARC. One row per master §18 ID, including unstarted work. Platform fee is always **0%**. P3 is done-local from W4-A; P4 is in progress by Claude. ACCESS rows from P6-ACCESS. Counts: **70 PASS, 54 PARTIAL, 11 NOT_RUN, 2 BLOCKED, 5 REMOVED by product decision (142 total)**. 2026-09-15: the order limit and ACCESS scheduling were removed (drizzle/0017).
+As of 2026-09-15, verified baseline **90004fd**, crypto rows from W5-C1/W5-C2, DSC rows from W6-D, CAP rows from W7-CAP (active-order limit), PUBLISH/MOD/SUP-05/06 rows from W8-PUB, CRY rows from W9-ARC. One row per master §18 ID, including unstarted work. Platform fee is enforced at 0 in code; the fee model is undecided. P3 is done-local from W4-A; P4 is in progress by Claude. ACCESS rows from P6-ACCESS, DIGITAL rows (XPL-04..06) from P6-DIGITAL. Counts: **73 PASS, 54 PARTIAL, 8 NOT_RUN, 2 BLOCKED, 5 REMOVED by product decision (142 total)**. 2026-09-15: the order limit and ACCESS scheduling were removed (drizzle/0017).
 
 | Gate | Status | Evidence / remaining work |
 |---|---|---|
@@ -17,26 +17,26 @@ Gate statuses remain consistent with [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md
 
 PASS requires an executed, passed evidence-table test covering the criterion; PARTIAL retains narrower proof or the evidence's own qualification. NOT_RUN means no mapped execution; BLOCKED means a required external credential/provider/environment is absent. Environment describes evidence or the blocked target. `doc-only` is not execution. Pure contracts are `unit`; mock-provider DB tests are `local-db+mock`; `foundry` is Solidity unit/fuzz/invariant tests; `local-evm` is anvil with the compiled contract. No sandbox, testnet or live PASS is permitted. Phase delivery and gate/acceptance completion are separate.
 
-Sources: [P0](evidence/p0-foundation.md), [provider report](CLAUDE_REPORT.md), [DB](evidence/claude-db-integration.md), [W1-A](evidence/claude-W1-A.md), [W1-B](evidence/claude-W1-B.md), [C4](evidence/claude-C4.md), [C1](evidence/codex-C1.md), [C2](evidence/codex-C2.md), [W2-B](evidence/claude-W2-B.md), [W2-S](evidence/claude-W2-S.md), [W3-R](evidence/claude-W3-R.md), [C6](evidence/codex-C6.md), [C6 review](evidence/claude-review-C6.md), [W4-A](evidence/claude-W4-A.md), [C3 review](evidence/claude-review-C3.md), [W6-D](evidence/claude-W6-D.md), [W7-CAP](evidence/claude-W7-CAP.md), [W8-PUB](evidence/claude-W8-PUB.md), [W9-ARC](evidence/claude-W9-ARC.md). Later evidence supersedes older status prose. Table labels identify reported tests; commits identify the corresponding implementation, not a fresh C3 execution.
+Sources: [P0](evidence/p0-foundation.md), [provider report](CLAUDE_REPORT.md), [DB](evidence/claude-db-integration.md), [W1-A](evidence/claude-W1-A.md), [W1-B](evidence/claude-W1-B.md), [C4](evidence/claude-C4.md), [C1](evidence/codex-C1.md), [C2](evidence/codex-C2.md), [W2-B](evidence/claude-W2-B.md), [W2-S](evidence/claude-W2-S.md), [W3-R](evidence/claude-W3-R.md), [C6](evidence/codex-C6.md), [C6 review](evidence/claude-review-C6.md), [W4-A](evidence/claude-W4-A.md), [C3 review](evidence/claude-review-C3.md), [W6-D](evidence/claude-W6-D.md), [W7-CAP](evidence/claude-W7-CAP.md), [W8-PUB](evidence/claude-W8-PUB.md), [W9-ARC](evidence/claude-W9-ARC.md), [P6-DIGITAL](evidence/claude-P6-DIGITAL.md). Later evidence supersedes older status prose. Table labels identify reported tests; commits identify the corresponding implementation, not a fresh C3 execution.
 
-| Family | PASS | PARTIAL | NOT_RUN | BLOCKED |
-|---|---:|---:|---:|---:|
-| FND | 2 | 5 | 0 | 0 |
-| SEC | 6 | 7 | 0 | 1 |
-| MOD | 0 | 0 | 2 | 0 |
-| SUP | 2 | 2 | 2 | 0 |
-| CAP | 7 | 4 | 1 | 0 |
-| ORD | 5 | 9 | 2 | 0 |
-| REV | 2 | 1 | 0 | 0 |
-| PAY | 4 | 13 | 2 | 1 |
-| BNK | 0 | 0 | 3 | 0 |
-| REQ | 8 | 3 | 0 | 0 |
-| AUC | 12 | 2 | 0 | 0 |
-| CRY | 9 | 4 | 1 | 0 |
-| DSC | 4 | 2 | 0 | 0 |
-| XPL | 0 | 0 | 6 | 0 |
-| OPS | 1 | 6 | 1 | 0 |
-| **Total** | 62 | 58 | 20 | 2 |
+| Family | PASS | PARTIAL | NOT_RUN | BLOCKED | REMOVED |
+|---|---:|---:|---:|---:|---:|
+| FND | 2 | 5 | 0 | 0 | 0 |
+| SEC | 6 | 7 | 0 | 1 | 0 |
+| MOD | 2 | 0 | 0 | 0 | 0 |
+| SUP | 4 | 2 | 0 | 0 | 0 |
+| CAP | 5 | 3 | 0 | 0 | 4 |
+| ORD | 5 | 9 | 2 | 0 | 0 |
+| REV | 2 | 1 | 0 | 0 | 0 |
+| PAY | 4 | 13 | 2 | 1 | 0 |
+| BNK | 0 | 0 | 3 | 0 | 0 |
+| REQ | 8 | 3 | 0 | 0 | 0 |
+| AUC | 12 | 2 | 0 | 0 | 0 |
+| CRY | 13 | 1 | 0 | 0 | 0 |
+| DSC | 4 | 2 | 0 | 0 | 0 |
+| XPL | 5 | 0 | 0 | 0 | 1 |
+| OPS | 1 | 6 | 1 | 0 | 0 |
+| **Total** | 73 | 54 | 8 | 2 | 5 |
 
 | ID | Summary (≤12 words) | Status | Environment | Evidence (file + test name or commit) | Gap/next task |
 |---|---|---|---|---|---|
@@ -171,9 +171,9 @@ Sources: [P0](evidence/p0-foundation.md), [provider report](CLAUDE_REPORT.md), [
 | XPL-01 | Label manually supplied social accounts as self-reported | PASS | local-db+mock | [W8-PUB](evidence/claude-W8-PUB.md): SELF_REPORTED default, VERIFIED blocked by CHECK without operator identity, unique canonical accounts, public label on creator page and applications | No verification method exists yet. |
 | XPL-02 | Verify PUBLISH delivery against channel, timing, disclosure and proof | PASS | local-db+mock | [W8-PUB](evidence/claude-W8-PUB.md): channel snapshot; post link must be on the sold handle (X/TikTok) or platform/host; time within order; disclosure attestation; immutable proof; E2E publish journey | Content and live duration are not machine-verified (no platform API); Instagram/YouTube check platform only. |
 | XPL-03 | Enforce timezone, buffer, cancellation and no-show rules for ACCESS | REMOVED | decision | Removed by product decision 2026-09-15: no availability, slots, cancellation notice or no-show rules for ACCESS | ACCESS lists a session length only (terms.access.scheduling = AGREED_IN_MESSAGES). |
-| XPL-04 | Issue separate private entitlements for nonexclusive digital purchases | NOT_RUN | doc-only | — | P6 DIGITAL entitlements independent of the order limit. |
-| XPL-05 | Allow one concurrent sale of an exclusive digital license | NOT_RUN | doc-only | — | P6 stock/entitlement transaction race. |
-| XPL-06 | Enforce versioned private download and refund entitlement rules | NOT_RUN | doc-only | — | P6 rights/version/refund download authorization tests. |
+| XPL-04 | Issue separate private entitlements for nonexclusive digital purchases | PASS | local-db+mock | [P6-DIGITAL](evidence/claude-P6-DIGITAL.md): separate ACTIVE entitlements per buyer while the creator is paused, no workload claim; files only via the buyer's entitlement (others 404, anonymous 401); E2E purchase → delivered → download → other buyer 404 | Local storage and signature checks; no antivirus; Request/hire DIGITAL orders do not create entitlements. |
+| XPL-05 | Allow one concurrent sale of an exclusive digital license | PASS | local-db+mock | [P6-DIGITAL](evidence/claude-P6-DIGITAL.md): 5 concurrent purchases → 1 hold, 4×409; SOLD_OUT in discovery; hold expiry frees it; DB trigger + unique index refuse a raw second entitlement and a switch to non-exclusive while the license is live | Race proven with 5 concurrent requests on local PostgreSQL. |
+| XPL-06 | Enforce versioned private download and refund entitlement rules | PASS | local-db+mock | [P6-DIGITAL](evidence/claude-P6-DIGITAL.md): PURCHASED_VERSION vs LATEST version access (403 outside), download limit 429 with log rows, refund before first download revokes (409 after), refund after download 422, mutual cancellation revokes | Download count is used before URL signing; license text has no legal review. |
 | OPS-01 | Recover worker crashes after remote success without duplicate effects | PARTIAL | local-db+mock | [DB](evidence/claude-db-integration.md): Inbox reprocess simulated crash; Reconciliation lookup; `2e00eca` | Transfer-success/DB-write crash plus restart still absent; journal split required. |
 | OPS-02 | Restore isolated backups and replay safely with conserved obligations | NOT_RUN | doc-only | [C2](evidence/codex-C2.md): e762801 restore plan only; `e762801` | Provision isolated backup/storage rehearsal and record measured results. |
 | OPS-03 | Deploy and roll back compatible schema changes without financial loss | PARTIAL | local-db+mock | [W1-A](evidence/claude-W1-A.md): FND-02 populated migration upgrade; `dc68490` | No old-app/new-schema or rollback rehearsal; 0003 drops pool counters. |

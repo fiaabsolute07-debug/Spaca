@@ -1,6 +1,17 @@
 import { date, money, num, str, type Row, humanize } from '../ui';
 
-export function OrderBriefPanel({ order: o }: { order: Row }) {
+export function OrderBriefPanel({ order: o, digital = false }: { order: Row; digital?: boolean }) {
+  // A DIGITAL purchase has no brief, work clock or revisions: the files are delivered on payment.
+  if (digital) return <div className="panel">
+    <h2>Purchase</h2>
+    <ul className="facts">
+      <li><span>Paid</span><strong>{date(o.funded_at)}</strong></li>
+      <li><span>Review deadline</span><strong>{date(o.review_due_at)}</strong></li>
+      <li><span>Auto-accept after review window</span><strong>{o.auto_accept_consent ? 'Agreed at checkout' : 'Not agreed'}</strong></li>
+      <li><span>Settlement</span><strong>{humanize(str(o.settlement_status, 'NOT_READY'))}</strong></li>
+      {o.cancellation_refund_minor != null && <li><span>Agreed cancellation refund</span><strong>{money(o.cancellation_refund_minor)}</strong></li>}
+    </ul>
+  </div>;
   return <div className="panel">
     <h2>Project brief</h2>
     <p className="prewrap">{o.brief_ready_at ? str(o.brief) : 'The buyer has not completed the brief yet.'}</p>

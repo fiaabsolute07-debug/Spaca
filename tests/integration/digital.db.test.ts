@@ -107,7 +107,7 @@ afterAll(async () => {
 });
 
 describe.skipIf(!RUN_DB)('XPL-04 — non-exclusive digital products', () => {
-  it('gives each buyer a separate private entitlement, delivers on payment and never uses the creator’s order limit', async () => {
+  it('gives each buyer a separate private entitlement, delivers on payment and never counts as creator work in progress', async () => {
     const { creator, serviceId, firstAsset } = await digitalProduct('xpl04');
     // Paused: service orders would be refused, file sales are not.
     expect((await command(creator, { command: 'set_accepting_orders', idempotency_key: key('p'), accepting: 'false' })).status).toBe(200);

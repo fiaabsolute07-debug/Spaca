@@ -317,6 +317,21 @@ Commands:
 - Pool refunds (`refund_pool_unused`) return `state: REFUND_PENDING`; the escrow sends them to the wallet that funded the pool.
 - Crypto order events: `SETTLEMENT_RELEASED` (rail CRYPTO, tx_hash), `REFUND_CONFIRMED`, `ESCROW_FROZEN` / `ESCROW_UNFROZEN` (disputes), `SETTLEMENT_FAILED`, `REFUND_FAILED`.
 
+## P6-DIGITAL additions (2026-09-15): ready-made files (drizzle/0016)
+
+- Flag `DIGITAL_PRODUCTS_ENABLED` (off by default) gates publishing and buying. With it off, `book` returns 422 `FEATURE_DISABLED` and `getServiceData().digital.purchases_enabled` is false.
+- `create_service` / `update_service` for DIGITAL: `digital_license` NON_EXCLUSIVE|EXCLUSIVE, `digital_rights_text` (20–4000), `digital_stock` (blank = unlimited; EXCLUSIVE forces 1), `digital_updates` LATEST|PURCHASED_VERSION, `digital_download_limit` (1–1000, default 10). Publishing needs these terms and at least one release.
+- `add_digital_release {service_id, asset_ids, notes?}` (creator): one READY upload with purpose `DIGITAL` (archives: `application/zip`, ≤100 MB, bucket `private-products`) becomes the next version. Releases are append-only.
+- `book` on DIGITAL: no brief; `accept_license=on` required. Errors: 409 `SOLD_OUT` (no stock, or an exclusive license is held), 422 `FEATURE_DISABLED`. Order `terms.digital = { license, rights_text, updates_policy, download_limit, release_version, policy_version: 'digital-v1' }`; `terms.capacity = { model: 'DIGITAL_STOCK', units: 0 }`.
+- Paying delivers at once: the order goes to DELIVERED with system delivery v1 (event `DIGITAL_DELIVERED`). `start`, `deliver` and `revision` are refused (409/422). Approve, dispute, messages and mutual cancellation work as usual.
+- `refund_digital_purchase {order_id, reason?}` (buyer): before the first download and inside the review window → CANCELLED + full refund, entitlement REVOKED, event `DIGITAL_PURCHASE_CANCELLED`. After a download: 422; use a dispute or `request_cancellation`.
+- `POST /api/digital/entitlements/[id]/download-url {version?}` → `{ url, expires_at, version }` (URL valid 5 minutes). 401 anonymous, 404 not the buyer, 403 version not covered by the license, 409 entitlement not ACTIVE, 429 download limit reached. `/api/assets/[id]/download-url` serves DIGITAL files to their creator only.
+- Reads:
+  - `getServiceData(id).digital = { latest_version, updated_at, purchases_enabled }` (null for other categories); `availability_status` may be `SOLD_OUT`.
+  - `getOrderData(...).digital = { entitlement: { id, state, license, release_version, updates_policy, download_limit, download_count, first_downloaded_at }, releases: [{ version, notes, created_at, filename, size_bytes, available }] }` — only versions the license covers; never storage keys.
+  - Owner `serviceRows` for DIGITAL add `releases` (version, notes, filename, size) and `licenses { active, held }`.
+- UI: `<DownloadButton>` (client) posts to the download route and opens the signed URL; `<OrderDigitalPanel>` shows license, downloads used, versions and the pre-download cancel; `OrderBriefPanel digital` shows a "Purchase" summary instead of brief, work clock and revisions.
+
 ## 2026-09-15 removals: order limit and ACCESS scheduling (drizzle/0017)
 
 - No limit on orders at once. `set_workload_limit` and `max_active_units` are gone; `availability_status` is `ACCEPTING` or `PAUSED` (DIGITAL adds `SOLD_OUT`). `AT_CAPACITY` and the `CAPACITY_UNAVAILABLE` error no longer exist. `set_accepting_orders` (pause/resume) stays; `getDashboardData().workload` keeps `held_units`, `active_units`, `in_flight_units`, `accepting_orders`.
