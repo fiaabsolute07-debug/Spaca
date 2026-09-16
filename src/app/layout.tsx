@@ -43,7 +43,7 @@ export default async function RootLayout({ children, auth }: { children: React.R
         <div className="header-actions">
           {actor
             ? <><FundMenu type={accountTypeOf(actor)} /><AccountMenu type={accountTypeOf(actor)} /></>
-            : <><Link href="/sign-in" className="login-link" scroll={false}>Log in</Link><Link href="/sign-up" className="button compact" scroll={false}>Get started</Link></>}
+            : <><Link href="/sign-in" className="login-link" scroll={false}>Log in</Link><Link href="/sign-up" className="button button-dark compact" scroll={false}>Get started</Link></>}
         </div>
       </header>
     </div>

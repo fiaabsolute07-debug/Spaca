@@ -29,11 +29,12 @@ export function humanize(value: string): string {
   return words.charAt(0).toUpperCase() + words.slice(1);
 }
 
-export function toneOf(value: unknown): 'good' | 'waiting' | 'bad' | 'neutral' {
+export function toneOf(value: unknown): 'good' | 'waiting' | 'bad' | 'open' | 'neutral' {
   const key = String(value ?? '').trim().toUpperCase().replaceAll(' ', '_');
   if (GOOD.has(key)) return 'good';
   if (WAITING.has(key)) return 'waiting';
   if (BAD.has(key)) return 'bad';
+  if (key === 'OPEN') return 'open';
   return 'neutral';
 }
 
@@ -42,7 +43,7 @@ export function Badge({
   tone
 }: {
   children: ReactNode;
-  tone?: 'good' | 'waiting' | 'bad' | 'neutral';
+  tone?: 'good' | 'waiting' | 'bad' | 'open' | 'neutral';
 }) {
   const resolved = tone ?? (typeof children === 'string' ? toneOf(children) : 'neutral');
   const label = typeof children === 'string' ? humanize(children) : children;
