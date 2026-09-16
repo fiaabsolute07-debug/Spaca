@@ -226,13 +226,19 @@ export async function measurePerformancePosts(options: JobScope = {}): Promise<J
 /** §9.6: after the verification window the bonus is final, and the part of the hold it did not use is refunded. */
 export async function settlePerformanceBonuses(options: JobScope = {}): Promise<JobReport> {
   const { result, tally } = report('settle_performance_bonuses');
-  const due = await sql<Row[]>`select order_id from app.performance_measurements
-    where status='MEASURED' and verify_until <= now() and ${scoped(sql`order_id`, options)} order by verify_until limit 200`;
+  // Measurements whose checking period has run out, and measurements an operator already decided whose unused hold
+  // has not been sent back yet. Both end in the same place: the buyer's refund of whatever the bonus did not use.
+  const due = await sql<Row[]>`select order_id,status from app.performance_measurements m
+    where ((m.status='MEASURED' and m.verify_until <= now())
+        or (m.status in ('APPROVED','REJECTED')
+            and exists (select 1 from app.orders o where o.id=m.order_id and o.performance_refund_minor > 0)
+            and not exists (select 1 from app.provider_operations po where po.order_id=m.order_id and po.operation_id='refund:' || m.order_id || ':performance')))
+      and ${scoped(sql`m.order_id`, options)} order by m.measure_at limit 200`;
   for (const row of due) {
     const orderId = String(row.order_id);
     try {
       tally(await sql.begin(async (tx) => {
-        if (await approvePerformanceBonus(tx, orderId) !== 'SETTLED') return 'SKIPPED_STATE_CHANGED';
+        if (String(row.status) === 'MEASURED' && await approvePerformanceBonus(tx, orderId) !== 'SETTLED') return 'SKIPPED_STATE_CHANGED';
         const [order] = await tx<Row[]>`select * from app.orders where id=${orderId} for update`;
         if (!order || order.performance_refund_minor === null) return 'SKIPPED_STATE_CHANGED';
         if (BigInt(String(order.performance_refund_minor)) === 0n) return 'BONUS_FULLY_EARNED';

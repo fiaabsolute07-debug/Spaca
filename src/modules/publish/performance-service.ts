@@ -5,7 +5,7 @@
  * Money never appears from nowhere: the order was funded for the fixed fee plus the whole bonus cap, so settlement only
  * decides how that hold splits between the creator (fee + earned bonus) and the buyer (the unused rest).
  */
-import type { Row, Tx } from '@/lib/commands';
+import { CommandError, type Row, type Tx } from '@/lib/commands';
 import { openCase } from '@/modules/payments/funding';
 import { postViews } from './metrics';
 import { settleMeasurement } from './performance';
@@ -91,4 +91,24 @@ export async function approvePerformanceBonus(tx: Tx, orderId: string): Promise<
   await tx`update app.performance_measurements set status='APPROVED',settled_at=now() where order_id=${orderId}`;
   await tx`update app.orders set performance_refund_minor=${unused.toString()},version=version+1,updated_at=now() where id=${orderId}`;
   return 'SETTLED';
+}
+
+export type BonusDecision = 'APPROVE' | 'REJECT';
+
+/**
+ * A person decides a bonus the checkpoint held for review. Approving pays the count that was already measured;
+ * rejecting pays no bonus at all. Either way the rest of the hold goes back to the buyer, and the measured facts stay
+ * exactly as they were read: only the decision and the split are written.
+ */
+export async function decideHeldBonus(tx: Tx, orderId: string, decision: BonusDecision, actorId: string, reason: string) {
+  const [row] = await tx<Row[]>`select * from app.performance_measurements where order_id=${orderId} and status='HELD' for update`;
+  if (!row) throw new CommandError('This order has no view bonus waiting for a decision', 'ORDER_STATE_CONFLICT');
+  const measuredBonusMinor = BigInt(String(row.bonus_minor ?? '0'));
+  const bonusMinor = decision === 'APPROVE' ? measuredBonusMinor : 0n;
+  const refundMinor = BigInt(String(row.bonus_cap_minor)) - bonusMinor;
+  await tx`update app.performance_measurements set status=${decision === 'APPROVE' ? 'APPROVED' : 'REJECTED'},settled_at=now() where order_id=${orderId}`;
+  await tx`update app.orders set performance_refund_minor=${refundMinor.toString()},version=version+1,updated_at=now() where id=${orderId}`;
+  await tx`update app.reconciliation_cases set status='RESOLVED',resolution=${reason},resolved_by=${actorId},resolved_at=now(),updated_at=now()
+    where order_id=${orderId} and kind='PERFORMANCE_BONUS_REVIEW' and status in ('OPEN','ASSIGNED')`;
+  return { bonusMinor, refundMinor, measuredBonusMinor };
 }

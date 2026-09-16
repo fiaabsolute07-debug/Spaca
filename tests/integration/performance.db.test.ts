@@ -1,4 +1,5 @@
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { randomUUID } from 'node:crypto';
 import { MockPaymentProvider } from '@/modules/payments/providers';
 import { baselineFor, postViews } from '@/modules/publish/metrics';
 import { MIN_ELIGIBLE_POSTS, settleMeasurement, viewsCap } from '@/modules/publish/performance';
@@ -16,6 +17,8 @@ const checkout = await import('@/app/api/dev/mock-checkout/route');
 const funding = await import('@/modules/payments/funding');
 const jobs = await import('@/modules/jobs');
 const { sql } = await import('@/lib/db');
+const { createSession } = await import('@/lib/auth');
+const queries = await import('@/modules/admin/queries');
 
 const command = (actor: TestUser | null, fields: Record<string, string>) => callRoute(commands.POST, '/api/commands', actor, fields);
 const pay = (actor: TestUser, orderId: string) => callRoute(checkout.POST, '/api/dev/mock-checkout', actor, { order_id: orderId });
@@ -39,6 +42,14 @@ function postUrlFor(handle: string, baselineMedian: bigint, wantSignals: boolean
     if ((postViews({ postUrl: url, baselineMedian }).signals.length > 0) === wantSignals) return url;
   }
   throw new Error(`no post url with signals=${wantSignals}`);
+}
+
+/** A privileged operator, created the way the admin suite does: roles live in app.user_roles, never on the account. */
+async function operator(role: 'finance' | 'support'): Promise<TestUser> {
+  const email = `it-perf-${role}-${randomUUID().slice(0, 8)}@example.test`;
+  const [user] = await sql<{ id: string }[]>`insert into app.users (email,display_name,roles,is_test,status) values (${email},${`IT ${role}`},${[]},true,'ACTIVE') returning id`;
+  await sql`insert into app.user_roles (user_id,role,granted_reason) values (${user!.id},${role},'Integration test operator grant')`;
+  return { id: user!.id, email, token: await createSession(user!.id) };
 }
 
 const campaignFields = (extra: Record<string, string> = {}) => ({
@@ -213,6 +224,93 @@ describe.skipIf(!RUN_DB)('§9.6 — a performance hire holds the maximum and pay
     await jobs.releaseReadySettlements({ orderId: hire.orderId });
     expect((await sql`select count(*)::int as n from app.provider_operations where order_id=${hire.orderId} and kind in ('release.create','refund.create')`)[0]!.n).toBe(0);
     expect((await sql`select performance_refund_minor from app.orders where id=${hire.orderId}`)[0]!.performance_refund_minor).toBeNull();
+  });
+
+  it('lets finance approve a held bonus, pays exactly what was measured and returns the rest', async () => {
+    const hire = await hirePerformance('perf-approve');
+    const baseline = baselineFor({ handle: hire.handle, accountId: hire.handle });
+    const postUrl = postUrlFor(hire.handle, baseline.median_views, true);
+    await deliverAndApprove(hire, postUrl);
+    await bringCheckpointForward(hire.orderId);
+    expect((await jobs.measurePerformancePosts({ orderId: hire.orderId })).outcomes).toMatchObject({ HELD: 1 });
+    const [held] = await sql`select bonus_minor from app.performance_measurements where order_id=${hire.orderId}`;
+    const bonus = BigInt(String(held!.bonus_minor));
+
+    // Support can look, but only finance decides where the money goes (SEC-12).
+    const decision = 'Reviewed the post and the account history; the reach is consistent with the creator.';
+    const [orderBefore] = await sql`select version from app.orders where id=${hire.orderId}`;
+    const refusedRole = await command(await operator('support'), {
+      command: 'admin_approve_performance_bonus', idempotency_key: key('bad'), order_id: hire.orderId, reason: decision,
+    });
+    expect(refusedRole.status).toBe(403);
+
+    const finance = await operator('finance');
+    const stale = await command(finance, {
+      command: 'admin_approve_performance_bonus', idempotency_key: key('stale'), order_id: hire.orderId,
+      expected_version: String(Number(orderBefore!.version) + 5), reason: decision,
+    });
+    expect(stale.status).toBe(409);
+
+    const approved = await command(finance, {
+      command: 'admin_approve_performance_bonus', idempotency_key: key('ok'), order_id: hire.orderId,
+      expected_version: String(orderBefore!.version), reason: decision,
+    });
+    expect(approved.status, JSON.stringify(approved.body)).toBe(200);
+    const [row] = await sql`select status,bonus_minor,settled_at from app.performance_measurements where order_id=${hire.orderId}`;
+    expect(row).toMatchObject({ status: 'APPROVED' });
+    expect(String(row!.bonus_minor)).toBe(bonus.toString());
+    const [order] = await sql`select performance_refund_minor from app.orders where id=${hire.orderId}`;
+    expect(String(order!.performance_refund_minor)).toBe((8000n - bonus).toString());
+    // The review case closes with the operator's own words, and the decision is in the audit log.
+    expect((await sql`select status,resolution from app.reconciliation_cases where order_id=${hire.orderId} and kind='PERFORMANCE_BONUS_REVIEW'`)[0])
+      .toMatchObject({ status: 'RESOLVED', resolution: decision });
+    const [entry] = await sql`select action,actor_id,after_state from app.audit_log where entity_id=${hire.orderId} and action='order.performance_bonus.approve'`;
+    expect(entry).toMatchObject({ actor_id: finance.id });
+    expect(entry!.after_state).toMatchObject({ status: 'APPROVED', bonus_minor: bonus.toString() });
+    // Deciding twice is refused, and the operator screen shows the measurement.
+    expect((await command(finance, { command: 'admin_reject_performance_bonus', idempotency_key: key('again'), order_id: hire.orderId, reason: decision })).status).toBe(409);
+    const view = await queries.getOperatorOrder({ id: finance.id, email: finance.email, display_name: 'x', roles: ['finance'], is_test: true, status: 'ACTIVE', timezone: 'UTC' }, hire.orderId);
+    expect(view!.performance).toMatchObject({ status: 'APPROVED', post_url: postUrl });
+
+    // The money follows the decision: the unused hold goes back first, then fee plus the approved bonus is released.
+    await jobs.settlePerformanceBonuses({ orderId: hire.orderId });
+    if (bonus < 8000n) {
+      expect((await sql`select operation_id,status from app.provider_operations where order_id=${hire.orderId} and kind='refund.create'`)[0])
+        .toMatchObject({ operation_id: `refund:${hire.orderId}:performance`, status: 'SUCCEEDED' });
+    }
+    await jobs.releaseReadySettlements({ orderId: hire.orderId });
+    const [release] = await sql`select operation_id,outcome from app.provider_operations where order_id=${hire.orderId} and kind='release.create'`;
+    const [fees] = await sql`select provider_fee_minor from app.orders where id=${hire.orderId}`;
+    const providerFee = fees!.provider_fee_minor == null ? 0n : BigInt(String(fees!.provider_fee_minor));
+    expect(String((release!.outcome as Record<string, string>).netAmount)).toBe((2000n + bonus - providerFee).toString());
+  });
+
+  it('lets finance refuse a held bonus: the fixed fee is still paid and the whole bonus hold goes back', async () => {
+    const hire = await hirePerformance('perf-reject');
+    const baseline = baselineFor({ handle: hire.handle, accountId: hire.handle });
+    await deliverAndApprove(hire, postUrlFor(hire.handle, baseline.median_views, true));
+    await bringCheckpointForward(hire.orderId);
+    expect((await jobs.measurePerformancePosts({ orderId: hire.orderId })).outcomes).toMatchObject({ HELD: 1 });
+
+    const finance = await operator('finance');
+    const decision = 'The views arrived in minutes from accounts with no history; this count was not earned.';
+    const refused = await command(finance, { command: 'admin_reject_performance_bonus', idempotency_key: key('rej'), order_id: hire.orderId, reason: decision });
+    expect(refused.status, JSON.stringify(refused.body)).toBe(200);
+    const [row] = await sql`select status,hold_reason from app.performance_measurements where order_id=${hire.orderId}`;
+    expect(row!.status).toBe('REJECTED');
+    // The measured count stays on the row as the fact it was; only the payout says no bonus.
+    expect(String((await sql`select performance_refund_minor from app.orders where id=${hire.orderId}`)[0]!.performance_refund_minor)).toBe('8000');
+
+    // The decision is not the payment: the settle job still sends the unused hold back, then the release pays the fee.
+    const settled = await jobs.settlePerformanceBonuses({ orderId: hire.orderId });
+    expect(settled.outcomes).toMatchObject({ UNUSED_HOLD_REFUNDED: 1 });
+    await jobs.releaseReadySettlements({ orderId: hire.orderId });
+    const [refund] = await sql`select operation_id,status from app.provider_operations where order_id=${hire.orderId} and kind='refund.create'`;
+    expect(refund).toMatchObject({ operation_id: `refund:${hire.orderId}:performance`, status: 'SUCCEEDED' });
+    const [release] = await sql`select outcome from app.provider_operations where order_id=${hire.orderId} and kind='release.create'`;
+    const [fees] = await sql`select provider_fee_minor from app.orders where id=${hire.orderId}`;
+    const providerFee = fees!.provider_fee_minor == null ? 0n : BigInt(String(fees!.provider_fee_minor));
+    expect(String((release!.outcome as Record<string, string>).netAmount)).toBe((2000n - providerFee).toString());
   });
 
   it('refuses performance terms that are off, not PUBLISH, unaffordable, or for a creator without enough posts', async () => {

@@ -74,11 +74,11 @@ export async function getOperatorOrder(actor: Actor, orderId: string) {
   if (!hasAnyRole(actor, ['finance', 'support', 'admin'])) throw new OperatorAccessError();
   if (!UUID_PATTERN.test(orderId)) return null;
   const [order] = await sql<Row[]>`select o.id,o.source,o.source_ref,o.title,o.status,o.status_before_dispute,o.payment_status,o.settlement_status,o.amount_minor,o.currency,
-      o.platform_fee_minor,o.provider_fee_minor,o.cancellation_refund_minor,o.funded_at,o.delivery_due_at,o.review_due_at,o.approved_at,o.completed_at,o.cancelled_at,o.version,o.created_at,
+      o.platform_fee_minor,o.provider_fee_minor,o.cancellation_refund_minor,o.performance_refund_minor,o.funded_at,o.delivery_due_at,o.review_due_at,o.approved_at,o.completed_at,o.cancelled_at,o.version,o.created_at,
       o.buyer_id,bu.display_name as buyer_name,o.creator_id,cu.display_name as creator_name
     from app.orders o join app.users bu on bu.id=o.buyer_id join app.users cu on cu.id=o.creator_id where o.id=${orderId}`;
   if (!order) return null;
-  const [events, operations, cases, disputes, files, holds, paymentDisputes, afterRelease, costAdjustments] = await Promise.all([
+  const [events, operations, cases, disputes, files, holds, paymentDisputes, afterRelease, costAdjustments, performance] = await Promise.all([
     sql<Row[]>`select kind,actor_id,created_at from app.order_events where order_id=${orderId} order by created_at`,
     sql<Row[]>`select operation_id,kind,status,provider_reference,outcome->>'lastError' as last_error,updated_at from app.provider_operations where order_id=${orderId} order by created_at`,
     sql<Row[]>`select id,kind,severity,status,next_action,assigned_to,resolution,created_at from app.reconciliation_cases where order_id=${orderId} order by created_at`,
@@ -91,9 +91,13 @@ export async function getOperatorOrder(actor: Actor, orderId: string) {
     sql<Row[]>`select id,amount_minor,currency,status,recovered_minor,covered_minor,reason,covered_reason,created_at,updated_at from app.post_release_refunds where order_id=${orderId} order by created_at`,
     // PAY-16: late provider cost changes and who bore them under cost-v1.
     sql<Row[]>`select id,previous_fee_minor,actual_fee_minor,delta_minor,creator_share_minor,platform_share_minor,creator_credit_minor,phase,fee_payer,cap_minor,created_at from app.provider_cost_adjustments where order_id=${orderId} order by created_at`,
+    // §9.6: the view bonus measurement, including the post the count came from, which a reviewer has to open to decide.
+    sql<Row[]>`select order_id,status,hold_reason,baseline_median,views_cap,rpm_rate_minor,bonus_cap_minor,measured_views,views_payable,bonus_minor,
+      post_url,published_at,measure_at,verify_until,measured_at,settled_at,source from app.performance_measurements where order_id=${orderId}`,
   ]);
   return {
     order,
+    performance: performance[0] ?? null,
     events,
     provider_operations: operations.map((op): Row => ({ ...op, provider_reference: redact(op.provider_reference) })),
     cases,

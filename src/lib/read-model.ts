@@ -114,7 +114,7 @@ export async function getDashboardData(actor: Actor) {
 export async function getOrderData(actor: Actor, id: string) {
   const [order] = asRows(await sql`select o.id,o.buyer_id,o.creator_id,o.service_id,o.service_version_id,o.source,o.title,o.status,o.amount_minor,o.platform_fee_minor,o.provider_fee_minor,
       o.currency,o.brief,o.terms,o.brief_ready_at,o.funded_at,o.work_start_at,o.delivery_due_at,o.review_due_at,o.revision_due_at,o.revision_count,o.approved_at,o.completed_at,
-      o.cancelled_at,o.cancellation_refund_minor,o.status_before_dispute,o.version,o.settlement_status,o.payment_status,o.payment_rail,o.funding_method,o.created_at,
+      o.cancelled_at,o.cancellation_refund_minor,o.performance_refund_minor,o.status_before_dispute,o.version,o.settlement_status,o.payment_status,o.payment_rail,o.funding_method,o.created_at,
       bu.display_name as buyer_name,cu.display_name as creator_name
     from app.orders o join app.users bu on bu.id=o.buyer_id join app.users cu on cu.id=o.creator_id
     where o.id=${id} and (o.buyer_id=${actor.id} or o.creator_id=${actor.id})`);

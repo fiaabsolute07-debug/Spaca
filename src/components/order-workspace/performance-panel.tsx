@@ -31,10 +31,11 @@ export function OrderPerformancePanel({ order, terms, measurement }: { order: Ro
       {measurement ? <li><span>Counted on</span><strong>{date(measurement.measure_at)}</strong></li>
         : <li><span>Counted</span><strong>{num(terms.measure_after_days)} days after the post goes live</strong></li>}
       {measurement?.measured_views != null && <li><span>Views counted</span><strong>{num(measurement.measured_views)}</strong></li>}
-      {measurement?.bonus_minor != null && <li><span>Bonus earned</span><strong>{money(measurement.bonus_minor)}</strong></li>}
+      {measurement?.bonus_minor != null && <li><span>{status === 'REJECTED' ? 'Bonus after review' : 'Bonus earned'}</span><strong>{money(status === 'REJECTED' ? 0 : measurement.bonus_minor)}</strong></li>}
       {refund != null && <li><span>Returned to the buyer</span><strong>{money(refund)}</strong></li>}
     </ul>
     {status === 'HELD' && <p className="notice">This bonus is on hold for review ({str(measurement?.hold_reason).toLowerCase().replaceAll('_', ' ')}). Nothing is paid until a person decides.</p>}
+    {status === 'REJECTED' && <p className="notice">A reviewer decided the count of {num(measurement?.measured_views)} views was not earned. Only the fixed fee is paid; the whole bonus hold goes back to the buyer.</p>}
     {status === 'MEASURED' && measurement?.verify_until ? <p className="muted">The count is checked until {date(measurement.verify_until)}. The fixed fee and the earned bonus are released after that.</p> : null}
     {status === 'SCHEDULED' && <p className="muted">Views are counted once, at the checkpoint, from the creator&apos;s own account. Screenshots are not accepted.</p>}
     <p className="muted">Source: {str(measurement?.source ?? terms.baseline_source)} (simulated metrics in this local sandbox).</p>

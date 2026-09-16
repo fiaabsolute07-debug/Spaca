@@ -64,6 +64,29 @@ export default async function OperatorOrderPage({ params, searchParams }: PagePr
       <p>The provider captured money after this order could no longer use it. Refund it to the buyer in full; nothing is taken from any other order.</p>
       <AdminCommand command="admin_refund_late_funding" route={route} values={{ order_id: str(order.id) }} label="Refund late funds" />
     </section>}
+    {data.performance && <section className="panel">
+      <h2>View bonus</h2>
+      <dl className="admin-facts">
+        <dt>State</dt><dd><Badge>{humanize(str(data.performance.status))}</Badge></dd>
+        <dt>Counted on</dt><dd>{date(data.performance.measure_at)}</dd>
+        <dt>Views counted</dt><dd>{data.performance.measured_views == null ? 'Not counted yet'
+          : `${Number(data.performance.measured_views).toLocaleString('en-US')} of ${Number(data.performance.views_cap).toLocaleString('en-US')} payable`}</dd>
+        <dt>Creator median</dt><dd>{Number(data.performance.baseline_median).toLocaleString('en-US')} views</dd>
+        <dt>Bonus measured</dt><dd>{data.performance.bonus_minor == null ? 'Not counted yet' : money(data.performance.bonus_minor)} of {money(data.performance.bonus_cap_minor)}</dd>
+        <dt>Returned to buyer</dt><dd>{order.performance_refund_minor == null ? 'Not decided yet' : money(order.performance_refund_minor)}</dd>
+        <dt>Held because</dt><dd>{str(data.performance.hold_reason, 'Not held')}</dd>
+        <dt>Post</dt><dd><a className="text-link" href={str(data.performance.post_url)} rel="noreferrer noopener" target="_blank">{str(data.performance.post_url)}</a></dd>
+        <dt>Source</dt><dd>{str(data.performance.source)}</dd>
+      </dl>
+      {str(data.performance.status) === 'HELD' && <>
+        <p>Finance or admin only. Open the post first. Approving pays the bonus that was measured; refusing pays the fixed fee
+          only and returns the whole bonus hold to the buyer. The measured count itself is never rewritten.</p>
+        <AdminCommand command="admin_approve_performance_bonus" route={route}
+          values={{ order_id: str(order.id), expected_version: str(order.version) }} label="Approve this bonus" />
+        <AdminCommand command="admin_reject_performance_bonus" route={route}
+          values={{ order_id: str(order.id), expected_version: str(order.version) }} label="Refuse this bonus" />
+      </>}
+    </section>}
     {str(order.settlement_status) === 'RELEASED' && <section className="panel">
       <h2>Refund after the creator was paid</h2>
       <p>Finance or admin only. The amount is first reversed from the creator transfer. If their balance cannot cover it, nothing is refunded

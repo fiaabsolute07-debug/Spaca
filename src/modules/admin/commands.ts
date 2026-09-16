@@ -8,6 +8,7 @@ import { enqueueNotification } from '@/modules/notifications/enqueue';
 import { approveOrder } from '@/modules/orders/commands';
 import { latestDelivery, termsOf } from '@/modules/orders/lifecycle';
 import { PaymentFlowError, coverPostReleaseDeficit, openCase, requestProviderRefund, retryPostReleaseRecovery, setCryptoEscrowFrozen, startPostReleaseRefund } from '@/modules/payments/funding';
+import { decideHeldBonus, type BonusDecision } from '@/modules/publish/performance-service';
 import { quarantineAsset } from '@/modules/storage/service';
 import { recomputeHighestBid } from '@/modules/auctions/commands';
 import { audit, reasonOf, requireRole, type FeatureFlagKey, type PrivilegedRole } from './policy';
@@ -173,6 +174,33 @@ const coverRefundDeficit: CommandHandler = async ({ tx, actor, form }) => {
 };
 
 /** Same logical operation only (§14.3 "retry cùng operation"). Lookup-first reconciliation, never a new key. */
+/**
+ * §9.6: decide a view bonus the checkpoint held for review. The money outcome is the buyer's, so this needs finance.
+ * Nothing here edits the count that was measured; it only says whether that bonus is paid or returned to the buyer.
+ */
+const decidePerformanceBonus = (decision: BonusDecision): CommandHandler => async ({ tx, actor, form }) => {
+  requireRole(actor, ['finance', 'admin'], 'View bonus decisions');
+  const reason = reasonOf(form);
+  const orderId = uuid(form, 'order_id');
+  const [order] = await tx<Row[]>`select id,version,settlement_status from app.orders where id=${orderId} for update`;
+  if (!order) throw new CommandError('Order not found', 'NOT_FOUND');
+  const expected = expectedVersion(form);
+  if (expected !== null && Number(order.version) !== expected) throw new CommandError('The order changed; reload before deciding', 'VERSION_CONFLICT');
+  if (String(order.settlement_status) === 'RELEASED') throw new CommandError('This order was already paid out', 'ORDER_STATE_CONFLICT');
+  const outcome = await decideHeldBonus(tx, orderId, decision, actor.id, reason);
+  await orderEvent(tx, orderId, actor.id, decision === 'APPROVE' ? 'PERFORMANCE_BONUS_APPROVED' : 'PERFORMANCE_BONUS_REJECTED',
+    { bonus_minor: outcome.bonusMinor.toString(), refund_minor: outcome.refundMinor.toString() });
+  await audit(tx, actor, `order.performance_bonus.${decision.toLowerCase()}`, 'order', orderId, reason,
+    { status: 'HELD', bonus_minor: outcome.measuredBonusMinor.toString() },
+    { status: decision === 'APPROVE' ? 'APPROVED' : 'REJECTED', bonus_minor: outcome.bonusMinor.toString(), performance_refund_minor: outcome.refundMinor.toString() });
+  return {
+    path: `/admin/orders/${orderId}`,
+    message: decision === 'APPROVE'
+      ? `Bonus approved; the creator is paid the fixed fee plus ${(Number(outcome.bonusMinor) / 100).toFixed(2)} and the buyer gets the rest of the hold back`
+      : 'Bonus refused; the creator is paid the fixed fee only and the whole bonus hold returns to the buyer',
+  };
+};
+
 const retryOperation: CommandHandler = async ({ tx, actor, form }) => {
   requireRole(actor, ['finance', 'admin'], 'Operation retry');
   const reason = reasonOf(form);
@@ -324,6 +352,8 @@ export const adminCommands: Record<string, CommandHandler> = {
   admin_retry_refund_recovery: retryRefundRecovery,
   admin_cover_refund_deficit: coverRefundDeficit,
   admin_retry_operation: retryOperation,
+  admin_approve_performance_bonus: decidePerformanceBonus('APPROVE'),
+  admin_reject_performance_bonus: decidePerformanceBonus('REJECT'),
   admin_resolve_case: resolveCase,
   admin_assign_case: assignCase,
   admin_moderate_sample: moderateSample,

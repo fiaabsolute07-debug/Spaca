@@ -1,24 +1,10 @@
-import { expect, test, type Page } from '@playwright/test';
-import { chooseOption, dateTimeLocal, login, submit, uniqueSuffix, visit } from './helpers';
-
-/** The operator card for one feature flag, on the flags page. */
-async function flagCard(page: Page, key: string) {
-  await login(page, 'admin');
-  await visit(page, '/admin/flags');
-  return page.locator('section.panel').filter({ has: page.getByRole('heading', { name: key, exact: true }) });
-}
-
-async function setFlag(page: Page, key: string, enabled: boolean) {
-  const card = await flagCard(page, key);
-  await chooseOption(page, card, 'Enabled (admin only)', enabled ? 'true' : 'false');
-  await card.getByLabel(/Reason for the audit log/).fill(`Campaign pool browser test ${uniqueSuffix()}`);
-  await submit(page, card.getByRole('button', { name: 'Save flag', exact: true }));
-}
+import { expect, test } from '@playwright/test';
+import { dateTimeLocal, flagCard, login, setFlag, submit, uniqueSuffix, visit } from './helpers';
 
 test('a buyer backs a campaign with a reward pool, gets a deposit reference, and creators see only the rewards', async ({ page }) => {
   const title = `E2E pool campaign ${uniqueSuffix()}`;
   const wasEnabled = await (await flagCard(page, 'CRYPTO_CHECKOUT_ENABLED')).getByText('Enabled', { exact: true }).isVisible();
-  if (!wasEnabled) await setFlag(page, 'CRYPTO_CHECKOUT_ENABLED', true);
+  if (!wasEnabled) await setFlag(page, 'CRYPTO_CHECKOUT_ENABLED', true, `Campaign pool browser test ${uniqueSuffix()}`);
   try {
     await login(page, 'buyer_a');
     await visit(page, '/buyer/requests/new');
@@ -63,6 +49,6 @@ test('a buyer backs a campaign with a reward pool, gets a deposit reference, and
     await expect(creatorView.getByRole('heading', { name: 'Deposits' })).toHaveCount(0);
     await expect(creatorView.getByRole('button')).toHaveCount(0);
   } finally {
-    if (!wasEnabled) await setFlag(page, 'CRYPTO_CHECKOUT_ENABLED', false);
+    if (!wasEnabled) await setFlag(page, 'CRYPTO_CHECKOUT_ENABLED', false, `Campaign pool browser test ${uniqueSuffix()}`);
   }
 });

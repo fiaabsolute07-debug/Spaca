@@ -34,5 +34,18 @@ Master §9.6. Environment: LOCAL — embedded PostgreSQL (dev and test at migrat
 - **View counts are simulated.** `mock-metrics-v1` invents a plausible history per handle; connecting a real read-only account is the work master §9.6 describes, and its API terms and cost are still unchecked.
 - The spec leaves the defaults open (checkpoint, multiplier, checking period). The code uses 7 days, 3× and 7 days, all set per campaign.
 - Fraud signals are the two the mock can express (views far above the median, engagement too low for the views). Repeat-reply and coordinated-account checks are not implemented.
-- A held bonus needs an operator decision; there is no operator screen for it yet, only the case and the database row.
 - Baselines are read at hire time only, and the "median grew too fast" flag from the spec is not implemented.
+
+## 2026-09-16 follow-up: deciding a held bonus
+
+A bonus the checkpoint holds now has a screen and two commands instead of only a case row.
+
+- `/admin/orders/<id>` shows the measurement — state, checkpoint, views against the payable cap, bonus against the cap, what returns to the buyer, the hold reason, the post link and the metrics source. Finance or admin decide there with a reason: **Approve this bonus** pays the count exactly as measured; **Refuse this bonus** pays the fixed fee alone and returns the whole bonus hold.
+- `decideHeldBonus` writes the decision, sets `orders.performance_refund_minor`, and closes the `PERFORMANCE_BONUS_REVIEW` case with the operator's own words. The measured views, payable views and bonus are never rewritten: rejecting sets the payout to the fee, it does not edit the count that was read.
+- `settle_performance_bonuses` now also picks up decided measurements whose unused hold has not gone back yet, so the refund still travels the normal job path (`refund:<order>:performance`) and can be retried; the decision itself moves no money.
+- The order workspace panel shows a refused bonus as **$0.00** next to the counted views, so a buyer or creator never reads an unpaid bonus as earned.
+
+Tests (`RUN_DB_INTEGRATION=1 vitest run tests/integration/performance.db.test.ts`, 6 passed):
+- Support is refused (403) and finance succeeds; a stale `expected_version` is refused (409); deciding twice is refused (409).
+- Approve: the row is APPROVED with the measured bonus, `performance_refund_minor` is cap − bonus, the case is RESOLVED with the operator's reason, the audit entry carries the before/after bonus, the operator read model returns the measurement, and the release nets fee + bonus − provider cost.
+- Refuse: the row is REJECTED, `performance_refund_minor` is the whole 80 USD cap, the settle job refunds it as `refund:<order>:performance`, and the release nets the 20 USD fee − provider cost.

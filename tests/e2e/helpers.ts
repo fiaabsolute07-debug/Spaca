@@ -186,3 +186,22 @@ export async function openAccountMenu(page: Page) {
   await expect(menu).toBeVisible();
   return menu;
 }
+
+/** The operator card for one feature flag on /admin/flags. Signs in as the admin persona. */
+export async function flagCard(page: Page, key: string) {
+  await login(page, 'admin');
+  await visit(page, '/admin/flags');
+  return page.locator('section.panel').filter({ has: page.getByRole('heading', { name: key, exact: true }) });
+}
+
+export async function flagEnabled(page: Page, key: string): Promise<boolean> {
+  return (await flagCard(page, key)).getByText('Enabled', { exact: true }).isVisible();
+}
+
+/** Changes a flag through the console, which requires an audit reason. */
+export async function setFlag(page: Page, key: string, enabled: boolean, reason: string) {
+  const card = await flagCard(page, key);
+  await chooseOption(page, card, 'Enabled (admin only)', enabled ? 'true' : 'false');
+  await card.getByLabel(/Reason for the audit log/).fill(reason);
+  await submit(page, card.getByRole('button', { name: 'Save flag', exact: true }));
+}
