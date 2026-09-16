@@ -153,6 +153,14 @@ export default async function RequestPage({ params, searchParams }: PageProps<{ 
             <li><span>Applications close</span><strong>{date(r.application_deadline)}</strong></li>
             <li><span>Delivery deadline</span><strong>{date(r.deadline)}</strong></li>
             <li><span>Applications</span><strong>{num(r.application_count)}</strong></li>
+            {str(r.payment_model) === 'PERFORMANCE' && <>
+              <li><span>Paid per post</span><strong>{money(r.base_fee_minor)}</strong></li>
+              <li><span>Bonus per 1,000 views</span><strong>{money(r.rpm_rate_minor)}</strong></li>
+              <li><span>Most bonus per creator</span><strong>{money(r.bonus_cap_minor)}</strong></li>
+              <li><span>Most per creator</span><strong>{money(BigInt(str(r.base_fee_minor, '0')) + BigInt(str(r.bonus_cap_minor, '0')))}</strong></li>
+              <li><span>Views counted after</span><strong>{num(r.measure_after_days)} days, then checked for {num(r.verify_days)}</strong></li>
+              <li><span>Views that can be paid</span><strong>{num(r.median_multiplier)}× the creator&apos;s recent median</strong></li>
+            </>}
             {str(r.taxonomy) === 'PUBLISH' && <>
               <li><span>Creators post on</span><strong>{str(r.publish_platform)} · {str(r.publish_format).replaceAll('_', ' ').toLowerCase()}</strong></li>
               <li><span>Disclosure</span><strong>“{str(r.disclosure_text)}”</strong></li>

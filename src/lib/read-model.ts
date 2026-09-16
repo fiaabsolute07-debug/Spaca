@@ -155,6 +155,8 @@ export async function getOrderData(actor: Actor, id: string) {
     where n.enabled and a.usd_pegged and a.allowlisted and n.mode in ('LOCAL','TESTNET') ${process.env.NODE_ENV === 'production' ? sql`and n.mode <> 'LOCAL'` : sql``}
     order by n.chain_id, (a.kind='NATIVE') desc`) : [];
   const [paymentConfirmed] = asRows(await sql`select payload from app.order_events where order_id=${id} and kind='PAYMENT_CONFIRMED' order by created_at desc limit 1`);
+  // §9.6: the checkpoint and what it measured, for a performance hire.
+  const [performanceMeasurement] = asRows(await sql`select * from app.performance_measurements where order_id=${id}`);
   // BNK-01: the buyer sees whether bank transfer is offered and their latest transfer with its reservation.
   const bankTransfer = isBuyer ? await (async () => {
     const [op] = asRows(await sql`select provider_reference,outcome->>'fundingStatus' as funding_status from app.provider_operations
@@ -172,6 +174,8 @@ export async function getOrderData(actor: Actor, id: string) {
     latest_delivery_version: latest ? Number(latest.version) : null,
     deliveries: asRows(deliveries),
     publish_terms: terms.publish ?? null,
+    performance_terms: terms.performance ?? null,
+    performance_measurement: performanceMeasurement ?? null,
     publish_proofs: asRows(proofs),
     digital,
     events: asRows(events),
@@ -221,6 +225,7 @@ export async function getRequestData(actor: Actor | null, id: string) {
   const [request] = asRows(await sql`select r.id,r.buyer_id,r.title,r.brief,r.taxonomy,r.budget_minor,r.per_creator_cap_minor,r.target_hires,r.deadline,r.application_deadline,
       r.status,r.version,r.currency,r.reserved_minor,r.committed_minor,r.reserved_hires,r.committed_hires,u.display_name as buyer_name,
       r.publish_platform,r.publish_format,r.min_live_hours,r.disclosure_text,
+      r.payment_model,r.base_fee_minor,r.rpm_rate_minor,r.bonus_cap_minor,r.measure_after_days,r.verify_days,r.median_multiplier,
       coalesce((select array_agg(i.asset_id order by i.position) from app.request_images i where i.request_id=r.id),'{}') as image_ids,
       (select count(*) from app.applications a where a.request_id=r.id and a.status <> 'WITHDRAWN')::int as application_count
     from app.requests r join app.users u on u.id=r.buyer_id where r.id=${id} and (r.status in ('OPEN','FILLED','CLOSED') or r.buyer_id=${actor?.id ?? null})`);

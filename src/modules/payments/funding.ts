@@ -256,11 +256,15 @@ export async function requestProviderRefund(tx: Tx, order: Row, reason: RefundRe
   const [funding] = await tx<Row[]>`select provider_reference from app.provider_operations
     where order_id=${orderId} and kind='funding.create' and outcome->>'fundingStatus'='SUCCEEDED' order by created_at desc limit 1`;
   if (!funding) throw new PaymentFlowError('No provider-confirmed funding exists for this order', 'INVALID_STATE');
-  // A mutually agreed partial refund (ORD-15) uses its own stable operation; otherwise the full principal.
+  // A mutually agreed partial refund (ORD-15) and the unused part of a performance hold (§9.6) each use their own
+  // stable operation; otherwise the whole principal goes back.
   const agreed = order.cancellation_refund_minor === null || order.cancellation_refund_minor === undefined ? null : BigInt(String(order.cancellation_refund_minor));
-  const amount = agreed ?? BigInt(String(order.amount_minor));
+  const unusedHold = order.status !== 'CANCELLED' && order.performance_refund_minor !== null && order.performance_refund_minor !== undefined
+    ? BigInt(String(order.performance_refund_minor)) : null;
+  const amount = unusedHold ?? agreed ?? BigInt(String(order.amount_minor));
   if (amount <= 0n) throw new PaymentFlowError('There is no amount to refund for this order', 'INVALID_STATE');
-  const operationId = agreed !== null && agreed < BigInt(String(order.amount_minor)) ? `refund:${orderId}:agreed` : `refund:${orderId}:full`;
+  const operationId = unusedHold !== null ? `refund:${orderId}:performance`
+    : agreed !== null && agreed < BigInt(String(order.amount_minor)) ? `refund:${orderId}:agreed` : `refund:${orderId}:full`;
   const input: RefundInput = {
     fundingReference: String(funding.provider_reference),
     orderId,
@@ -302,14 +306,18 @@ export async function requestCreatorRelease(tx: Tx, order: Row): Promise<Provide
     where order_id=${orderId} and kind='funding.create' and outcome->>'fundingStatus'='SUCCEEDED' order by created_at desc limit 1`;
   if (!funding) throw new PaymentFlowError('No provider-confirmed funding exists for this order', 'INVALID_STATE');
   // Approved orders release the full entitlement; mutually cancelled orders release the unrefunded remainder.
-  const refunded = order.status === 'CANCELLED' && order.cancellation_refund_minor !== null ? BigInt(String(order.cancellation_refund_minor)) : 0n;
+  const cancelled = order.status === 'CANCELLED' && order.cancellation_refund_minor !== null ? BigInt(String(order.cancellation_refund_minor)) : 0n;
+  // §9.6: an approved performance order releases the fixed fee plus the earned bonus, and the unused hold goes back.
+  const unusedHold = order.status !== 'CANCELLED' && order.performance_refund_minor !== null && order.performance_refund_minor !== undefined
+    ? BigInt(String(order.performance_refund_minor)) : 0n;
+  const refunded = cancelled + unusedHold;
   const amount = BigInt(String(order.amount_minor)) - refunded;
   const providerFee = order.provider_fee_minor == null ? 0n : BigInt(String(order.provider_fee_minor));
   const policy = feePayerPolicy();
   const net = policy === 'CREATOR_AT_COST' ? amount - providerFee : amount;
   if (net <= 0n) throw new PaymentFlowError('Creator net would not be positive; resolve the provider cost policy first', 'INVALID_STATE');
 
-  const operationId = refunded > 0n ? `release:${orderId}:remainder` : `release:${orderId}:full`;
+  const operationId = unusedHold > 0n ? `release:${orderId}:performance` : refunded > 0n ? `release:${orderId}:remainder` : `release:${orderId}:full`;
   const input: ReleaseInput = {
     fundingReference: String(funding.provider_reference),
     orderId,

@@ -21,6 +21,7 @@ import { enqueueNotification } from '@/modules/notifications/enqueue';
 import { PaymentFlowError, cancelOpenFunding, openCase, refundReasonFor, requestProviderRefund, setCryptoEscrowFrozen } from '@/modules/payments/funding';
 import { attachDeliveryAssets, lockDeliveryAssets, parseAssetIds } from '@/modules/storage/service';
 import { checkPublicationProof, publishTermsOf } from '@/modules/publish';
+import { schedulePerformanceMeasurement } from '@/modules/publish/performance-service';
 import { digitalTermsOf } from '@/modules/digital';
 import {
   MIN_DELIVERY_NOTE_CHARS,
@@ -127,6 +128,8 @@ const deliver = withOrder(async ({ tx, actor, form, order, orderId, status, isCr
     await tx`insert into app.publish_proofs (order_id,delivery_id,platform,channel_url,post_url,post_id,published_at,disclosure_text,disclosure_attested,link_check,late)
       values (${orderId},${String(delivery!.id)},${publish.platform},${publish.channel_url},${proof.postUrl},${proof.postId},${proof.publishedAt.toISOString()},
         ${publish.disclosure_text},true,${proof.linkCheck},${proof.late})`;
+    // §9.6: a performance hire is judged on this post, measured once at its checkpoint.
+    await schedulePerformanceMeasurement(tx, order, { postUrl: proof.postUrl, publishedAt: proof.publishedAt });
   }
   await resolveReviewHold(tx, orderId, 'SUPERSEDED');
   await expirePendingCancellation(tx, orderId);

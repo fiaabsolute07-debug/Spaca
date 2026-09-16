@@ -200,7 +200,7 @@ export type FundingMethod = 'CARD' | 'BANK_TRANSFER';
 export type TransferStatusCode = 'PENDING' | 'SUCCEEDED' | 'FAILED';
 /** Card payment disputes (chargebacks) raised by the buyer's bank against a captured funding. */
 export type DisputeStatusCode = 'OPEN' | 'WON' | 'LOST';
-export type RefundReason = 'BUYER_CANCELED_BEFORE_WORK' | 'MUTUAL_CANCELLATION' | 'OPERATOR_RESOLUTION' | 'DUPLICATE' | 'OTHER';
+export type RefundReason = 'BUYER_CANCELED_BEFORE_WORK' | 'MUTUAL_CANCELLATION' | 'OPERATOR_RESOLUTION' | 'PERFORMANCE_UNUSED_HOLD' | 'DUPLICATE' | 'OTHER';
 
 export interface FundingInput {
   orderId: string;
@@ -684,6 +684,7 @@ const REFUND_REASONS: ReadonlySet<string> = new Set([
   'BUYER_CANCELED_BEFORE_WORK',
   'MUTUAL_CANCELLATION',
   'OPERATOR_RESOLUTION',
+  'PERFORMANCE_UNUSED_HOLD',
   'DUPLICATE',
   'OTHER',
 ]);

@@ -447,3 +447,15 @@ On `/settings/profile`, a region "Wallets" for every signed-in account:
 - `WalletLink` (client) picks the network (chips, only when more than one is enabled) and runs the proof: `eth_requestAccounts` → `POST /api/wallets/challenge` (`chain_id`, `address`) → `personal_sign` of the returned message → `POST /api/wallets/verify` (`challenge_id`, `signature`), then refreshes the page.
 - With no injected wallet, the button reports that instead of failing silently, and nothing is shown as linked.
 - Errors from the API (expired or reused challenge, wrong domain, address already linked to another account) are shown as returned. The copy states that signing proves control of the address and authorizes no payment.
+
+## 2026-09-16 additions: performance campaigns (master §9.6, drizzle/0026)
+
+Behind `PERFORMANCE_CAMPAIGNS_ENABLED`, off by default.
+
+- Post a brief renders only what applies (`BriefTypePicker`, client): the four category cards; for PUBLISH, the posting terms (platform and format chips, live hours, disclosure); and, when the flag is on, "How you pay" as two cards — "Fixed fee" or "Fixed fee plus view bonus". Sections that do not apply are not rendered, so their fields are never submitted.
+- Performance fields: fixed fee per post (`base_fee`), bonus per 1,000 views (`rpm_rate`), most bonus per creator (`bonus_cap`), count views after days (`measure_after_days`, default 7), checking period before paying (`verify_days`, default 7), and the views cap as a multiple of the creator's median (`median_multiplier`, default 3). A notice states the maximum per creator (fee + cap), that the maximum is held at hire, that the unused part is returned, and that a count which does not look earned is held for review.
+- `create_request` stores the model on the campaign. PUBLISH only; the budget and any per-creator cap must cover the fee plus the bonus cap.
+- `select_application` for a performance campaign: the quote must equal the fixed fee; the creator's median is read and frozen into `app.performance_baselines`; the hire holds fee + bonus cap; the order's `terms.performance` carries the baseline, the views cap, the rates and the windows.
+- Delivery of the post schedules `app.performance_measurements` at `published_at + measure_after_days`. Re-delivering before anything is measured replaces the schedule; a measured count never changes.
+- Jobs: `measure_performance_posts` reads the post once at its checkpoint and writes views, payable views and bonus, or holds it with a reason and opens a `PERFORMANCE_BONUS_REVIEW` case. `settle_performance_bonuses` approves a measurement after its checking period, records the unused hold on the order and refunds it to the buyer. Release stays blocked while a measurement is SCHEDULED, MEASURED or HELD, then pays the fixed fee plus the earned bonus.
+- View numbers come from a **mock** adapter (`mock-metrics-v1`) in this environment: deterministic from the account handle and post link, never real platform data. Every stored row records that source.

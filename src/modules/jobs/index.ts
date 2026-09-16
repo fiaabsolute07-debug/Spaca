@@ -24,6 +24,7 @@ import {
   requestCreatorRelease,
   requestProviderRefund,
 } from '@/modules/payments/funding';
+import { approvePerformanceBonus, measurePerformancePost } from '@/modules/publish/performance-service';
 import { isProviderError } from '@/modules/payments/providers';
 import { enqueueNotification } from '@/modules/notifications/enqueue';
 import { approveOrder } from '@/modules/orders/commands';
@@ -205,6 +206,48 @@ export async function reconcileProviderOperations(options: JobScope & { minAgeSe
 }
 
 /** Releases creator entitlement for approved, undisputed, provider-funded orders. */
+/** §9.6: reads each published post once at its checkpoint; a count that does not look earned is held for a person. */
+export async function measurePerformancePosts(options: JobScope = {}): Promise<JobReport> {
+  const { result, tally } = report('measure_performance_posts');
+  const due = await sql<Row[]>`select order_id from app.performance_measurements
+    where status='SCHEDULED' and measure_at <= now() and ${scoped(sql`order_id`, options)} order by measure_at limit 200`;
+  for (const row of due) {
+    const orderId = String(row.order_id);
+    try {
+      tally(await sql.begin((tx) => measurePerformancePost(tx, orderId)));
+    } catch (error) {
+      logError('measure_performance_posts failed', error, { order_id: orderId });
+      tally('ERROR');
+    }
+  }
+  return result;
+}
+
+/** §9.6: after the verification window the bonus is final, and the part of the hold it did not use is refunded. */
+export async function settlePerformanceBonuses(options: JobScope = {}): Promise<JobReport> {
+  const { result, tally } = report('settle_performance_bonuses');
+  const due = await sql<Row[]>`select order_id from app.performance_measurements
+    where status='MEASURED' and verify_until <= now() and ${scoped(sql`order_id`, options)} order by verify_until limit 200`;
+  for (const row of due) {
+    const orderId = String(row.order_id);
+    try {
+      tally(await sql.begin(async (tx) => {
+        if (await approvePerformanceBonus(tx, orderId) !== 'SETTLED') return 'SKIPPED_STATE_CHANGED';
+        const [order] = await tx<Row[]>`select * from app.orders where id=${orderId} for update`;
+        if (!order || order.performance_refund_minor === null) return 'SKIPPED_STATE_CHANGED';
+        if (BigInt(String(order.performance_refund_minor)) === 0n) return 'BONUS_FULLY_EARNED';
+        const refund = await requestProviderRefund(tx, order, 'PERFORMANCE_UNUSED_HOLD');
+        return refund.state === 'READY' ? 'UNUSED_HOLD_REFUNDED' : `REFUND_${refund.state}_${refund.code}`;
+      }));
+    } catch (error) {
+      if (error instanceof PaymentFlowError) tally(`BLOCKED_${error.code}`);
+      else { logError('settle_performance_bonuses failed', error, { order_id: orderId }); tally('ERROR'); }
+    }
+  }
+  if (mockPaymentsEnabled()) await deliverPendingMockWebhooks();
+  return result;
+}
+
 export async function releaseReadySettlements(options: JobScope = {}): Promise<JobReport> {
   const { result, tally } = report('release_ready_settlements');
   // Card funding needs the mock provider locally; escrow-backed rails (CRYPTO, POOL) settle through the payout outbox.
@@ -212,7 +255,8 @@ export async function releaseReadySettlements(options: JobScope = {}): Promise<J
   // Approved orders, or mutually cancelled orders whose agreed refund left a creator remainder (ORD-15).
   // Pool-funded hires stay PENDING after a partial payout and are retried here for the failed assets only (CRY-08).
   const readyCondition = sql`(o.settlement_status='READY' or (o.payment_rail='POOL' and o.settlement_status='PENDING'))
-    and ((o.status='APPROVED' and o.payment_status='SUCCEEDED')
+    and not exists (select 1 from app.performance_measurements pm where pm.order_id=o.id and pm.status in ('SCHEDULED','MEASURED','HELD'))
+    and ((o.status='APPROVED' and (o.payment_status='SUCCEEDED' or (o.payment_status='PARTIALLY_REFUNDED' and o.performance_refund_minor is not null)))
       or (o.status='CANCELLED' and o.cancellation_refund_minor is not null and o.cancellation_refund_minor < o.amount_minor
           and o.payment_status in ('SUCCEEDED','REFUND_PENDING','PARTIALLY_REFUNDED')))
     and not exists (select 1 from app.disputes d where d.order_id=o.id and d.status in ('OPEN','UNDER_REVIEW'))
@@ -511,6 +555,8 @@ export async function runJobsOnce(): Promise<JobReport[]> {
     await expireHireOffers(),
     await closeDueAuctions(),
     await autoAcceptDeliveries(),
+    await measurePerformancePosts(),
+    await settlePerformanceBonuses(),
     await releaseReadySettlements(),
     await dispatchChainPayouts(),
     await sendOrderReminders(),

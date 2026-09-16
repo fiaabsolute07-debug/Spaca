@@ -16,6 +16,8 @@ import { allocateHire, poolTermsFor } from '@/modules/pools/service';
 import { assertContentPolicy } from '@/modules/moderation/policy';
 import { DELIVERABLE_BY_TAXONOMY } from '@/modules/catalog/commands';
 import { EDITORIAL_POLICY_VERSION, channelOf, isSocialPlatform, ownedSocialAccount, publishFields } from '@/modules/publish';
+import { baselineFor } from '@/modules/publish/metrics';
+import { DEFAULT_MEASURE_AFTER_DAYS, DEFAULT_MEDIAN_MULTIPLIER, DEFAULT_VERIFY_DAYS, MIN_ELIGIBLE_POSTS, PERFORMANCE_POLICY_VERSION, maxPayoutMinor, viewsCap } from '@/modules/publish/performance';
 
 const TAXONOMIES = ['CREATE', 'PUBLISH', 'ACCESS', 'DIGITAL'];
 export const HIRE_OFFER_HOURS = 24;
@@ -57,6 +59,64 @@ function budgetFields(form: FormData, existing?: Row) {
   return { budget, cap, target };
 }
 
+/**
+ * §9.6 terms: a fixed fee per post plus a view bonus with a hard cap. PUBLISH only, because a post must exist to
+ * measure, and behind its own flag. Defaults follow the spec (7-day checkpoint, 7-day verification, 3× median).
+ */
+async function performanceFields(tx: Tx, form: FormData, taxonomy: string, existing?: Row) {
+  const model = text(form, 'payment_model', false) || (existing ? String(existing.payment_model) : 'FIXED');
+  if (model !== 'FIXED' && model !== 'PERFORMANCE') throw new CommandError('Unsupported payment model');
+  if (model === 'FIXED') return { model, baseFee: null, rpm: null, bonusCap: null, measureAfterDays: null, verifyDays: null, medianMultiplier: null };
+  await assertFlags(tx, ['PERFORMANCE_CAMPAIGNS_ENABLED']);
+  if (taxonomy !== 'PUBLISH') throw new CommandError('A performance campaign pays for views on a post, so it needs the PUBLISH category');
+  const baseFee = money(text(form, 'base_fee'), 'base_fee');
+  const rpm = money(text(form, 'rpm_rate'), 'rpm_rate');
+  const bonusCap = money(text(form, 'bonus_cap'), 'bonus_cap');
+  const measureAfterDays = text(form, 'measure_after_days', false) ? integer(text(form, 'measure_after_days'), 'measure_after_days', 1, 30) : DEFAULT_MEASURE_AFTER_DAYS;
+  const verifyDays = text(form, 'verify_days', false) ? integer(text(form, 'verify_days'), 'verify_days', 1, 30) : DEFAULT_VERIFY_DAYS;
+  const multiplierValue = text(form, 'median_multiplier', false);
+  const medianMultiplier = multiplierValue ? Number(multiplierValue) : DEFAULT_MEDIAN_MULTIPLIER;
+  if (!Number.isFinite(medianMultiplier) || medianMultiplier < 1 || medianMultiplier > 10 || Math.round(medianMultiplier * 100) !== Math.round(medianMultiplier * 10000) / 100) {
+    throw new CommandError('The median multiplier must be between 1 and 10, with at most two decimals');
+  }
+  return { model, baseFee, rpm, bonusCap, measureAfterDays, verifyDays, medianMultiplier };
+}
+
+/**
+ * Freezes what a performance hire will be judged on: the creator's own recent median, the view cap it implies, and the
+ * fee and bonus cap from the campaign. Written as evidence before any money is held, so later view buying cannot
+ * change the cap that was agreed.
+ */
+async function freezePerformanceTerms(tx: Tx, request: Row, application: Row, account: Row | null, quote: bigint) {
+  if (!account) throw new CommandError('A performance hire needs the posting account from the application', 'QUOTE_CHANGED');
+  const baseFee = BigInt(String(request.base_fee_minor));
+  if (quote !== baseFee) throw new CommandError('A performance campaign pays its fixed fee; the creator must re-apply at that amount', 'QUOTE_CHANGED');
+  const baseline = baselineFor({ handle: account.handle ? String(account.handle) : null, accountId: String(account.id) });
+  if (!baseline.eligible) {
+    throw new CommandError(`This creator has ${baseline.eligible_posts} recent qualifying posts; a performance campaign needs at least ${MIN_ELIGIBLE_POSTS}`, 'DOMAIN_RULE');
+  }
+  const multiplier = Number(request.median_multiplier);
+  const [row] = await tx<Row[]>`insert into app.performance_baselines (creator_id,social_account_id,eligible_posts,median_views,window_days,measured_at_days,source)
+    values (${String(application.creator_id)},${String(account.id)},${baseline.eligible_posts},${baseline.median_views.toString()},${baseline.window_days},${baseline.measured_at_days},${baseline.source})
+    returning id`;
+  const bonusCap = BigInt(String(request.bonus_cap_minor));
+  return {
+    policy_version: PERFORMANCE_POLICY_VERSION,
+    baseline_id: String(row!.id),
+    baseline_median: baseline.median_views.toString(),
+    baseline_posts: baseline.eligible_posts,
+    baseline_source: baseline.source,
+    median_multiplier: multiplier,
+    views_cap: viewsCap(baseline.median_views, multiplier).toString(),
+    base_fee_minor: baseFee.toString(),
+    rpm_rate_minor: String(request.rpm_rate_minor),
+    bonus_cap_minor: bonusCap.toString(),
+    max_payout_minor: maxPayoutMinor(baseFee, bonusCap).toString(),
+    measure_after_days: Number(request.measure_after_days),
+    verify_days: Number(request.verify_days),
+  };
+}
+
 function deadlines(form: FormData, existing?: Row) {
   const deadline = text(form, 'deadline', !existing) ? instant(text(form, 'deadline'), 'deadline') : new Date(existing!.deadline);
   const applicationValue = text(form, 'application_deadline', false);
@@ -85,10 +145,19 @@ const createRequest: CommandHandler = async ({ tx, actor, form }) => {
   const { deadline, applicationDeadline } = deadlines(form);
   if (applicationDeadline <= new Date()) throw new CommandError('Deadlines must be in the future');
   const publish = requestPublishTerms(taxonomy, form);
+  const performance = await performanceFields(tx, form, taxonomy);
+  if (performance.model === 'PERFORMANCE') {
+    const perHire = maxPayoutMinor(performance.baseFee!, performance.bonusCap!);
+    if (perHire > budget) throw new CommandError('The budget must cover at least one hire at the fixed fee plus the bonus cap', 'BUDGET_EXCEEDED');
+    if (cap !== null && cap < perHire) throw new CommandError('The per-creator cap must cover the fixed fee plus the bonus cap', 'BUDGET_EXCEEDED');
+  }
   const [request] = await tx<Row[]>`insert into app.requests (buyer_id,title,brief,taxonomy,budget_minor,per_creator_cap_minor,target_hires,deadline,application_deadline,
-      publish_platform,publish_format,min_live_hours,disclosure_text)
+      publish_platform,publish_format,min_live_hours,disclosure_text,
+      payment_model,base_fee_minor,rpm_rate_minor,bonus_cap_minor,measure_after_days,verify_days,median_multiplier)
     values (${actor.id},${title},${brief},${taxonomy},${budget.toString()},${cap?.toString() ?? null},${target},${deadline.toISOString()},${applicationDeadline.toISOString()},
-      ${publish?.platform ?? null},${publish?.format ?? null},${publish?.minLiveHours ?? null},${publish?.disclosure ?? null}) returning id`;
+      ${publish?.platform ?? null},${publish?.format ?? null},${publish?.minLiveHours ?? null},${publish?.disclosure ?? null},
+      ${performance.model},${performance.baseFee?.toString() ?? null},${performance.rpm?.toString() ?? null},${performance.bonusCap?.toString() ?? null},
+      ${performance.measureAfterDays},${performance.verifyDays},${performance.medianMultiplier}) returning id`;
   const requestId = String(request!.id);
   const images = text(form, 'image_ids', false, 400);
   if (images) await replaceRequestImages(tx, actor, requestId, images);
@@ -267,9 +336,22 @@ const selectApplication: CommandHandler = async ({ tx, actor, form }) => {
     left join app.creator_workloads w on w.creator_id=u.id where u.id=${String(application!.creator_id)}`;
   if (creator?.status !== 'ACTIVE') throw new CommandError('This creator cannot take new work right now', 'ACCOUNT_SUSPENDED');
   if (creator.accepting !== true) throw new CommandError('This creator paused new orders after applying. Ask them to resume before sending an offer.', 'NOT_ACCEPTING_ORDERS');
-  const amount = BigInt(application!.quote_minor);
+  const quote = BigInt(application!.quote_minor);
   const pool = await poolTermsFor(tx, String(request.id));
-  if (pool && pool.cashMinor !== amount) throw new CommandError('The pool reward changed since this application; the creator must re-apply', 'QUOTE_CHANGED');
+  if (pool && pool.cashMinor !== quote) throw new CommandError('The pool reward changed since this application; the creator must re-apply', 'QUOTE_CHANGED');
+  let publish: Record<string, unknown> | null = null;
+  let publishAccount: Row | null = null;
+  if (request.taxonomy === 'PUBLISH') {
+    if (!application!.publish_account_id) throw new CommandError('This application has no posting account; the creator must re-apply with one', 'QUOTE_CHANGED');
+    const [account] = await tx<Row[]>`select * from app.social_accounts where id=${String(application!.publish_account_id)} and removed_at is null`;
+    if (!account) throw new CommandError('The creator removed the posting account from this application; ask them to re-apply', 'QUOTE_CHANGED');
+    publishAccount = account;
+    publish = { account_id: String(account.id), ...channelOf(account), format: request.publish_format, min_live_hours: Number(request.min_live_hours),
+      disclosure_text: request.disclosure_text, editorial_policy_version: EDITORIAL_POLICY_VERSION };
+  }
+  // §9.6: a performance hire holds the fixed fee plus the whole bonus cap, and freezes the creator's median now.
+  const performance = String(request.payment_model) === 'PERFORMANCE' ? await freezePerformanceTerms(tx, request, application!, publishAccount, quote) : null;
+  const amount = performance ? BigInt(performance.max_payout_minor) : quote;
   if (request.per_creator_cap_minor != null && amount > BigInt(request.per_creator_cap_minor)) {
     throw new CommandError('This quote is above the current per-creator cap', 'BUDGET_EXCEEDED');
   }
@@ -278,14 +360,6 @@ const selectApplication: CommandHandler = async ({ tx, actor, form }) => {
     throw new CommandError('This selection would exceed the request budget or the number of creators to hire', 'BUDGET_EXCEEDED');
   }
   const expiresAt = new Date(Math.min(Date.now() + HIRE_OFFER_HOURS * 3600_000, new Date(request.deadline).getTime()));
-  let publish: Record<string, unknown> | null = null;
-  if (request.taxonomy === 'PUBLISH') {
-    if (!application!.publish_account_id) throw new CommandError('This application has no posting account; the creator must re-apply with one', 'QUOTE_CHANGED');
-    const [account] = await tx<Row[]>`select * from app.social_accounts where id=${String(application!.publish_account_id)} and removed_at is null`;
-    if (!account) throw new CommandError('The creator removed the posting account from this application; ask them to re-apply', 'QUOTE_CHANGED');
-    publish = { account_id: String(account.id), ...channelOf(account), format: request.publish_format, min_live_hours: Number(request.min_live_hours),
-      disclosure_text: request.disclosure_text, editorial_policy_version: EDITORIAL_POLICY_VERSION };
-  }
   const terms = {
     schema_version: 1,
     source: 'REQUEST',
@@ -307,6 +381,7 @@ const selectApplication: CommandHandler = async ({ tx, actor, form }) => {
     cancellation_policy_version: 'v1',
     deliverable: DELIVERABLE_BY_TAXONOMY[String(request.taxonomy)] ?? 'CONTENT_HANDOFF',
     ...(publish ? { publish } : {}),
+    ...(performance ? { performance } : {}),
   };
   const [offer] = await tx<Row[]>`insert into app.hire_offers (request_id,application_id,application_version,buyer_id,creator_id,amount_minor,terms_snapshot,expires_at)
     values (${String(request.id)},${applicationId},${shownVersion},${actor.id},${String(application!.creator_id)},${amount.toString()},${JSON.stringify(terms)}::jsonb,${expiresAt.toISOString()})

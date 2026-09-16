@@ -1,5 +1,6 @@
 import { OrderMessagesPanel } from '@/components/order-workspace/messages-panel';
 import { OrderReceiptPanel } from '@/components/order-workspace/receipt-panel';
+import { OrderPerformancePanel, performanceTermsRow } from '@/components/order-workspace/performance-panel';
 import { OrderNextStepPanel } from '@/components/order-workspace/next-step-panel';
 import { OrderTimelinePanel } from '@/components/order-workspace/timeline-panel';
 import { OrderDeliveryPanel } from '@/components/order-workspace/delivery-panel';
@@ -91,6 +92,7 @@ export default async function OrderPage({
           digital={Boolean(d.digital)}
           route={route}
         />
+        <OrderPerformancePanel order={o} terms={performanceTermsRow(d.performance_terms ? { performance: d.performance_terms } : null)} measurement={d.performance_measurement ? row(d.performance_measurement) : null} />
         <OrderReceiptPanel order={o} />
         <OrderMessagesPanel order={o} messages={messages} route={route} />
       </aside>
