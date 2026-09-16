@@ -133,6 +133,26 @@ function requestPublishTerms(taxonomy: string, form: FormData, currentPlatform?:
   return { platform, ...publishFields(form) };
 }
 
+/** ACCESS campaigns say how long the session is; the time itself is agreed in the order messages, as for a booking. */
+function requestAccessMinutes(taxonomy: string, form: FormData, existing?: Row): number | null {
+  if (taxonomy !== 'ACCESS') return null;
+  const value = text(form, 'access_session_minutes', !existing) || String(existing!.access_session_minutes);
+  return integer(value, 'access_session_minutes', 15, 480);
+}
+
+/**
+ * DIGITAL campaigns say what the buyer may do with the files they commission. A commission is not a product listing:
+ * there is no stock, no release history and no download limit here, only the rights both sides agree to.
+ */
+function requestLicense(taxonomy: string, form: FormData, existing?: Row) {
+  if (taxonomy !== 'DIGITAL') return null;
+  const kind = text(form, 'license_kind', false) || (existing ? String(existing.license_kind) : 'NON_EXCLUSIVE');
+  if (kind !== 'NON_EXCLUSIVE' && kind !== 'EXCLUSIVE') throw new CommandError('license_kind must be NON_EXCLUSIVE or EXCLUSIVE');
+  const rights = text(form, 'license_rights_text', !existing, 4000) || String(existing!.license_rights_text);
+  if (rights.length < 20) throw new CommandError('Say what the buyer may do with the files in at least 20 characters');
+  return { kind, rights };
+}
+
 const createRequest: CommandHandler = async ({ tx, actor, form }) => {
   if (actor.status !== 'ACTIVE') throw new CommandError('Suspended accounts cannot publish requests', 'ACCOUNT_SUSPENDED');
   await assertFlags(tx, ['REQUESTS_ENABLED']);
@@ -145,6 +165,8 @@ const createRequest: CommandHandler = async ({ tx, actor, form }) => {
   const { deadline, applicationDeadline } = deadlines(form);
   if (applicationDeadline <= new Date()) throw new CommandError('Deadlines must be in the future');
   const publish = requestPublishTerms(taxonomy, form);
+  const sessionMinutes = requestAccessMinutes(taxonomy, form);
+  const license = requestLicense(taxonomy, form);
   const performance = await performanceFields(tx, form, taxonomy);
   if (performance.model === 'PERFORMANCE') {
     const perHire = maxPayoutMinor(performance.baseFee!, performance.bonusCap!);
@@ -152,10 +174,11 @@ const createRequest: CommandHandler = async ({ tx, actor, form }) => {
     if (cap !== null && cap < perHire) throw new CommandError('The per-creator cap must cover the fixed fee plus the bonus cap', 'BUDGET_EXCEEDED');
   }
   const [request] = await tx<Row[]>`insert into app.requests (buyer_id,title,brief,taxonomy,budget_minor,per_creator_cap_minor,target_hires,deadline,application_deadline,
-      publish_platform,publish_format,min_live_hours,disclosure_text,
+      publish_platform,publish_format,min_live_hours,disclosure_text,access_session_minutes,license_kind,license_rights_text,
       payment_model,base_fee_minor,rpm_rate_minor,bonus_cap_minor,measure_after_days,verify_days,median_multiplier)
     values (${actor.id},${title},${brief},${taxonomy},${budget.toString()},${cap?.toString() ?? null},${target},${deadline.toISOString()},${applicationDeadline.toISOString()},
       ${publish?.platform ?? null},${publish?.format ?? null},${publish?.minLiveHours ?? null},${publish?.disclosure ?? null},
+      ${sessionMinutes},${license?.kind ?? null},${license?.rights ?? null},
       ${performance.model},${performance.baseFee?.toString() ?? null},${performance.rpm?.toString() ?? null},${performance.bonusCap?.toString() ?? null},
       ${performance.measureAfterDays},${performance.verifyDays},${performance.medianMultiplier}) returning id`;
   const requestId = String(request!.id);
@@ -211,6 +234,8 @@ const updateRequest: CommandHandler = async ({ tx, actor, form }) => {
   // Posting terms can change for future offers; offers already sent keep their snapshot.
   const publish = request.taxonomy === 'PUBLISH' && form.has('publish_format') ? requestPublishTerms('PUBLISH', form, String(request.publish_platform)) : null;
   if (publish && publish.platform !== request.publish_platform) throw new CommandError('The posting platform cannot change after publishing the request');
+  const sessionMinutes = form.has('access_session_minutes') ? requestAccessMinutes(String(request.taxonomy), form, request) : null;
+  const license = form.has('license_rights_text') || form.has('license_kind') ? requestLicense(String(request.taxonomy), form, request) : null;
   const held = BigInt(request.reserved_minor) + BigInt(request.committed_minor);
   const hires = Number(request.reserved_hires) + Number(request.committed_hires);
   if (budget < held || target < hires) {
@@ -220,6 +245,8 @@ const updateRequest: CommandHandler = async ({ tx, actor, form }) => {
     target_hires=${target},deadline=${deadline.toISOString()},application_deadline=${applicationDeadline.toISOString()},
     publish_platform=coalesce(${publish?.platform ?? null},publish_platform),publish_format=coalesce(${publish?.format ?? null},publish_format),
     min_live_hours=coalesce(${publish?.minLiveHours ?? null}::int,min_live_hours),disclosure_text=coalesce(${publish?.disclosure ?? null},disclosure_text),
+    access_session_minutes=coalesce(${sessionMinutes}::int,access_session_minutes),
+    license_kind=coalesce(${license?.kind ?? null},license_kind),license_rights_text=coalesce(${license?.rights ?? null},license_rights_text),
     status=case when status='FILLED' and committed_hires < ${target} then 'OPEN' when status='OPEN' and committed_hires >= ${target} then 'FILLED' else status end,
     version=version+1,updated_at=now() where id=${requestId}`);
   return done(requestId, 'Request updated. Existing offers keep their terms.');
@@ -381,6 +408,10 @@ const selectApplication: CommandHandler = async ({ tx, actor, form }) => {
     cancellation_policy_version: 'v1',
     deliverable: DELIVERABLE_BY_TAXONOMY[String(request.taxonomy)] ?? 'CONTENT_HANDOFF',
     ...(publish ? { publish } : {}),
+    // ACCESS: the session length is hired; the time is agreed in order messages, as it is for a booked session.
+    ...(request.taxonomy === 'ACCESS' ? { access: { session_minutes: Number(request.access_session_minutes), scheduling: 'AGREED_IN_MESSAGES' } } : {}),
+    // DIGITAL: the rights the buyer commissioned, frozen here so editing the campaign afterwards cannot change them.
+    ...(request.taxonomy === 'DIGITAL' ? { license: { kind: String(request.license_kind), rights_text: String(request.license_rights_text), policy_version: 'license-v1' } } : {}),
     ...(performance ? { performance } : {}),
   };
   const [offer] = await tx<Row[]>`insert into app.hire_offers (request_id,application_id,application_version,buyer_id,creator_id,amount_minor,terms_snapshot,expires_at)

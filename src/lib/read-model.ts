@@ -224,7 +224,7 @@ export async function getCreatorData(handle: string) {
 export async function getRequestData(actor: Actor | null, id: string) {
   const [request] = asRows(await sql`select r.id,r.buyer_id,r.title,r.brief,r.taxonomy,r.budget_minor,r.per_creator_cap_minor,r.target_hires,r.deadline,r.application_deadline,
       r.status,r.version,r.currency,r.reserved_minor,r.committed_minor,r.reserved_hires,r.committed_hires,u.display_name as buyer_name,
-      r.publish_platform,r.publish_format,r.min_live_hours,r.disclosure_text,
+      r.publish_platform,r.publish_format,r.min_live_hours,r.disclosure_text,r.access_session_minutes,r.license_kind,r.license_rights_text,
       r.payment_model,r.base_fee_minor,r.rpm_rate_minor,r.bonus_cap_minor,r.measure_after_days,r.verify_days,r.median_multiplier,
       coalesce((select array_agg(i.asset_id order by i.position) from app.request_images i where i.request_id=r.id),'{}') as image_ids,
       (select count(*) from app.applications a where a.request_id=r.id and a.status <> 'WITHDRAWN')::int as application_count

@@ -46,3 +46,62 @@ test('a buyer picks the campaign type from cards, adds a project image, and crea
   await expect(page.getByRole('button', { name: 'Replace images', exact: true })).toHaveCount(0);
   expect(page.context().pages()).toHaveLength(1);
 });
+
+test('an access campaign asks for a session length, and a digital one for the rights, and both reach the hired order', async ({ page }) => {
+  const title = `E2E session brief ${uniqueSuffix()}`;
+  await login(page, 'buyer_a');
+  await visit(page, '/buyer/requests/new');
+
+  // Each category asks only for its own terms: a session length here, no posting terms and no license.
+  await page.getByRole('group', { name: 'What do you need?' }).getByRole('radio', { name: /^Access/ }).check();
+  await expect(page.getByRole('group', { name: 'Session length' })).toBeVisible();
+  await expect(page.getByRole('group', { name: 'Post format' })).toHaveCount(0);
+  await expect(page.getByRole('group', { name: 'License' })).toHaveCount(0);
+  await page.getByRole('group', { name: 'Session length' }).getByRole('radio', { name: '1.5 hours', exact: true }).check();
+  await page.getByLabel('Brief title', { exact: true }).fill(title);
+  await page.getByLabel('Brief', { exact: true }).fill(`A live walkthrough of our tooling for our engineering team, with questions at the end (${title}).`);
+  await page.getByLabel('Total budget (USD, optional if you set a cap)', { exact: true }).fill('400');
+  await page.getByLabel('Creators needed', { exact: true }).fill('1');
+  await page.getByLabel('Delivery deadline', { exact: true }).fill(dateTimeLocal(new Date(Date.now() + 14 * 86400_000)));
+  await submit(page, page.getByRole('button', { name: 'Publish brief', exact: true }));
+
+  const fact = (label: string) => page.getByRole('listitem').filter({ hasText: new RegExp(`^${label}`) });
+  await expect(fact('Live session')).toContainText('90 minutes');
+  await expect(fact('Time')).toContainText('Agreed with the creator in the order messages');
+
+  const filesTitle = `E2E licensed files ${uniqueSuffix()}`;
+  await visit(page, '/buyer/requests/new');
+  await page.getByRole('group', { name: 'What do you need?' }).getByRole('radio', { name: /^Digital/ }).check();
+  await expect(page.getByRole('group', { name: 'Session length' })).toHaveCount(0);
+  await page.getByRole('group', { name: 'License' }).getByRole('radio', { name: /^Exclusive to you/ }).check();
+  const rights = 'Use in our own marketing on any channel, edit for size and language, worldwide, with no time limit.';
+  await page.getByLabel('What you may do with the files', { exact: true }).fill(rights);
+  await page.getByLabel('Brief title', { exact: true }).fill(filesTitle);
+  await page.getByLabel('Brief', { exact: true }).fill(`Editable launch graphics and a slide template for our public beta (${filesTitle}).`);
+  await page.getByLabel('Total budget (USD, optional if you set a cap)', { exact: true }).fill('400');
+  await page.getByLabel('Creators needed', { exact: true }).fill('1');
+  await page.getByLabel('Delivery deadline', { exact: true }).fill(dateTimeLocal(new Date(Date.now() + 14 * 86400_000)));
+  await submit(page, page.getByRole('button', { name: 'Publish brief', exact: true }));
+
+  const campaign = new URL(page.url()).pathname;
+  await expect(fact('License')).toContainText('Exclusive to the buyer');
+  await expect(fact('Rights asked for')).toContainText(rights);
+
+  // The rights follow the hire into the order, where both sides read the same words.
+  await login(page, 'creator_c');
+  await visit(page, campaign);
+  await page.getByLabel('Your quote (USD)', { exact: true }).fill('300');
+  await page.getByLabel('Delivery time (hours)', { exact: true }).fill('72');
+  await page.getByLabel('Your approach and relevant samples', { exact: true }).fill(`Application ${uniqueSuffix()}: editable source files, delivered with a slide template.`);
+  await submit(page, page.getByRole('button', { name: 'Send application', exact: true }));
+
+  await login(page, 'buyer_a');
+  await visit(page, campaign);
+  await submit(page, page.getByRole('button', { name: 'Offer $300.00 to this creator', exact: true }));
+  await login(page, 'creator_c');
+  await visit(page, campaign);
+  await submit(page, page.getByRole('button', { name: 'Accept offer', exact: true }));
+
+  await expect(fact('License')).toContainText('Exclusive to the buyer');
+  await expect(fact('Rights')).toContainText(rights);
+});

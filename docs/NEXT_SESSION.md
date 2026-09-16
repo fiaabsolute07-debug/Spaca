@@ -254,10 +254,9 @@ cd contracts && forge test
 
 ### 5.2 Tính năng sản phẩm chưa làm
 
-> Đã xong 2026-09-16: UI campaign pool và UI liên kết ví (`docs/evidence/claude-POOL-WALLET-UI.md`); Performance campaigns §9.6 với metrics **giả lập** (`docs/evidence/claude-PERFORMANCE.md`).
+> Đã xong 2026-09-16: UI campaign pool và UI liên kết ví (`docs/evidence/claude-POOL-WALLET-UI.md`); Performance campaigns §9.6 với metrics **giả lập** + màn quyết định thưởng cho vận hành (`docs/evidence/claude-PERFORMANCE.md`); campaign ACCESS và DIGITAL với điều khoản riêng (`docs/evidence/claude-ACCESS-DIGITAL.md`).
 
 2. **Explore theo mục tiêu:** goal → playbook → creator → sample, ngân sách micro (§11.7).
-5. **Request/hire cho ACCESS và DIGITAL.**
 6. **Ảnh campaign:** kiểm duyệt ảnh và tạo thumbnail (hiện thẻ tải ảnh gốc, tối đa 10 MB).
 
 ### 5.3 Hạ tầng

@@ -161,6 +161,14 @@ export default async function RequestPage({ params, searchParams }: PageProps<{ 
               <li><span>Views counted after</span><strong>{num(r.measure_after_days)} days, then checked for {num(r.verify_days)}</strong></li>
               <li><span>Views that can be paid</span><strong>{num(r.median_multiplier)}× the creator&apos;s recent median</strong></li>
             </>}
+            {str(r.taxonomy) === 'ACCESS' && <>
+              <li><span>Live session</span><strong>{num(r.access_session_minutes)} minutes</strong></li>
+              <li><span>Time</span><strong>Agreed with the creator in the order messages</strong></li>
+            </>}
+            {str(r.taxonomy) === 'DIGITAL' && <>
+              <li><span>License</span><strong>{str(r.license_kind) === 'EXCLUSIVE' ? 'Exclusive to the buyer' : 'Non-exclusive'}</strong></li>
+              <li><span>Rights asked for</span><strong className="prewrap">{str(r.license_rights_text)}</strong></li>
+            </>}
             {str(r.taxonomy) === 'PUBLISH' && <>
               <li><span>Creators post on</span><strong>{str(r.publish_platform)} · {str(r.publish_format).replaceAll('_', ' ').toLowerCase()}</strong></li>
               <li><span>Disclosure</span><strong>“{str(r.disclosure_text)}”</strong></li>

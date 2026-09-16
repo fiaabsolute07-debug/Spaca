@@ -329,3 +329,75 @@ describe.skipIf(!RUN_DB)('REQ-11 — applications CSV for the campaign buyer onl
     expect((await csvFor(buyer, '00000000-0000-4000-8000-000000000000')).status).toBe(404);
   });
 });
+
+describe.skipIf(!RUN_DB)('§9.2 — campaigns for live sessions and for licensed files', () => {
+  const sessionBrief = 'We want a live walkthrough of our developer tooling for our engineering team, with questions at the end.';
+  const filesBrief = 'We need a set of editable launch graphics and a slide template for our public beta announcement.';
+  const rights = 'Use in our own marketing on any channel, edit for size and language, worldwide, with no time limit.';
+
+  it('an ACCESS campaign hires a session length, and the time stays something both sides agree in messages', async () => {
+    const buyer = await createUser('access-buyer');
+    const requestId = await createRequest(buyer, { title: 'Live walkthrough for our team', brief: sessionBrief, taxonomy: 'ACCESS', access_session_minutes: '90' });
+    expect(await requestRow(requestId)).toMatchObject({ taxonomy: 'ACCESS', access_session_minutes: 90 });
+
+    const maker = await creator('access-creator');
+    const { orderId } = await hire(buyer, requestId, maker, '150');
+    const [order] = await sql`select terms,amount_minor from app.orders where id=${orderId}`;
+    const terms = order!.terms as { deliverable: string; access?: { session_minutes: number; scheduling: string }; license?: unknown; digital?: unknown };
+    expect(terms.deliverable).toBe('SESSION');
+    expect(terms.access).toEqual({ session_minutes: 90, scheduling: 'AGREED_IN_MESSAGES' });
+    expect(terms.digital).toBeUndefined();
+
+    // Editing the campaign afterwards does not touch a session that was already hired.
+    const version = String((await requestRow(requestId)).version);
+    expect((await command(buyer, { command: 'update_request', idempotency_key: key('u'), request_id: requestId, expected_version: version, access_session_minutes: '45' })).status).toBe(200);
+    expect(await requestRow(requestId)).toMatchObject({ access_session_minutes: 45 });
+    expect(((await sql`select terms from app.orders where id=${orderId}`)[0]!.terms as { access: { session_minutes: number } }).access.session_minutes).toBe(90);
+  });
+
+  it('a DIGITAL campaign freezes the rights it commissioned, and stays a commission rather than a product listing', async () => {
+    const buyer = await createUser('license-buyer');
+    const requestId = await createRequest(buyer, {
+      title: 'Launch graphics for our beta', brief: filesBrief, taxonomy: 'DIGITAL', license_kind: 'EXCLUSIVE', license_rights_text: rights,
+    });
+    expect(await requestRow(requestId)).toMatchObject({ taxonomy: 'DIGITAL', license_kind: 'EXCLUSIVE', license_rights_text: rights });
+
+    const maker = await creator('license-creator');
+    const { orderId } = await hire(buyer, requestId, maker, '300');
+    const [order] = await sql`select terms from app.orders where id=${orderId}`;
+    const terms = order!.terms as { deliverable: string; license?: Record<string, string>; digital?: unknown };
+    expect(terms.deliverable).toBe('DIGITAL_FILE');
+    expect(terms.license).toEqual({ kind: 'EXCLUSIVE', rights_text: rights, policy_version: 'license-v1' });
+    // No entitlement terms: a commissioned file has no stock, no release history and no download limit.
+    expect(terms.digital).toBeUndefined();
+    expect((await sql`select count(*)::int as n from app.digital_entitlements where order_id=${orderId}`)[0]!.n).toBe(0);
+    // It is an ordinary commission with a work clock: work starts once the order is funded (409 here), rather than a
+    // product listing, which refuses to start at all because its files are released the moment payment is confirmed.
+    const early = await command(maker, { command: 'start', idempotency_key: key('st'), order_id: orderId });
+    expect([early.status, String(early.body.error)]).toEqual([409, 'Payment is not confirmed yet']);
+  });
+
+  it('refuses a campaign whose category and terms do not match, in the database as well as the command', async () => {
+    const buyer = await createUser('terms-guard-buyer');
+    const missingSession = await command(buyer, {
+      command: 'create_request', idempotency_key: key('r'), title: 'Live session with no length', brief: sessionBrief,
+      taxonomy: 'ACCESS', budget: '500', target_hires: '1', deadline: inDays(14),
+    });
+    expect(missingSession.status).toBe(400);
+    const tooLong = await command(buyer, {
+      command: 'create_request', idempotency_key: key('r'), title: 'A very long session', brief: sessionBrief,
+      taxonomy: 'ACCESS', budget: '500', target_hires: '1', deadline: inDays(14), access_session_minutes: '600',
+    });
+    expect(tooLong.status).toBe(400);
+    const thinRights = await command(buyer, {
+      command: 'create_request', idempotency_key: key('r'), title: 'Files with no rights', brief: filesBrief,
+      taxonomy: 'DIGITAL', budget: '500', target_hires: '1', deadline: inDays(14), license_kind: 'NON_EXCLUSIVE', license_rights_text: 'anything',
+    });
+    expect(thinRights.status).toBe(400);
+
+    // The category terms are also enforced below the command layer.
+    const createRequestId = await createRequest(buyer);
+    await expect(sql`update app.requests set access_session_minutes=60 where id=${createRequestId}`).rejects.toThrow(/requests_access_complete/);
+    await expect(sql`update app.requests set license_kind='EXCLUSIVE',license_rights_text=${rights} where id=${createRequestId}`).rejects.toThrow(/requests_license_complete/);
+  });
+});

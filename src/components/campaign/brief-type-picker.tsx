@@ -5,6 +5,7 @@ import { CATEGORIES } from '../category';
 
 const PLATFORMS: [string, string][] = [['X', 'X'], ['INSTAGRAM', 'Instagram'], ['TIKTOK', 'TikTok'], ['YOUTUBE', 'YouTube'], ['NEWSLETTER', 'Newsletter'], ['WEBSITE', 'Website']];
 const FORMATS: [string, string][] = [['POST', 'Post'], ['THREAD', 'Thread'], ['QUOTE_POST', 'Quote post'], ['VIDEO', 'Video'], ['NEWSLETTER_ISSUE', 'Newsletter issue'], ['ARTICLE', 'Article']];
+const SESSION_MINUTES: [string, string][] = [['30', '30 minutes'], ['45', '45 minutes'], ['60', '1 hour'], ['90', '1.5 hours'], ['120', '2 hours']];
 
 function Chips({ name, legend, options, value, onChange }: { name: string; legend: string; options: [string, string][]; value: string; onChange: (next: string) => void }) {
   return <fieldset className="choice-group">
@@ -34,11 +35,15 @@ export function BriefTypePicker({ performanceEnabled }: { performanceEnabled: bo
   const [platform, setPlatform] = useState('X');
   const [format, setFormat] = useState('POST');
   const [paymentModel, setPaymentModel] = useState('FIXED');
+  const [sessionMinutes, setSessionMinutes] = useState('60');
+  const [license, setLicense] = useState('NON_EXCLUSIVE');
   const [baseFee, setBaseFee] = useState('20');
   const [rpmRate, setRpmRate] = useState('2');
   const [bonusCap, setBonusCap] = useState('80');
 
   const publish = taxonomy === 'PUBLISH';
+  const access = taxonomy === 'ACCESS';
+  const digital = taxonomy === 'DIGITAL';
   const performance = publish && performanceEnabled && paymentModel === 'PERFORMANCE';
   const maxPerHire = usd(baseFee) + usd(bonusCap);
 
@@ -54,6 +59,37 @@ export function BriefTypePicker({ performanceEnabled }: { performanceEnabled: bo
         </label>)}
       </div>
     </fieldset>
+
+    {access && <div className="publish-block">
+      <h3 className="brief-section">The session you are booking</h3>
+      <p className="muted">You hire the creator&apos;s time. The day, hour and meeting link are agreed with them in the order messages, so neither side is held to a slot before the other agrees.</p>
+      <Chips name="access_session_minutes" legend="Session length" options={SESSION_MINUTES} value={sessionMinutes} onChange={setSessionMinutes} />
+    </div>}
+
+    {digital && <div className="publish-block">
+      <h3 className="brief-section">The files and what you may do with them</h3>
+      <p className="muted">A commission, not a listing: the creator makes the files for you and hands them over in the order. There is no stock or download limit here — only the rights you agree on, which are frozen when you hire.</p>
+      <fieldset className="choice-group">
+        <legend>License</legend>
+        <div className="choice-cards choice-cards-two">
+          <label className="choice-card cat-digital">
+            <input type="radio" name="license_kind" value="NON_EXCLUSIVE" checked={license === 'NON_EXCLUSIVE'} onChange={() => setLicense('NON_EXCLUSIVE')} />
+            <strong>Non-exclusive</strong>
+            <small>You may use the files as agreed; the creator keeps the right to license them to others.</small>
+          </label>
+          <label className="choice-card cat-create">
+            <input type="radio" name="license_kind" value="EXCLUSIVE" checked={license === 'EXCLUSIVE'} onChange={() => setLicense('EXCLUSIVE')} />
+            <strong>Exclusive to you</strong>
+            <small>The creator does not license the same files to anyone else. Expect a higher quote.</small>
+          </label>
+        </div>
+      </fieldset>
+      <div className="field">
+        <label htmlFor="license-rights-text">What you may do with the files</label>
+        <textarea id="license-rights-text" name="license_rights_text" rows={3} minLength={20} maxLength={4000} required
+          defaultValue="Use in our own marketing on any channel, edit for size and language, worldwide, with no time limit. Reselling the files as a product is not included." />
+      </div>
+    </div>}
 
     {publish && <div className="publish-block">
       <h3 className="brief-section">How creators post for you</h3>
