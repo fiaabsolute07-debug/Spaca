@@ -24,7 +24,7 @@ export function AuthEntry({ mode, variant, query }: { mode: 'signin' | 'signup';
     mode={mode}
     variant={variant}
     returnTo={safePath(text(query, 'return_to'))}
-    defaultRole={text(query, 'role') === 'creator' ? 'creator' : 'buyer'}
+    defaultRole={text(query, 'role') === 'creator' ? 'creator' : text(query, 'role') === 'buyer' ? 'buyer' : null}
     initialError={verifiedNotice(query, 'error')}
     initialMessage={verifiedNotice(query, 'message')}
     testAccounts={showTestAccounts ? TEST_ACCOUNTS : []}

@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { chooseOption, submit, uniqueSuffix, visit, waitForHydration, openAccountMenu } from './helpers';
+import { completeSetup, submit, signUpInDialog, uniqueSuffix, visit, waitForHydration, openAccountMenu } from './helpers';
 
 test('Log in opens a dialog over the current page; errors show in place; Escape returns to the page', async ({ page }) => {
   await visit(page, '/explore');
@@ -24,20 +24,23 @@ test('Log in opens a dialog over the current page; errors show in place; Escape 
   await expect(page).toHaveURL(/\/explore$/);
 });
 
-test('Get started opens account creation in the dialog and signs the new account in', async ({ page }) => {
+test('Get started asks for the account type first, then creates a buyer account that starts at setup', async ({ page }) => {
   await visit(page, '/explore');
   const start = page.getByRole('banner').getByRole('link', { name: 'Get started', exact: true });
   await waitForHydration(start);
   await start.click();
   const dialog = page.getByRole('dialog', { name: 'Create your account' });
   await expect(dialog).toBeVisible();
-  await dialog.getByRole('button', { name: 'Continue with email' }).click();
-  await dialog.getByLabel('Your name').fill('Dialog Tester');
-  await dialog.getByLabel('Email address').fill(`dialog-${uniqueSuffix()}@example.test`);
-  await dialog.getByLabel(/^Password/).fill('a-long-test-password');
-  await Promise.all([page.waitForURL(/\/dashboard$/), dialog.getByRole('button', { name: 'Create account' }).click()]);
+  // Nothing is chosen for the person: email waits until Buyer or Creator is picked.
+  await expect(dialog.getByRole('group', { name: 'Choose your account type' })).toBeVisible();
+  await expect(dialog.getByRole('radio', { name: /^Buyer/ })).not.toBeChecked();
+  await expect(dialog.getByRole('radio', { name: /^Creator/ })).not.toBeChecked();
+  await expect(dialog.getByRole('button', { name: 'Continue with email' })).toBeDisabled();
+  await expect(dialog.getByText('Choose Buyer or Creator to continue.')).toBeVisible();
+  await expect(dialog.getByLabel('Your name')).toHaveCount(0);
+  await signUpInDialog(page, 'Buyer');
+  await expect(page.getByRole('heading', { level: 1, name: 'Set up your project' })).toBeVisible();
   await expect(page.getByRole('banner').getByRole('button', { name: 'Account', exact: true })).toBeVisible();
-  // Accounts are one type; without a choice a new account hires.
   const menu = await openAccountMenu(page);
   await expect(menu.getByRole('link', { name: 'Profile', exact: true })).toBeVisible();
   await expect(menu.getByRole('link', { name: 'Post a brief' })).toBeVisible();
@@ -50,13 +53,8 @@ test('a creator account sells: its workspace has no hiring tools and booking ask
   const start = page.getByRole('banner').getByRole('link', { name: 'Get started', exact: true });
   await waitForHydration(start);
   await start.click();
-  const dialog = page.getByRole('dialog', { name: 'Create your account' });
-  await dialog.getByRole('button', { name: 'Continue with email' }).click();
-  await dialog.getByLabel('Your name').fill('Creator Tester');
-  await dialog.getByLabel('Email address').fill(`creator-${uniqueSuffix()}@example.test`);
-  await dialog.getByLabel(/^Password/).fill('a-long-test-password');
-  await chooseOption(page, dialog, 'What brings you here?', 'I want to offer my skills');
-  await Promise.all([page.waitForURL(/\/dashboard$/), dialog.getByRole('button', { name: 'Create account' }).click()]);
+  await signUpInDialog(page, 'Creator');
+  await completeSetup(page, { name: 'Creator Tester', handle: `tester-${uniqueSuffix().replace(/\D/g, '').slice(-8)}`, headline: 'Launch threads for DeFi teams', intro: 'I write launch threads for L2 testnets and explain restaking in plain words.' });
 
   const menu = await openAccountMenu(page);
   await expect(menu.getByRole('link', { name: 'Profile', exact: true })).toBeVisible();
@@ -105,8 +103,13 @@ test('on the landing, Early access opens the join dialog over the landing with t
   await expect(dialog).toBeVisible();
   // The landing keeps its own navigation; the marketplace header does not appear behind the dialog.
   await expect(page.getByPlaceholder('Search creators and services')).toHaveCount(0);
+  // Early access is for projects, so Buyer comes chosen; the person can still pick Creator.
+  await expect(dialog.getByRole('radio', { name: /^Buyer/ })).toBeChecked();
+  await dialog.getByRole('radio', { name: /^Creator/ }).check();
   await dialog.getByRole('button', { name: 'Continue with email' }).click();
-  await chooseOption(page, dialog, 'What brings you here?', 'I want to offer my skills');
+  await expect(dialog.getByText('Creating a creator account')).toBeVisible();
+  await dialog.getByRole('button', { name: 'Change' }).click();
+  await expect(dialog.getByRole('radio', { name: /^Creator/ })).toBeChecked();
   await dialog.getByRole('button', { name: 'Close' }).click();
   await expect(dialog).toBeHidden();
   await expect(page).toHaveURL(/127\.0\.0\.1:3100\/$/);

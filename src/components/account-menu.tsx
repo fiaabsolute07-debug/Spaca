@@ -2,9 +2,11 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { ChevronDown } from 'lucide-react';
+import { ChevronDown, ChevronRight } from 'lucide-react';
 import { useEffect, useId, useRef, useState } from 'react';
 import type { AccountType } from '@/lib/account';
+import type { AccountSummary } from '@/lib/read-model';
+import { Avatar } from './avatar';
 
 type NavLink = { href: string; label: string };
 type NavGroup = { title: string; links: NavLink[] };
@@ -17,7 +19,10 @@ const BUYER_NAV: NavGroup[] = [
   { title: 'Workspace', links: [{ href: '/dashboard', label: 'Overview' }, { href: '/buyer/orders', label: 'Orders' }, { href: '/buyer/requests', label: 'My campaigns' }] },
   { title: 'Hire', links: [{ href: '/explore', label: 'Find creators' }, { href: '/buyer/requests/new', label: 'Post a brief' }, { href: '/auctions', label: 'Auctions' }] },
 ];
-const ACCOUNT_NAV: NavGroup = { title: 'Account', links: [{ href: '/settings/profile', label: 'Profile' }] };
+const ACCOUNT_NAV: NavGroup = { title: 'Account', links: [{ href: '/settings/profile', label: 'Profile' }, { href: '/funds', label: 'Funds' }] };
+
+/** 0x12ab…9f3c: enough to recognise an address without reading all of it. */
+const shortAddress = (address: string) => (address.length > 12 ? `${address.slice(0, 6)}…${address.slice(-4)}` : address);
 
 /** Pages that belong to a menu entry without being under its URL. */
 const ALIASES: [RegExp, string][] = [[/^\/orders\//, '/buyer/orders']];
@@ -35,8 +40,10 @@ function activeHref(pathname: string, groups: NavGroup[]): string | null {
 /**
  * Workspace navigation for signed-in accounts, in the header's top-right corner (the user wanted it there rather than in a
  * sidebar). A disclosure: the button toggles a panel of links and Log out; Escape, a click outside or navigating closes it.
+ * The panel opens on the account itself (2026-09-16): photo, name, whether it is a buyer or a creator account, setup
+ * state and the linked wallet, then the workspace links.
  */
-export function AccountMenu({ type }: { type: AccountType | null }) {
+export function AccountMenu({ type, account }: { type: AccountType | null; account: AccountSummary }) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const root = useRef<HTMLDivElement>(null);
@@ -66,9 +73,35 @@ export function AccountMenu({ type }: { type: AccountType | null }) {
 
   return <div className="account-menu" ref={root}>
     <button ref={button} type="button" className="button compact account-menu-button" aria-expanded={open} aria-controls={panelId} onClick={() => setOpen((value) => !value)}>
+      <span className="account-menu-face">
+        <Avatar name={account.name} assetId={account.avatarAssetId} size={22} />
+        {!account.onboarded && <span className="account-menu-dot" aria-hidden />}
+      </span>
       Account <ChevronDown size={14} aria-hidden />
     </button>
     <div id={panelId} className="account-menu-panel" hidden={!open}>
+      <section className="account-card" aria-label="Signed in as">
+        <div className="account-card-who">
+          <Avatar name={account.name} assetId={account.avatarAssetId} size={44} />
+          <div>
+            <strong className="account-card-name">{account.name}</strong>
+            {account.handle && account.onboarded && <span className="account-card-handle">@{account.handle}</span>}
+            <span className={`account-card-type account-card-${type ?? 'operator'}`}>{type === 'creator' ? 'Creator account' : type === 'buyer' ? 'Buyer account' : 'Operator'}</span>
+          </div>
+        </div>
+        {!account.onboarded && <Link className="account-card-setup" href="/welcome" onClick={() => setOpen(false)}>
+          <span><strong>Finish setup</strong>{type === 'creator' ? 'Photo, creator name and introduction' : 'Logo, project name and introduction'}</span>
+          <ChevronRight size={16} aria-hidden />
+        </Link>}
+        <Link className="account-card-wallet" href="/settings/profile#wallets" onClick={() => setOpen(false)}>
+          <span className="account-card-label">Wallet</span>
+          {account.wallet
+            ? <span className="account-card-value"><span className="status-dot status-good" aria-hidden /> <span className="mono">{shortAddress(account.wallet.address)}</span>
+              <span className="account-card-network">{account.wallet.network}{account.wallet.count > 1 ? ` · +${account.wallet.count - 1}` : ''}</span></span>
+            : <span className="account-card-value account-card-connect">Connect wallet</span>}
+          <ChevronRight size={14} aria-hidden />
+        </Link>
+      </section>
       <nav aria-label="Account menu">
         {groups.map((group) => <div key={group.title} className="account-menu-group">
           <h4>{group.title}</h4>
@@ -94,7 +127,7 @@ function parentOf(pathname: string, type: AccountType | null): NavLink {
 }
 
 /** The overview and the marketplace lists (reached from the header) show no back link. */
-const NO_BACK = new Set(['/dashboard', '/explore', '/requests', '/auctions', '/funds']);
+const NO_BACK = new Set(['/dashboard', '/explore', '/requests', '/auctions', '/funds', '/welcome']);
 
 /** Back link above every other workspace page; it goes to the page's parent in the workspace. */
 export function WorkspaceBack({ type }: { type: AccountType | null }) {

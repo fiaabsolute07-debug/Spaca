@@ -3,7 +3,8 @@
  * one transaction per command, post-commit mock webhook delivery. Domain logic lives in the
  * per-domain `commands.ts` files under `src/modules/` (registry: `src/modules/commands.ts`).
  */
-import { accountTypeMessage, requiredAccountType } from '@/lib/account';
+import { accountTypeMessage, accountTypeOf, requiredAccountType } from '@/lib/account';
+import { needsOnboarding, onboardingMessage } from '@/lib/onboarding';
 import { withNotice } from '@/lib/notices';
 import { logError } from '@/lib/log';
 import { createHash, randomUUID } from 'node:crypto';
@@ -58,6 +59,11 @@ export async function POST(request: Request) {
     if (needed && !actor.roles.includes(needed)) throw new CommandError(accountTypeMessage(needed), 'FORBIDDEN');
     // SEC-10: suspended accounts keep existing obligations (delivery, messages, cancellation/refund, reviews) but start nothing new.
     if (actor.status !== 'ACTIVE' && !SUSPENDED_ALLOWED_COMMANDS.has(command)) throw new CommandError('This account is suspended; only existing orders can be handled', 'ACCOUNT_SUSPENDED');
+    // Onboarding: what others would see (a published service, an application, a campaign) waits until the account is set up.
+    if (needsOnboarding(command)) {
+      const [account] = await sql<{ onboarded: boolean }[]>`select onboarded_at is not null as onboarded from app.users where id=${actor.id}`;
+      if (!account?.onboarded) throw new CommandError(onboardingMessage(accountTypeOf(actor) ?? 'buyer'), 'DOMAIN_RULE');
+    }
     const inputHash = hashInput(valuesOf(form));
     const result = await sql.begin(async (tx) => {
       // Serialize same-key submits so concurrent duplicates replay the stored result instead of racing the unique insert.

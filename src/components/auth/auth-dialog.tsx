@@ -3,9 +3,8 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
-import { ArrowLeft, Check, Mail, X } from 'lucide-react';
+import { ArrowLeft, Check, Mail, Megaphone, PenTool, X } from 'lucide-react';
 import { SpacaMark } from '../brand/spaca-logo';
-import { Select } from '../select';
 
 export type TestAccount = { persona: string; name: string; role: string; returnTo: string };
 
@@ -14,28 +13,40 @@ type Props = {
   /** Overlay over the current page (intercepted route) or a standalone card (direct visit to /sign-in). */
   variant: 'modal' | 'page';
   returnTo: string;
-  defaultRole?: 'buyer' | 'creator';
+  /** Preselected account type when the link says who is joining (?role=creator); otherwise the person chooses. */
+  defaultRole?: AccountChoice | null;
   initialError?: string | null;
   initialMessage?: string | null;
   testAccounts: TestAccount[];
 };
 
+type AccountChoice = 'buyer' | 'creator';
+
 const BENEFITS = {
   signin: ['Crypto-native creators on X', 'Clear scopes and real work samples', 'Creators are paid when their work is approved'],
-  signup: ['One brief, many creators', 'Hire, offer your skills, or both', 'Every order has a clear scope and review'],
+  signup: ['One brief, many creators', 'Every order has a clear scope and review', 'Creators are paid when their work is approved'],
+  buyer: ['Post one brief and hear from many creators', 'Pay each creator when you approve their work', 'No wallet needed to hire'],
+  creator: ['Offer services with a clear scope and price', 'Apply to campaigns from web3 projects', 'Get paid when your work is approved'],
 };
+
+/** Buyer and creator accounts are separate (2026-09-15), so the choice comes first and is made on purpose. */
+const ACCOUNT_CHOICES: { value: AccountChoice; title: string; line: string; icon: typeof Megaphone }[] = [
+  { value: 'buyer', title: 'Buyer', line: 'I run a project and want to hire creators for campaigns.', icon: Megaphone },
+  { value: 'creator', title: 'Creator', line: 'I write, design, post or host, and want to be hired.', icon: PenTool },
+];
 
 /**
  * Sign in / create account in one dialog. Email and password post to /api/auth as JSON so errors show in place; test
  * accounts (local sandbox only) post to /api/dev/session. Social sign-in is not offered until an identity provider is
  * configured.
  */
-export function AuthDialog({ mode: initialMode, variant, returnTo, defaultRole = 'buyer', initialError = null, initialMessage = null, testAccounts }: Props) {
+export function AuthDialog({ mode: initialMode, variant, returnTo, defaultRole = null, initialError = null, initialMessage = null, testAccounts }: Props) {
   const router = useRouter();
   const [mode, setMode] = useState(initialMode);
   const [view, setView] = useState<'options' | 'email'>(initialError ? 'email' : 'options');
   const [error, setError] = useState<string | null>(initialError);
   const [busy, setBusy] = useState(false);
+  const [role, setRole] = useState<AccountChoice | null>(defaultRole);
   const titleId = useId();
   const dialogRef = useRef<HTMLDivElement>(null);
   const signup = mode === 'signup';
@@ -100,9 +111,9 @@ export function AuthDialog({ mode: initialMode, variant, returnTo, defaultRole =
     onClick={(event) => event.stopPropagation()}
   >
     <div className="auth-art" aria-hidden="true">
-      <h2>{signup ? 'Good work starts with a hello' : 'Launches start here'}</h2>
+      <h2>{!signup ? 'Launches start here' : role === 'creator' ? 'Get hired for the work you do best' : role === 'buyer' ? 'Find the voices your launch needs' : 'Good work starts with a hello'}</h2>
       <ul>
-        {BENEFITS[mode].map((benefit) => <li key={benefit}><Check size={18} strokeWidth={2.5} /> {benefit}</li>)}
+        {BENEFITS[signup && role ? role : mode].map((benefit) => <li key={benefit}><Check size={18} strokeWidth={2.5} /> {benefit}</li>)}
       </ul>
       <div className="auth-art-mark"><SpacaMark size={220} /></div>
     </div>
@@ -117,9 +128,20 @@ export function AuthDialog({ mode: initialMode, variant, returnTo, defaultRole =
       {initialMessage && <p className="notice" role="status">{initialMessage}</p>}
 
       {view === 'options' ? <div className="auth-options">
-        <button type="button" className="auth-option" onClick={() => setView('email')}>
+        {signup && <fieldset className="account-choice">
+          <legend>Choose your account type</legend>
+          {ACCOUNT_CHOICES.map((choice) => <label key={choice.value} className="account-choice-card">
+            <input type="radio" name="account_choice" value={choice.value} checked={role === choice.value} onChange={() => setRole(choice.value)} />
+            <span className="account-choice-icon" aria-hidden><choice.icon size={20} /></span>
+            <span className="account-choice-text"><strong>{choice.title}</strong><span>{choice.line}</span></span>
+            <span className="account-choice-tick" aria-hidden><Check size={14} strokeWidth={3} /></span>
+          </label>)}
+          <p className="account-choice-note">Each account is one type. To both hire and be hired, use a second email.</p>
+        </fieldset>}
+        <button type="button" className="auth-option" disabled={signup && !role} aria-describedby={signup && !role ? `${titleId}-choose` : undefined} onClick={() => setView('email')}>
           <Mail size={18} aria-hidden /> <span>Continue with email</span>
         </button>
+        {signup && !role && <p className="account-choice-hint" id={`${titleId}-choose`}>Choose Buyer or Creator to continue.</p>}
         {testAccounts.length > 0 && !signup && <>
           <div className="auth-divider"><span>Local test accounts</span></div>
           <ul className="auth-test-accounts">
@@ -138,15 +160,19 @@ export function AuthDialog({ mode: initialMode, variant, returnTo, defaultRole =
       </div> : <form className="auth-email" onSubmit={submit} action="/api/auth" method="post">
         <input type="hidden" name="action" value={signup ? 'signup' : 'login'} />
         <input type="hidden" name="return_to" value={returnTo} />
-        {signup && <label className="field"><span>Your name</span><input name="display_name" required maxLength={100} autoComplete="name" /></label>}
+        {signup && <>
+          <input type="hidden" name="role" value={role ?? 'buyer'} />
+          <p className="account-choice-chosen">
+            <span>Creating a <strong>{role === 'creator' ? 'creator' : 'buyer'} account</strong></span>
+            <button type="button" className="link-button" onClick={() => { setView('options'); setError(null); }}>Change</button>
+          </p>
+        </>}
         <label className="field"><span>Email address</span><input name="email" type="email" required autoComplete="email" autoFocus /></label>
         <label className="field"><span>Password {signup ? '(at least 12 characters)' : ''}</span>
           <input name="password" type="password" required minLength={12} autoComplete={signup ? 'new-password' : 'current-password'} /></label>
-        {signup && <div className="field"><span id={`${titleId}-role`}>What brings you here?</span>
-          <Select name="role" labelledBy={`${titleId}-role`} defaultValue={defaultRole}
-            options={[{ value: 'buyer', label: 'I want to hire creators' }, { value: 'creator', label: 'I want to offer my skills' }]} /></div>}
         {error && <p className="auth-error" role="alert">{error}</p>}
         <button className="button button-dark auth-submit" type="submit" disabled={busy}>{busy ? 'Please wait…' : signup ? 'Create account' : 'Sign in'}</button>
+        {signup && <p className="account-choice-next">Next you add a photo, your {role === 'creator' ? 'creator name' : 'project name'} and a short introduction.</p>}
       </form>}
 
       <p className="auth-legal">

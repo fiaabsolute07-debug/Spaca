@@ -8,6 +8,7 @@ import { HeaderNav } from '@/components/header-nav';
 import { AccountMenu, WorkspaceBack } from '@/components/account-menu';
 import { FundMenu } from '@/components/fund-menu';
 import { accountTypeOf } from '@/lib/account';
+import { getAccountSummary } from '@/lib/read-model';
 import { SpacaLockup } from '@/components/brand/spaca-logo';
 import { themeBootScript } from '@/components/landing/theme-boot';
 import './globals.css';
@@ -30,6 +31,7 @@ export const dynamic = 'force-dynamic';
 
 export default async function RootLayout({ children, auth }: { children: React.ReactNode; auth: React.ReactNode }) {
   const actor = await getActor();
+  const account = actor ? await getAccountSummary(actor) : null;
   const header = <>
     <div className="sandbox-banner"><span className="live-dot" /> <strong>Local sandbox</strong> Test accounts and simulated payments. No real funds move.</div>
     <div className="header-shell">
@@ -42,7 +44,7 @@ export default async function RootLayout({ children, auth }: { children: React.R
         </form>
         <div className="header-actions">
           {actor
-            ? <><FundMenu type={accountTypeOf(actor)} /><AccountMenu type={accountTypeOf(actor)} /></>
+            ? <><FundMenu type={accountTypeOf(actor)} /><AccountMenu type={accountTypeOf(actor)} account={account!} /></>
             : <><Link href="/sign-in" className="login-link" scroll={false}>Log in</Link><Link href="/sign-up" className="button button-dark compact" scroll={false}>Get started</Link></>}
         </div>
       </header>

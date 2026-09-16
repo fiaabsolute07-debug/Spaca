@@ -1,7 +1,7 @@
 import { listInAppNotifications } from '@/modules/notifications/store';
 import { isCreator } from '@/lib/account';
 import Link from 'next/link';
-import { getDashboardData } from '@/lib/read-model';
+import { getAccountSummary, getDashboardData } from '@/lib/read-model';
 import { Badge, Empty, OrderList, date, money, num, row, rows } from '@/components/ui';
 import { Notices } from '@/components/notices';
 import { PageHeading } from '@/components/page-heading';
@@ -22,7 +22,7 @@ export default async function DashboardPage({
   if (!actor) return prompt;
   const notices = <Notices query={query} />;
   const d = row(await getDashboardData(actor));
-  const notifications = await listInAppNotifications(actor.id, 8);
+  const [notifications, account] = await Promise.all([listInAppNotifications(actor.id, 8), getAccountSummary(actor)]);
   const stats = row(d.stats);
   const workload = row(d.workload);
   const orders = rows(d.orders);
@@ -30,6 +30,15 @@ export default async function DashboardPage({
   return <main className="container">
       <section>
         {notices}
+        {!account.onboarded && <Link className="onboard-nudge" href="/welcome">
+          <span className="onboard-nudge-text">
+            <strong>Finish setting up your {creatorAccount ? 'creator profile' : 'project'}</strong>
+            <span>{creatorAccount
+              ? 'Add a photo, your creator name and a short introduction. Publishing services and applying to campaigns wait until then.'
+              : 'Add your logo, the project name and a short introduction. Posting a campaign waits until then.'}</span>
+          </span>
+          <span className="button button-dark compact">Finish setup</span>
+        </Link>}
         <PageHeading
           eyebrow="Your workspace"
           title="Keep good work moving."

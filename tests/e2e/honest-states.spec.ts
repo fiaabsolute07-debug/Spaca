@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { baseURL, bookFromExplore, chooseOption, createPublishedService, dateTimeLocal, expectNoHorizontalOverflow, expectOrderState, login, submit, uniqueSuffix, visit, waitForHydration, openAccountMenu } from './helpers';
+import { baseURL, bookFromExplore, chooseOption, completeSetup, createPublishedService, signUpInDialog, dateTimeLocal, expectNoHorizontalOverflow, expectOrderState, login, submit, uniqueSuffix, visit, waitForHydration, openAccountMenu } from './helpers';
 
 test('FND-04: each account type sees only its own workspace; a legacy dual test account can use both; nobody reaches the admin console', async ({ page }) => {
   await login(page, 'buyer_a');
@@ -31,19 +31,8 @@ test('SUP-02 / REV-03: a brand-new creator shows as new, with no invented rating
   const start = page.getByRole('banner').getByRole('link', { name: 'Get started', exact: true });
   await waitForHydration(start);
   await start.click();
-  const dialog = page.getByRole('dialog', { name: 'Create your account' });
-  await dialog.getByRole('button', { name: 'Continue with email' }).click();
-  await dialog.getByLabel('Your name').fill('Fresh Creator');
-  await dialog.getByLabel('Email address').fill(`fresh-${suffix}@example.test`);
-  await dialog.getByLabel(/^Password/).fill('a-long-test-password');
-  await chooseOption(page, dialog, 'What brings you here?', 'I want to offer my skills');
-  await Promise.all([page.waitForURL(/\/dashboard$/), dialog.getByRole('button', { name: 'Create account' }).click()]);
-
-  await visit(page, '/settings/profile');
-  const details = page.getByRole('region', { name: 'Details' });
-  await details.getByLabel('Public handle').fill(handle);
-  await details.getByLabel('Bio').fill('Writes launch threads for developer tools and L2 teams; new to spaca.');
-  await submit(page, details.getByRole('button', { name: 'Save profile', exact: true }));
+  await signUpInDialog(page, 'Creator', `fresh-${suffix}@example.test`);
+  await completeSetup(page, { name: 'Fresh Creator', handle, headline: 'Launch threads for developer tools', intro: 'Writes launch threads for developer tools and L2 teams; new to spaca.' });
 
   await visit(page, '/creator/services/new');
   await page.getByLabel('Service title', { exact: true }).fill(title);

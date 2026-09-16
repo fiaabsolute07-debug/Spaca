@@ -15,7 +15,10 @@ import {
   type Row,
   type Tx,
 } from '@/lib/commands';
+import { randomBytes } from 'node:crypto';
 import type { Actor } from '@/lib/auth';
+import { isCreator } from '@/lib/account';
+import { FOCUS_OPTIONS, HEADLINE_MAX, INTRO_MAX, INTRO_MIN, MAX_FOCUS, handleFrom, nextPath, normalizeLink } from '@/lib/onboarding';
 import { claimWorkload, setAcceptingOrders } from '@/modules/capacity';
 import { isValidTimeZone } from '@/modules/capacity/weeks';
 import { assertFlags } from '@/modules/admin/policy';
@@ -120,13 +123,21 @@ const updateProfile: CommandHandler = async ({ tx, actor, form }) => {
   return { path: '/settings/profile', message: 'Profile saved' };
 };
 
-/** Profile photo: the caller's own finalized AVATAR upload. Replacing it leaves the old file to storage cleanup. */
-const setAvatar: CommandHandler = async ({ tx, actor, form }) => {
-  const ids = text(form, 'asset_ids', false, 200).split(',').map((id) => id.trim()).filter(Boolean);
-  if (ids.length !== 1) throw new CommandError('Choose one photo');
-  const [asset] = await tx<Row[]>`select id,lifecycle_state from app.storage_assets where id=${ids[0]!} and owner_id=${actor.id} and purpose='AVATAR' for share`;
+const avatarIds = (form: FormData) => text(form, 'asset_ids', false, 200).split(',').map((id) => id.trim()).filter(Boolean);
+
+/** The caller's own finalized AVATAR upload, locked for the rest of the command. */
+async function ownAvatar(tx: Tx, actor: Actor, id: string): Promise<string> {
+  const [asset] = await tx<Row[]>`select id,lifecycle_state from app.storage_assets where id=${id} and owner_id=${actor.id} and purpose='AVATAR' for share`;
   if (!asset) throw new CommandError('Upload the photo first', 'NOT_FOUND');
   if (asset.lifecycle_state !== 'READY') throw new CommandError('This photo did not pass the upload checks', 'DOMAIN_RULE');
+  return String(asset.id);
+}
+
+/** Profile photo: the caller's own finalized AVATAR upload. Replacing it leaves the old file to storage cleanup. */
+const setAvatar: CommandHandler = async ({ tx, actor, form }) => {
+  const ids = avatarIds(form);
+  if (ids.length !== 1) throw new CommandError('Choose one photo');
+  await ownAvatar(tx, actor, ids[0]!);
   const updated = await tx`update app.profiles set avatar_asset_id=${ids[0]!},updated_at=now() where user_id=${actor.id} returning user_id`;
   if (!updated.length) throw new CommandError('Save your profile (name and handle) before adding a photo', 'DOMAIN_RULE');
   return { path: '/settings/profile', message: 'Profile photo updated' };
@@ -135,6 +146,64 @@ const setAvatar: CommandHandler = async ({ tx, actor, form }) => {
 const removeAvatar: CommandHandler = async ({ tx, actor }) => {
   await tx`update app.profiles set avatar_asset_id=null,updated_at=now() where user_id=${actor.id}`;
   return { path: '/settings/profile', message: 'Profile photo removed' };
+};
+
+/** A free public handle made from the project name; buyers never have to pick one. */
+async function freeHandle(tx: Tx, actor: Actor, name: string): Promise<string> {
+  const stem = handleFrom(name).slice(0, 26).replace(/-+$/, '') || 'project';
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    const candidate = attempt === 0 && stem.length >= 3 ? stem : `${stem}-${randomBytes(2).toString('hex')}`;
+    const [taken] = await tx<Row[]>`select 1 from app.profiles where handle=${candidate} and user_id<>${actor.id}`;
+    if (!taken) return candidate;
+  }
+  throw new CommandError('Could not make a public handle from this name; try a slightly different name', 'DOMAIN_RULE');
+}
+
+/**
+ * Account setup right after sign-up (src/lib/onboarding.ts): photo, name, one line on what the account does and a short
+ * introduction, saved together, then the account counts as set up. Creators choose their public handle; a buyer's
+ * handle is made from the project name. Running it again later updates the same fields.
+ */
+const completeOnboarding: CommandHandler = async ({ tx, actor, form }) => {
+  const creator = isCreator(actor);
+  const required = (name: string, message: string, max: number) => {
+    if (!String(form.get(name) ?? '').trim()) throw new CommandError(message);
+    return text(form, name, true, max);
+  };
+  const displayName = required('display_name', creator ? 'Add your creator name' : 'Add the project name', 100);
+  const headline = required('headline', creator ? 'Add one line on what you do' : 'Add one line on what you are building', HEADLINE_MAX);
+  const intro = required('bio', creator ? 'Introduce yourself in a few sentences' : 'Introduce the project in a few sentences', INTRO_MAX);
+  if (intro.length < INTRO_MIN) throw new CommandError(`Write at least ${INTRO_MIN} characters in the introduction`);
+  const focus = [...new Set(form.getAll('focus').map((value) => String(value).trim()))]
+    .filter((value) => (FOCUS_OPTIONS as readonly string[]).includes(value));
+  if (focus.length > MAX_FOCUS) throw new CommandError(`Choose up to ${MAX_FOCUS} focus areas`);
+  const linkValue = text(form, 'link', false, 500);
+  const link = linkValue ? httpUrl(normalizeLink(linkValue), 'The link') : null;
+  assertContentPolicy(`${displayName}\n${headline}\n${intro}`);
+
+  const [existing] = await tx<Row[]>`select handle,niche,avatar_asset_id from app.profiles where user_id=${actor.id} for update`;
+  let handle: string;
+  if (creator) {
+    handle = text(form, 'handle', false, 64).toLowerCase();
+    if (!/^[a-z0-9][a-z0-9_-]{2,31}$/.test(handle)) throw new CommandError('Your handle needs 3–32 lowercase letters, numbers, _ or -, starting with a letter or number');
+    const [taken] = await tx<Row[]>`select 1 from app.profiles where handle=${handle} and user_id<>${actor.id}`;
+    if (taken) throw new CommandError('That handle is already taken');
+  } else {
+    handle = existing?.handle ? String(existing.handle) : await freeHandle(tx, actor, displayName);
+  }
+  const ids = avatarIds(form);
+  if (ids.length > 1) throw new CommandError('Choose one photo');
+  const avatar = ids.length ? await ownAvatar(tx, actor, ids[0]!) : existing?.avatar_asset_id ? String(existing.avatar_asset_id) : null;
+  if (!avatar) throw new CommandError(creator ? 'Add a profile photo' : 'Add your project logo');
+  const keptNiche = existing && !['Independent creator', 'Web3 project'].includes(String(existing.niche)) ? String(existing.niche) : '';
+  const niche = focus.join(', ') || keptNiche || (creator ? 'Independent creator' : 'Web3 project');
+
+  await tx`insert into app.profiles (user_id,handle,bio,niche,social_url,headline,avatar_asset_id)
+    values (${actor.id},${handle},${intro},${niche},${link},${headline},${avatar})
+    on conflict (user_id) do update set handle=excluded.handle,bio=excluded.bio,niche=excluded.niche,social_url=excluded.social_url,
+      headline=excluded.headline,avatar_asset_id=excluded.avatar_asset_id,updated_at=now()`;
+  await tx`update app.users set display_name=${displayName},onboarded_at=coalesce(onboarded_at,now()) where id=${actor.id}`;
+  return { path: nextPath(text(form, 'next', false, 300)), message: creator ? 'Your creator profile is ready' : 'Your project profile is ready' };
 };
 
 const addSample: CommandHandler = async ({ tx, actor, form }) => {
@@ -368,6 +437,7 @@ export const catalogCommands: Record<string, CommandHandler> = {
   update_profile: updateProfile,
   set_avatar: setAvatar,
   remove_avatar: removeAvatar,
+  complete_onboarding: completeOnboarding,
   add_sample: addSample,
   create_service: createService,
   update_service: updateService,

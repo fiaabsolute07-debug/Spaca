@@ -119,6 +119,42 @@ export async function getOpenGoalCounts(): Promise<Record<string, number>> {
   }
 }
 
+/** Who is signed in, for the header's Account menu and the setup page: name, photo, handle, setup state and newest wallet. */
+export type AccountSummary = {
+  name: string;
+  handle: string | null;
+  avatarAssetId: string | null;
+  onboarded: boolean;
+  headline: string;
+  bio: string;
+  focus: string;
+  link: string;
+  wallet: { address: string; network: string; mode: string; count: number } | null;
+};
+
+export async function getAccountSummary(actor: Actor): Promise<AccountSummary> {
+  const [row] = asRows(await sql`select u.display_name,u.onboarded_at is not null as onboarded,p.handle,p.avatar_asset_id,p.headline,p.bio,p.niche,p.social_url,
+      w.address as wallet_address,n.name as wallet_network,n.mode as wallet_mode,
+      (select count(*)::int from app.wallets x where x.user_id=u.id and x.revoked_at is null) as wallet_count
+    from app.users u
+    left join app.profiles p on p.user_id=u.id
+    left join lateral (select address,chain_id from app.wallets where user_id=u.id and revoked_at is null order by verified_at desc limit 1) w on true
+    left join app.chain_networks n on n.chain_id=w.chain_id
+    where u.id=${actor.id}`);
+  const niche = String(row?.niche ?? '');
+  return {
+    name: String(row?.display_name ?? actor.display_name),
+    handle: row?.handle ? String(row.handle) : null,
+    avatarAssetId: row?.avatar_asset_id ? String(row.avatar_asset_id) : null,
+    onboarded: row ? Boolean(row.onboarded) : true,
+    headline: String(row?.headline ?? ''),
+    bio: String(row?.bio ?? ''),
+    focus: ['Independent creator', 'Web3 project', 'Local fixture'].includes(niche) ? '' : niche,
+    link: String(row?.social_url ?? ''),
+    wallet: row?.wallet_address ? { address: String(row.wallet_address), network: String(row.wallet_network ?? ''), mode: String(row.wallet_mode ?? ''), count: Number(row.wallet_count ?? 1) } : null,
+  };
+}
+
 export async function getDashboardData(actor: Actor) {
   const [services, orders, applications, requests, auctions, profile, stats] = await Promise.all([
     serviceRows({ ownerId: actor.id }),

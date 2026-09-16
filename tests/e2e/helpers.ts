@@ -237,3 +237,37 @@ export async function setFlag(page: Page, key: string, enabled: boolean, reason:
   await card.getByLabel(/Reason for the audit log/).fill(reason);
   await submit(page, card.getByRole('button', { name: 'Save flag', exact: true }));
 }
+
+// 1×1 PNG, for profile photos and logos.
+export const TINY_PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYGD4DwABBAEAwS2OUAAAAABJRU5ErkJggg==', 'base64');
+
+/**
+ * Create an account in the open "Create your account" dialog: the account type first, then email and password.
+ * New accounts land on account setup (/welcome).
+ */
+export async function signUpInDialog(page: Page, type: 'Buyer' | 'Creator', email = `${type.toLowerCase()}-${uniqueSuffix()}@example.test`) {
+  // The dialog over a page, or the same card on a direct visit to /sign-up.
+  const dialog = page.locator('.auth-dialog').filter({ has: page.getByRole('heading', { level: 1, name: 'Create your account' }) });
+  const choice = dialog.getByRole('radio', { name: new RegExp(`^${type}`) });
+  await waitForHydration(choice);
+  await choice.check();
+  await dialog.getByRole('button', { name: 'Continue with email' }).click();
+  await expect(dialog.getByText(`Creating a ${type.toLowerCase()} account`)).toBeVisible();
+  await dialog.getByLabel('Email address').fill(email);
+  await dialog.getByLabel(/^Password/).fill('a-long-test-password');
+  await Promise.all([page.waitForURL(/\/welcome(\?|$)/), dialog.getByRole('button', { name: 'Create account' }).click()]);
+  return email;
+}
+
+/** Finish account setup on /welcome: photo or logo, name, one line, introduction (and a handle for creators). */
+export async function completeSetup(page: Page, fields: { name: string; headline: string; intro: string; handle?: string }, destination: RegExp = /\/dashboard$/) {
+  const upload = page.getByLabel(/^Upload (photo|logo)$/);
+  await waitForHydration(upload);
+  await upload.setInputFiles({ name: 'photo.png', mimeType: 'image/png', buffer: TINY_PNG });
+  await expect(page.getByText('Ready', { exact: true })).toBeVisible();
+  await page.getByLabel(/^(Creator|Project) name$/).fill(fields.name);
+  if (fields.handle) await page.getByLabel('Public handle').fill(fields.handle);
+  await page.getByLabel(/^What you (do|are building)$/).fill(fields.headline);
+  await page.getByLabel(/^(Introduce yourself|About the project)$/).fill(fields.intro);
+  await Promise.all([page.waitForURL(destination), page.getByRole('button', { name: 'Finish setup' }).click()]);
+}

@@ -34,7 +34,7 @@ test('workspace navigation lives in the header Account menu; pages change in the
   menu = await openAccountMenu(page);
   await Promise.all([page.waitForURL(/\/settings\/profile$/), menu.getByRole('link', { name: 'Profile', exact: true }).click()]);
   await expect(page.getByRole('heading', { level: 1, name: 'Your public profile' })).toBeVisible();
-  await expect(page.getByText('Buyer account', { exact: true })).toBeVisible();
+  await expect(page.getByRole('main').getByText('Buyer account', { exact: true })).toBeVisible();
   await expect(page.getByRole('link', { name: 'Back to Overview', exact: true })).toBeVisible();
   expect(page.context().pages()).toHaveLength(1);
 });
