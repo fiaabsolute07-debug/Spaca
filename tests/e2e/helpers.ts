@@ -43,8 +43,24 @@ export async function expectNoHorizontalOverflow(page: Page, soft = false) {
     .toBeLessThanOrEqual(dimensions.viewport + 1);
 }
 
+/**
+ * The dev server compiles routes on demand and drops ones idle for a while. Recompiling one pushes a hot update to the
+ * page already open, which reloads it and aborts a navigation started at that moment (net::ERR_ABORTED). That abort
+ * says nothing about the app, so the navigation is retried; any other failure is not.
+ */
+async function gotoAllowingDevReload(page: Page, path: string) {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await page.goto(path);
+    } catch (error) {
+      if (attempt >= 3 || !String(error).includes('net::ERR_ABORTED')) throw error;
+      await page.waitForLoadState('load').catch(() => {});
+    }
+  }
+}
+
 export async function visit(page: Page, path: string) {
-  const response = await page.goto(path);
+  const response = await gotoAllowingDevReload(page, path);
   expect(response?.status(), path).toBe(200);
   await expect(page.getByRole('main')).toBeVisible();
   await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
