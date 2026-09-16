@@ -7,7 +7,7 @@ import { isBuyer } from '@/lib/account';
 import { Empty, rows, str } from '@/components/ui';
 import { Notices } from '@/components/notices';
 import { PageHeading } from '@/components/page-heading';
-import { RequestCard } from '@/components/request-card';
+import { CampaignBoard } from '@/components/campaign/campaign-board';
 import { GoalTabs } from '@/components/campaign/goal-tabs';
 import type { PageProps } from '@/components/page-props';
 import { goalBySlug } from '@/modules/requests/goals';
@@ -43,15 +43,13 @@ export default async function RequestsPage({
           : <Link className="button button-dark" href={postHref}>Post a brief</Link>}
       </div>
       <GoalTabs current={null} counts={data.goal_counts} />
-      <div className="cards">
-        {rows(data.requests).length ? (
-          rows(data.requests).map(r => <RequestCard key={str(r.id)} item={r} />)
-        ) : (
-          <Empty title="No open briefs yet">
-            Be the first to share a project with the creator community.
-          </Empty>
-        )}
-      </div>
+      {rows(data.requests).length ? (
+        <CampaignBoard items={data.requests} label="All open campaigns" />
+      ) : (
+        <Empty title="No open briefs yet">
+          Be the first to share a project with the creator community.
+        </Empty>
+      )}
     </>
   </main>;
 }

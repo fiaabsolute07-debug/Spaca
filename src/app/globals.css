@@ -602,23 +602,45 @@ td small { display: block; color: var(--faint); margin-top: 3px; font-size: 12px
 .choice-cards.choice-cards-two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .panel .brief-section { margin: 26px 0 12px; font-size: 17px; }
 
-/* ---------- Campaign cards and images ---------- */
-.panel.campaign-card { display: flex; flex-direction: column; padding: 0; overflow: hidden; transition: box-shadow 0.15s; }
-.panel.campaign-card:hover { box-shadow: var(--shadow); }
-.campaign-cover { position: relative; display: grid; place-items: center; aspect-ratio: 16 / 9; max-width: 100%; background: var(--soft-2); border-bottom: 1px solid var(--line); color: var(--muted); }
-.campaign-cover img { display: block; width: 100%; height: 100%; object-fit: cover; }
-.campaign-cover-count { position: absolute; right: 10px; bottom: 10px; padding: 2px 8px; border-radius: var(--radius); background: rgba(18, 18, 20, 0.78); color: var(--ink); font-size: 12px; font-weight: 600; }
-.campaign-body { display: flex; flex: 1; flex-direction: column; gap: 6px; padding: 18px 20px 20px; }
-.panel .campaign-body h3 { margin: 6px 0 0; }
-.campaign-by { font-size: 13px; color: var(--faint); }
-.campaign-meta { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 6px 12px; margin-top: auto; padding-top: 12px; font-size: 13px; color: var(--muted); }
-.campaign-budget { font-size: 17px; color: var(--ink); }
+/* ---------- Campaign board: one row per campaign, every figure in its own column ---------- */
+.board { border: 1px solid var(--line); background: var(--soft); }
+.board-head, .board-row { display: grid; grid-template-columns: minmax(0, 2.4fr) repeat(3, minmax(0, 1fr)) minmax(0, 1.2fr); align-items: center; }
+.board-head { background: var(--bg); border-bottom: 1px solid var(--line); }
+.board-head > * { padding: 10px 18px; font-family: var(--mono); font-size: 11px; font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+.board-rows { list-style: none; margin: 0; padding: 0; }
+.board-rows li + li .board-row { border-top: 1px solid var(--line); }
+.board-row { color: var(--ink); transition: background-color 0.15s ease; }
+.board-row > * { min-width: 0; padding: 16px 18px; }
+.board-row:hover { background: var(--soft-2); }
+.board-campaign { display: grid; grid-template-columns: 40px minmax(0, 1fr); gap: 14px; align-items: center; }
+.board-mark { display: grid; place-items: center; width: 40px; height: 40px; overflow: hidden; border: 1px solid var(--line-strong); color: var(--ink); }
+.board-mark img { width: 100%; height: 100%; object-fit: cover; }
+.board-name { display: grid; gap: 5px; min-width: 0; }
+.board-name strong { font-family: var(--body); font-size: 16px; font-weight: 600; line-height: 1.25; letter-spacing: normal; text-transform: none; }
+.board-name small { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); }
+.board-figure { display: grid; gap: 3px; align-content: center; }
+.board-value { font-family: var(--mono); font-size: 16px; font-weight: 500; font-variant-numeric: tabular-nums; line-height: 1.2; }
+/* Money is the one figure written in lime. */
+.board-value.is-pay { color: var(--accent-text); }
+.board-figure small { font-family: var(--mono); font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+.spots { display: flex; gap: 3px; margin-top: 3px; }
+.spots i { width: 12px; height: 6px; background: var(--line-strong); transform: skewX(-40deg); }
+.spots i.is-filled { background: var(--accent); }
+.board-status { justify-self: start; }
+@media (max-width: 820px) {
+  /* On a phone the column head goes and each row folds: the name across the top, the figures in two columns. */
+  .board-head { display: none; }
+  .board-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .board-row > * { padding: 10px 14px; }
+  .board-campaign { grid-column: 1 / -1; padding-top: 14px; }
+  .board-status { grid-column: 1 / -1; padding-bottom: 14px; }
+}
+
+/* ---------- Campaign images on the campaign page ---------- */
 .campaign-gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 8px; margin: 0 0 18px; }
 .campaign-gallery > div { display: block; max-width: 100%; aspect-ratio: 4 / 3; overflow: hidden; border-radius: var(--radius); background: var(--soft); }
 .campaign-gallery > div:first-child { grid-column: 1 / -1; aspect-ratio: 16 / 9; }
 .campaign-gallery img { display: block; width: 100%; height: 100%; object-fit: cover; }
-.cards:has(> .campaign-card) { grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr)); }
-.campaign-cover svg { width: 44px; height: 44px; }
 .owner-images { margin: 18px 0; padding-top: 16px; border-top: 1px solid var(--line); }
 .file-thumb { flex-shrink: 0; width: 44px; height: 44px; border-radius: 8px; object-fit: cover; }
 @media (max-width: 860px) { .choice-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
@@ -750,29 +772,56 @@ td small { display: block; color: var(--faint); margin-top: 3px; font-size: 12px
 .funds-more[open] summary { margin-bottom: 4px; }
 
 /* ---------- Campaign tabs: one page per goal ---------- */
-.goal-tabs { display: flex; gap: 4px; margin: 0 0 28px; border-bottom: 1px solid var(--line); overflow-x: auto; scrollbar-width: none; }
+.goal-tabs { display: flex; margin: 0; border: 1px solid var(--line); background: var(--soft); overflow-x: auto; scrollbar-width: none; }
 .goal-tabs::-webkit-scrollbar { display: none; }
-.goal-tab { display: inline-flex; align-items: center; gap: 7px; flex: none; padding: 12px 14px; border-bottom: 2px solid transparent; margin-bottom: -1px; font-size: 14px; color: var(--muted); white-space: nowrap; }
-.goal-tab:hover { color: var(--ink); }
-.goal-tab[aria-current] { border-bottom-color: var(--accent); color: var(--ink); font-weight: 600; }
-.goal-tab[aria-current] svg { color: var(--accent); }
-.goal-tab[aria-current] .goal-count { background: var(--accent-soft); color: var(--accent); }
-.goal-hero { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 32px; align-items: start; margin: 0 0 40px; }
-.goal-eyebrow { display: inline-flex; align-items: center; gap: 6px; margin: 0 0 12px; font-size: 13px; font-weight: 600; color: var(--accent); }
-.goal-hero h1 { margin: 0 0 14px; font-size: clamp(30px, 4vw, 44px); line-height: 1.08; letter-spacing: -0.03em; }
-.goal-pitch { margin: 0 0 22px; font-size: 17px; line-height: 1.55; color: var(--muted); max-width: 560px; }
-.goal-steps { display: grid; gap: 10px; margin: 0; padding: 0; list-style: none; }
-.goal-steps li { display: grid; grid-template-columns: 32px minmax(0, 1fr); column-gap: 12px; row-gap: 2px; padding: 16px; border-radius: var(--radius); background: var(--soft); }
+.goal-tab { display: inline-flex; align-items: center; gap: 8px; flex: none; padding: 14px 16px; border-right: 1px solid var(--line); font-family: var(--mono); font-size: 12px; font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); white-space: nowrap; }
+.goal-tab:last-child { border-right: 0; }
+.goal-tab:hover { background: var(--soft-2); color: var(--ink); }
+/* The tab you are on is a raised cell underlined in lime -- the only lime on the strip. */
+.goal-tab[aria-current] { background: var(--soft-2); color: var(--ink); box-shadow: inset 0 -2px 0 var(--accent); }
+.goal-tab[aria-current] .goal-count { background: transparent; color: var(--accent-text); }
+.goal-hero { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); align-items: stretch; margin: 0 0 8px; border: 1px solid var(--line); border-top: 0; background: var(--soft); }
+.goal-hero-text { display: grid; gap: 16px; align-content: start; padding: 28px; border-right: 1px solid var(--line); }
+.goal-eyebrow { display: inline-flex; align-items: center; gap: 7px; margin: 0; font-family: var(--mono); font-size: 11px; font-weight: 500; letter-spacing: 0.1em; text-transform: uppercase; color: var(--accent-text); }
+.goal-hero h1 { margin: 0; font-size: clamp(32px, 4.6vw, 56px); line-height: 0.9; font-weight: 800; font-stretch: 75%; text-transform: uppercase; letter-spacing: -0.005em; }
+.goal-pitch { margin: 0; font-size: 17px; line-height: 1.55; color: var(--ink-2); max-width: 46ch; }
+/* Four figures read straight off the open campaigns; a tab with none shows its drawing here instead. */
+.goal-facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-content: stretch; margin: 0 -1px -1px 0; }
+.goal-fact { display: grid; gap: 5px; align-content: center; padding: 18px 22px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.goal-fact:last-child:nth-child(odd) { grid-column: 1 / -1; }
+.goal-fact b { font-family: var(--display); font-size: clamp(24px, 2.6vw, 32px); font-weight: 700; font-stretch: 80%; font-variant-numeric: tabular-nums; line-height: 1; }
+.goal-fact span { font-family: var(--mono); font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+.goal-hero-art { display: grid; place-items: center; padding: 24px; }
+.goal-hero-art .goal-art { width: min(240px, 100%); }
+.goal-steps { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0; margin: 0; padding: 0; list-style: none; border: 1px solid var(--line); background: var(--soft); }
+.goal-steps li { display: grid; grid-template-columns: 32px minmax(0, 1fr); column-gap: 12px; row-gap: 3px; padding: 20px; border-right: 1px solid var(--line); }
+.goal-steps li:last-child { border-right: 0; }
 .goal-step-number { grid-row: span 2; display: grid; place-items: center; width: 32px; height: 32px; border-radius: 50%; background: var(--bg); border: 1px solid var(--line-strong); font-size: 14px; font-weight: 600; color: var(--accent-text); }
 .goal-steps strong { font-size: 15px; }
 .goal-steps small { font-size: 13.5px; line-height: 1.45; color: var(--muted); }
+.goal-art { display: block; max-width: 100%; height: auto; aspect-ratio: 1 / 1; }
+.goal-art * { vector-effect: non-scaling-stroke; }
+.goal-art .art { fill: none; stroke: currentColor; stroke-width: 1.5; }
+.goal-art .dot { fill: none; stroke: var(--faint); stroke-width: 1.2; stroke-dasharray: 2 4; }
+.goal-art .hl { fill: var(--accent-soft); stroke: var(--accent-text); stroke-width: 1.5; }
+
 .goal-section { margin: 0 0 40px; }
-.goal-section-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
-.goal-section h2 { display: inline-flex; align-items: center; gap: 8px; margin: 0; font-size: 22px; }
-.goal-empty { display: grid; gap: 18px; padding: 28px; border: 1.5px dashed var(--line-strong); border-radius: var(--radius); }
+.goal-section h2 { display: inline-flex; align-items: center; gap: 10px; margin: 0; }
+.goal-empty { display: grid; grid-template-columns: minmax(0, 1fr) 160px; gap: 24px; align-items: center; padding: 28px; border: 1px solid var(--line); background: var(--soft); }
+.goal-empty > div:first-child { grid-column: 1; }
+.goal-empty .goal-art { width: 160px; }
+.goal-empty .goal-elsewhere { grid-column: 1 / -1; }
 .goal-empty h3 { margin: 0 0 6px; font-size: 18px; }
 .goal-empty .muted { margin: 0 0 14px; max-width: 560px; }
 .goal-elsewhere { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .goal-delivers { display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0 10px; padding: 0; list-style: none; }
 .goal-delivers li { height: 32px; display: inline-flex; align-items: center; padding: 0 12px; border: 1px solid var(--line-strong); border-radius: 999px; background: var(--soft); font-size: 13px; }
-@media (max-width: 860px) { .goal-hero { grid-template-columns: minmax(0, 1fr); gap: 24px; } }
+@media (max-width: 860px) {
+  .goal-hero { grid-template-columns: minmax(0, 1fr); }
+  .goal-hero-text { border-right: 0; border-bottom: 1px solid var(--line); }
+  .goal-steps { grid-template-columns: minmax(0, 1fr); }
+  .goal-steps li { border-right: 0; border-bottom: 1px solid var(--line); }
+  .goal-steps li:last-child { border-bottom: 0; }
+  .goal-empty { grid-template-columns: minmax(0, 1fr); }
+  .goal-empty .goal-art { width: 120px; justify-self: start; }
+}

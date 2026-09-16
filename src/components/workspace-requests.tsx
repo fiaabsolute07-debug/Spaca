@@ -3,7 +3,7 @@ import { getDashboardData } from '@/lib/read-model';
 import { Badge, Empty, date, money, row, rows, str } from '@/components/ui';
 import { Notices } from '@/components/notices';
 import { PageHeading } from '@/components/page-heading';
-import { RequestCard } from '@/components/request-card';
+import { CampaignBoard } from '@/components/campaign/campaign-board';
 import type { Query } from '@/components/page-props';
 import type { Actor } from '@/lib/auth';
 import type { AccountType } from '@/lib/account';
@@ -71,9 +71,7 @@ export async function WorkspaceRequests({
       />
       <Link className="button button-dark" href="/buyer/requests/new">Post a brief</Link>
     </div>
-    {rows(d.requests).length ? <div className="cards">
-      {rows(d.requests).map(r => <RequestCard key={str(r.id)} item={r} />)}
-    </div> : <Empty title="No briefs yet">
+    {rows(d.requests).length ? <CampaignBoard items={d.requests} label="My campaigns" /> : <Empty title="No briefs yet">
       <Link href="/buyer/requests/new" className="text-link">Share a project brief ›</Link>
     </Empty>}
   </main>;

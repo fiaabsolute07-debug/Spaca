@@ -52,7 +52,7 @@ test('the header opens Explore and Campaigns as menus, and a campaign goal filte
   const openSection = page.getByRole('region', { name: /^Open Airdrop campaigns/ });
   await expect(openSection.getByRole('link', { name: new RegExp(title) })).toBeVisible();
   // Every open campaign on a tab carries that goal.
-  const cards = openSection.locator('.campaign-card');
+  const cards = openSection.locator('.board-row');
   expect(await cards.count()).toBeGreaterThan(0);
   for (const card of await cards.all()) await expect(card.locator('.badge-goal')).toHaveText('Airdrop');
 
