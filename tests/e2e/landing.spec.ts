@@ -56,6 +56,13 @@ test('below the hero: seven campaign tiles, a 3D walk-through of a campaign, and
   await expect(deliver).toHaveAttribute('aria-selected', 'true');
 
   await expect(page.getByRole('img', { name: /A reward pool pays each creator when their work is approved/ })).toBeVisible();
+
+  // The footer uses the same system as the page and shows no unfilled placeholders.
+  const footer = page.getByRole('contentinfo');
+  for (const column of ['Product', 'Creators', 'Company', 'Legal']) await expect(footer.getByRole('navigation', { name: column })).toBeVisible();
+  await expect(footer.getByRole('navigation', { name: 'Legal' }).getByRole('link', { name: 'Refund policy' })).toHaveAttribute('href', '/refund-policy');
+  expect(await footer.innerText()).not.toMatch(/\[[A-Z ]+\]/);
+  await expect(footer).toContainText(`© ${new Date().getFullYear()} spaca`);
 });
 
 test.describe('with reduced motion', () => {

@@ -33,6 +33,13 @@ const FAQ = [
   { q: 'How do I become a creator?', a: 'Apply with your X handle, the topics you cover and a few work samples. We are onboarding a small group of founding creators first.' },
 ];
 
+const FOOTER_COLUMNS = [
+  { title: 'Product', links: [{ label: 'How it works', href: '#how' }, { label: 'Campaign tabs', href: '/campaigns' }, { label: 'Reward pools', href: '#pools' }, { label: 'Explore creators', href: '/explore' }] },
+  { title: 'Creators', links: [{ label: 'Apply as a creator', href: '/sign-up?role=creator' }, { label: 'Guidelines', href: '/terms' }] },
+  { title: 'Company', links: [{ label: 'Contact', href: '/support' }, { label: 'AI and SaaS', href: '#ai' }] },
+  { title: 'Legal', links: [{ label: 'Terms', href: '/terms' }, { label: 'Privacy', href: '/privacy' }, { label: 'Refund policy', href: '/refund-policy' }] },
+];
+
 /** Honest facts in the spot where marketplaces put client logos: spaca has no clients to show yet. */
 const HERO_FACTS = [
   { label: 'Paid on approval', tone: 'green' },
@@ -45,7 +52,7 @@ export default async function LandingPage() {
   const hasVideo = existsSync(path.join(process.cwd(), 'public', HERO_VIDEO));
   const goalCounts = await getOpenGoalCounts();
 
-  return <div className={styles.page}>
+  return <div className={styles.page} id="top">
     <header className={styles.nav}>
       <div className={styles.navInner}>
         <Link href="/" className={styles.brand} aria-label="spaca home"><SpacaLockup size={26} /></Link>
@@ -200,15 +207,23 @@ export default async function LandingPage() {
     </main>
 
     <footer className={styles.footer}>
-      <div className={styles.container}>
-        <p className={styles.footnote}>Reward pools and crypto payments are on testnet and do not handle real funds. Fees are published before launch: [FEE POLICY].</p>
-        <div className={styles.footerCols}>
-          <div><strong>Product</strong><a href="#how">How it works</a><a href="#pools">Reward pools</a><a href="#ai">AI and SaaS</a></div>
-          <div><strong>Creators</strong><Link href="/sign-up?role=creator">Apply</Link><Link href="/terms">Guidelines</Link></div>
-          <div><strong>Company</strong><Link href="/support">Contact</Link><span>[X handle]</span></div>
-          <div><strong>Legal</strong><Link href="/terms">Terms</Link><Link href="/privacy">Privacy</Link></div>
+      <div className={styles.containerWide}>
+        <div className={styles.footerGrid}>
+          <div className={styles.footerBrand}>
+            <Link href="/" aria-label="spaca home" className={styles.brand}><SpacaLockup size={26} /></Link>
+            <p>Creator campaigns for web3 launches, on X. Each creator is paid when their work is approved.</p>
+            <span className={styles.footerTag}><span aria-hidden>{'{'}</span> Local build · testnet only <span aria-hidden>{'}'}</span></span>
+          </div>
+          {FOOTER_COLUMNS.map((column) => <nav key={column.title} className={styles.footerCol} aria-label={column.title}>
+            <span className={styles.footerHead}>{column.title}</span>
+            {column.links.map((link) => <Link key={link.href} href={link.href}>{link.label}</Link>)}
+          </nav>)}
         </div>
-        <div className={styles.footerBottom}><span>Copyright © [YEAR] [COMPANY NAME]. All rights reserved.</span><span>Local development build</span></div>
+        <p className={styles.footnote}>Reward pools and crypto payments run on testnet and hold no real funds. Fees are published before launch.</p>
+        <div className={styles.footerBottom}>
+          <span>© {new Date().getFullYear()} spaca</span>
+          <a href="#top">Back to top ↑</a>
+        </div>
       </div>
     </footer>
   </div>;
