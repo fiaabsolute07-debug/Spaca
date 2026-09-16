@@ -94,7 +94,7 @@ function parentOf(pathname: string, type: AccountType | null): NavLink {
 }
 
 /** The overview and the marketplace lists (reached from the header) show no back link. */
-const NO_BACK = new Set(['/dashboard', '/explore', '/requests', '/auctions']);
+const NO_BACK = new Set(['/dashboard', '/explore', '/requests', '/auctions', '/funds']);
 
 /** Back link above every other workspace page; it goes to the page's parent in the workspace. */
 export function WorkspaceBack({ type }: { type: AccountType | null }) {

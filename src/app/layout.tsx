@@ -5,6 +5,7 @@ import { getActor } from '@/lib/auth';
 import { SiteChrome } from '@/components/site-chrome';
 import { HeaderNav } from '@/components/header-nav';
 import { AccountMenu, WorkspaceBack } from '@/components/account-menu';
+import { FundMenu } from '@/components/fund-menu';
 import { accountTypeOf } from '@/lib/account';
 import { SpacaLockup } from '@/components/brand/spaca-logo';
 import { themeBootScript } from '@/components/landing/theme-boot';
@@ -34,7 +35,7 @@ export default async function RootLayout({ children, auth }: { children: React.R
         </form>
         <div className="header-actions">
           {actor
-            ? <AccountMenu type={accountTypeOf(actor)} />
+            ? <><FundMenu type={accountTypeOf(actor)} /><AccountMenu type={accountTypeOf(actor)} /></>
             : <><Link href="/sign-in" className="login-link" scroll={false}>Log in</Link><Link href="/sign-up" className="button compact" scroll={false}>Get started</Link></>}
         </div>
       </header>

@@ -97,7 +97,7 @@ export default async function ProfilePage({
       </CommandForm>
     </section>
         </>}
-        <section className="panel" aria-labelledby="wallets-heading">
+        <section className="panel" id="wallets" aria-labelledby="wallets-heading">
           <h2 id="wallets-heading">Wallets</h2>
           <p className="muted">Link a wallet to receive crypto payouts and to fund campaign pools. Signing proves you control the address; it never authorizes a payment.</p>
           {wallets.length ? <ul className="facts">
