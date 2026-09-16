@@ -108,6 +108,21 @@ async function bringCheckpointForward(orderId: string) {
   return row!;
 }
 
+/**
+ * After settlement the order's principal is fully accounted for: what was captured went back to the buyer or out to the
+ * creator, the refund was confirmed on the books (not only accepted by the provider), and nothing was flagged unexpected.
+ */
+async function expectSettledBooks(orderId: string, refundMinor: bigint) {
+  const [books] = await sql`select coalesce(sum(e.amount_minor),0)::text as balance,
+      coalesce(sum(e.amount_minor) filter (where t.kind='REFUND_SETTLED'),0)::text as refunded
+    from app.ledger_transactions t join app.ledger_entries e on e.transaction_id=t.id and e.account='order_principal:' || t.order_id::text
+    where t.order_id=${orderId}`;
+  expect(books).toEqual({ balance: '0', refunded: refundMinor.toString() });
+  const [order] = await sql`select payment_status,settlement_status from app.orders where id=${orderId}`;
+  expect(order).toMatchObject({ payment_status: refundMinor > 0n ? 'PARTIALLY_REFUNDED' : 'SUCCEEDED', settlement_status: 'RELEASED' });
+  expect((await sql`select count(*)::int as n from app.reconciliation_cases where order_id=${orderId} and kind in ('UNEXPECTED_REFUND','REFUND_FAILED')`)[0]!.n).toBe(0);
+}
+
 beforeEach(async () => {
   if (!RUN_DB) return;
   funding.setMockPaymentProviderForTests(new MockPaymentProvider({ accountId: 'acct_mock_local', webhookSecrets: ['whsec_performance_suite_1'] }));
@@ -202,6 +217,7 @@ describe.skipIf(!RUN_DB)('§9.6 — a performance hire holds the maximum and pay
       const [refund] = await sql`select operation_id,status from app.provider_operations where order_id=${hire.orderId} and kind='refund.create'`;
       expect(refund).toMatchObject({ operation_id: `refund:${hire.orderId}:performance`, status: 'SUCCEEDED' });
     }
+    await expectSettledBooks(hire.orderId, expected.refundMinor);
   });
 
   it('holds a bonus that does not look earned, and keeps the money until a person decides', async () => {
@@ -283,6 +299,7 @@ describe.skipIf(!RUN_DB)('§9.6 — a performance hire holds the maximum and pay
     const [fees] = await sql`select provider_fee_minor from app.orders where id=${hire.orderId}`;
     const providerFee = fees!.provider_fee_minor == null ? 0n : BigInt(String(fees!.provider_fee_minor));
     expect(String((release!.outcome as Record<string, string>).netAmount)).toBe((2000n + bonus - providerFee).toString());
+    await expectSettledBooks(hire.orderId, 8000n - bonus);
   });
 
   it('lets finance refuse a held bonus: the fixed fee is still paid and the whole bonus hold goes back', async () => {
@@ -311,6 +328,7 @@ describe.skipIf(!RUN_DB)('§9.6 — a performance hire holds the maximum and pay
     const [fees] = await sql`select provider_fee_minor from app.orders where id=${hire.orderId}`;
     const providerFee = fees!.provider_fee_minor == null ? 0n : BigInt(String(fees!.provider_fee_minor));
     expect(String((release!.outcome as Record<string, string>).netAmount)).toBe((2000n - providerFee).toString());
+    await expectSettledBooks(hire.orderId, 8000n);
   });
 
   it('refuses performance terms that are off, not PUBLISH, unaffordable, or for a creator without enough posts', async () => {

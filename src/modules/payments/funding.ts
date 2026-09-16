@@ -1216,13 +1216,21 @@ async function applyRefundEvent(tx: Tx, event: VerifiedEvent): Promise<string> {
 
   if (event.type === 'refund.succeeded') {
     if (order.payment_status === 'REFUNDED' || order.payment_status === 'PARTIALLY_REFUNDED') return 'DUPLICATE_FACT';
+    // §9.6: the unused part of a performance hold goes back while the order itself stays approved, so the order never
+    // passes through REFUND_PENDING; the amount to expect is the one settlement recorded on the order.
+    const unusedHold = String(operation.operation_id) === `refund:${orderId}:performance`;
     const agreed = order.cancellation_refund_minor === null ? null : BigInt(String(order.cancellation_refund_minor));
-    const expected = agreed ?? amount;
-    if (event.amount !== expected || event.currency !== String(order.currency) || order.payment_status !== 'REFUND_PENDING') {
+    const expected = unusedHold
+      ? (order.performance_refund_minor === null ? null : BigInt(String(order.performance_refund_minor)))
+      : agreed ?? amount;
+    const pending = unusedHold ? ['SUCCEEDED', 'REFUND_PENDING'].includes(String(order.payment_status)) : order.payment_status === 'REFUND_PENDING';
+    if (expected === null || event.amount !== expected || event.currency !== String(order.currency) || !pending) {
       await openCase(tx, orderId, String(operation.id), 'UNEXPECTED_REFUND', 'HIGH', 'Provider refund does not match the pending refund');
       return 'UNEXPECTED_REFUND';
     }
-    if (expected === amount) {
+    if (unusedHold) {
+      await tx`update app.orders set payment_status='PARTIALLY_REFUNDED',version=version+1,updated_at=now() where id=${orderId}`;
+    } else if (expected === amount) {
       await tx`update app.orders set status='REFUNDED',payment_status='REFUNDED',settlement_status='NOT_READY',version=version+1,updated_at=now() where id=${orderId}`;
     } else {
       // Partial refunds keep the order CANCELLED; the remainder settles to the creator separately (§7.2).
