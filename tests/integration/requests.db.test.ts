@@ -433,4 +433,27 @@ describe.skipIf(!RUN_DB)('campaign goals — launch, airdrop, shiller and the re
     expect(launches.request_total).toBe(all.request_total);
     expect(all.goal_counts.SHILL).toBeGreaterThanOrEqual(1);
   });
+
+  it('a tab page reads its open campaigns, its recently closed ones, and creators selling the kind of work it needs', async () => {
+    const { getGoalPageData } = await import('@/lib/read-model');
+    const buyer = await createUser('tab-buyer');
+    const open = await createRequest(buyer, { title: 'Open education deep dive', campaign_goal: 'EDUCATION' });
+    const closed = await createRequest(buyer, { title: 'Closed education tutorial', campaign_goal: 'EDUCATION' });
+    const other = await createRequest(buyer, { title: 'Launch threads elsewhere', campaign_goal: 'LAUNCH' });
+    expect((await command(buyer, { command: 'close_request', idempotency_key: key('close'), request_id: closed })).status).toBe(200);
+    const maker = await creator('tab-creator');
+
+    const data = await getGoalPageData('EDUCATION', 'CREATE');
+    const ids = (list: Record<string, unknown>[]) => list.map((r) => String(r.id));
+    expect(ids(data.requests)).toContain(open);
+    expect(ids(data.requests)).not.toContain(closed);
+    expect(ids(data.requests)).not.toContain(other);
+    expect(ids(data.recent)).toContain(closed);
+    expect(data.recent.every((r) => r.campaign_goal === 'EDUCATION' && ['FILLED', 'CLOSED'].includes(String(r.status)))).toBe(true);
+    // Creators are real published services of the matching category, at most three.
+    expect(data.creators.length).toBeGreaterThan(0);
+    expect(data.creators.length).toBeLessThanOrEqual(3);
+    expect(data.creators.every((service) => service.taxonomy === 'CREATE')).toBe(true);
+    expect(maker.id).toBeTruthy();
+  });
 });

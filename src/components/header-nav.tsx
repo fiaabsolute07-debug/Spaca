@@ -44,12 +44,12 @@ function menusFor(type: AccountType | null): Menu[] {
     {
       key: 'campaigns',
       label: 'Campaigns',
-      section: ['/requests'],
+      section: ['/requests', '/campaigns'],
       featured: creator
         ? { href: '/requests', title: 'Find campaigns', description: 'Open briefs taking applications. Quote your own price.' }
         : { href: '/buyer/requests/new', title: 'Post a brief', description: 'Describe the campaign once and compare quotes from creators.' },
       items: CAMPAIGN_GOALS.map((goal) => ({
-        href: `/requests?goal=${goal.slug}`, title: goal.title, description: goal.short, icon: <GoalIcon goal={goal.value} size={17} />,
+        href: `/campaigns/${goal.slug}`, title: goal.title, description: goal.short, icon: <GoalIcon goal={goal.value} size={17} />,
       })),
       all: { href: '/requests', label: 'All campaigns' },
     },

@@ -4,7 +4,7 @@ import { useSelectedLayoutSegment } from 'next/navigation';
 import type { ReactNode } from 'react';
 
 /** Top-level routes where a signed-in account gets a back link above the page. */
-const WORKSPACE_SEGMENTS = new Set(['dashboard', 'buyer', 'creator', 'orders', 'settings', 'requests', 'auctions', 'services', 'creators', 'explore', 'funds']);
+const WORKSPACE_SEGMENTS = new Set(['dashboard', 'buyer', 'creator', 'orders', 'settings', 'requests', 'auctions', 'services', 'creators', 'explore', 'funds', 'campaigns']);
 
 /**
  * Marketplace header/footer. The marketing landing at `/` renders its own navigation, so the app chrome is hidden there.

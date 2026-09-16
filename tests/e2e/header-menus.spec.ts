@@ -42,21 +42,25 @@ test('the header opens Explore and Campaigns as menus, and a campaign goal filte
   await expect(campaigns).toBeFocused();
 
   await campaigns.hover();
-  await Promise.all([page.waitForURL(/\/requests\?goal=airdrop$/), menu.getByRole('link', { name: /^Airdrop/ }).click()]);
+  await Promise.all([page.waitForURL(/\/campaigns\/airdrop$/), menu.getByRole('link', { name: /^Airdrop/ }).click()]);
   await expect(menu).toBeHidden();
   await waitForHydration(campaigns);
-  await expect(page.getByRole('heading', { level: 1, name: 'Airdrop campaigns' })).toBeVisible();
+  await expect(page.getByRole('heading', { level: 1, name: 'Explain the airdrop to the people who actually qualify.' })).toBeVisible();
   await expect(campaigns).toHaveAttribute('aria-current', 'page');
-  const filter = page.getByRole('navigation', { name: 'Campaign goals' });
-  await expect(filter.getByRole('link', { name: /^Airdrop/ })).toHaveAttribute('aria-current', 'page');
-  await expect(page.getByRole('link', { name: new RegExp(title) })).toBeVisible();
-  // Every card on a goal page carries that goal.
-  const cards = page.locator('.campaign-card');
+  const tabs = page.getByRole('navigation', { name: 'Campaign goals' });
+  await expect(tabs.getByRole('link', { name: /^Airdrop/ })).toHaveAttribute('aria-current', 'page');
+  const openSection = page.getByRole('region', { name: /^Open Airdrop campaigns/ });
+  await expect(openSection.getByRole('link', { name: new RegExp(title) })).toBeVisible();
+  // Every open campaign on a tab carries that goal.
+  const cards = openSection.locator('.campaign-card');
   expect(await cards.count()).toBeGreaterThan(0);
   for (const card of await cards.all()) await expect(card.locator('.badge-goal')).toHaveText('Airdrop');
 
-  await Promise.all([page.waitForURL(/\/requests\?goal=shiller$/), filter.getByRole('link', { name: /^Shiller/ }).click()]);
+  await Promise.all([page.waitForURL(/\/campaigns\/shiller$/), tabs.getByRole('link', { name: /^Shiller/ }).click()]);
   await expect(page.getByRole('link', { name: new RegExp(title) })).toHaveCount(0);
+  // Older links that filtered the list land on the tab.
+  await visit(page, '/requests?goal=airdrop');
+  expect(new URL(page.url()).pathname).toBe('/campaigns/airdrop');
 
   // Explore lists the four kinds of work.
   const explore = nav.getByRole('button', { name: 'Explore', exact: true });

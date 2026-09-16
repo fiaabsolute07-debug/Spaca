@@ -89,6 +89,24 @@ export async function getPublicData(options: { q?: string; category?: string; go
   return { services, requests, request_total: openRequests.length, goal_counts: goalCounts, auctions: asRows(auctions) };
 }
 
+/**
+ * One campaign tab: its open campaigns, campaigns of the same goal that recently filled or closed, and published
+ * services of the category the goal usually needs, so the tab shows who could take the work even when nothing is open.
+ */
+export async function getGoalPageData(goal: string, taxonomy: string) {
+  const [publicData, recent] = await Promise.all([
+    getPublicData({ goal }),
+    sql`select r.id,r.buyer_id,r.title,r.brief,r.taxonomy,r.campaign_goal,r.budget_minor,r.per_creator_cap_minor,r.target_hires,r.deadline,r.status,r.application_deadline,
+        u.display_name as buyer_name,(select count(*) from app.applications a where a.request_id=r.id) as application_count,
+        coalesce((select array_agg(i.asset_id order by i.position) from app.request_images i where i.request_id=r.id),'{}') as image_ids,
+        coalesce((select array_agg(coalesce(i.thumb_asset_id,i.asset_id) order by i.position) from app.request_images i where i.request_id=r.id),'{}') as thumb_ids
+      from app.requests r join app.users u on u.id=r.buyer_id
+      where r.campaign_goal=${goal} and r.status in ('FILLED','CLOSED') order by r.updated_at desc limit 3`,
+  ]);
+  const creators = publicData.services.filter((service) => String(service.taxonomy) === taxonomy).slice(0, 3);
+  return { requests: publicData.requests, request_total: publicData.request_total, goal_counts: publicData.goal_counts, recent: asRows(recent), creators };
+}
+
 export async function getDashboardData(actor: Actor) {
   const [services, orders, applications, requests, auctions, profile, stats] = await Promise.all([
     serviceRows({ ownerId: actor.id }),

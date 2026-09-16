@@ -28,9 +28,9 @@ Nghĩa: commit đều; chưa dùng Supabase (PostgreSQL local); crypto nhắm Ar
 ## Quyết định UI/sản phẩm của user — không làm ngược lại
 
 - Điều hướng workspace nằm trong menu **Account** góc phải header (không sidebar, không khối tên/avatar, không nút avatar riêng). Trang con có link "‹ Back to …"; không mở tab mới.
-- Header: **Explore** và **Campaigns** là menu thả xuống kiểu Zealy (ô màu nổi bật bên trái, mục có tiêu đề + 1 dòng mô tả bên phải); **Auctions** là link thường. Không có thanh tab phía trên danh sách (user đã bắt xóa).
+- Header: **Explore** và **Campaigns** là menu thả xuống kiểu Zealy (ô màu nổi bật bên trái, mục có tiêu đề + 1 dòng mô tả bên phải); **Auctions** là link thường. Không làm thanh tab Explore/Campaigns/Auctions phía trên danh sách (user đã bắt xóa) — khác với 7 tab mục tiêu trong Campaigns, là thứ user muốn.
 - Nút **Fund** nằm ngay trước nút Account, gom mọi luồng tiền; trang `/funds`.
-- Campaign chia theo **mục tiêu**: Launch, Airdrop, Shiller, Testnet, AMA & Spaces, Education, Memes & art (`src/modules/requests/goals.ts`).
+- Campaign chia thành **7 tab, mỗi tab một trang riêng** (`/campaigns/<slug>`): Launch, Shiller, Airdrop, AMA & Spaces, Testnet, Education, Memes & art (`src/modules/requests/goals.ts`, nội dung `goal-pages.ts`). Tab không được trông trống: chỉ dùng nội dung thật, không bịa campaign mẫu.
 - Form dùng thẻ/chip trực quan thay dropdown đơn lẻ. Màu chỉ ở phần quan trọng. Campaign có ảnh dự án.
 - Mỗi tài khoản là buyer **hoặc** creator. Không giới hạn số đơn (chỉ Pause). Không đặt lịch ACCESS (giờ hẹn thỏa thuận trong tin nhắn).
 - Khi yêu cầu UI mơ hồ về vị trí, xác nhận với user trước (nhiều vòng đã đoán sai).
@@ -89,6 +89,7 @@ cd contracts && forge test
 | `1f7ad3e` | **Sửa lỗi tiền:** webhook hoàn "phần giữ chưa dùng" của performance bị coi là UNEXPECTED_REFUND nên không ghi sổ; nay ghi `REFUND_SETTLED`, đơn thành `PARTIALLY_REFUNDED`. Test kiểm số dư principal = 0 | `docs/evidence/claude-FUNDS.md` |
 | `8c13b3b` | **Nút Fund** cạnh Account (số liệu tải khi mở menu qua `POST /api/funds/summary`) + trang **`/funds`** (cần trả, đang giữ, đã hoàn, đã giải ngân, pool, payout on-chain, lịch sử, ví) — số liệu từ sổ cái; migration 0030 (index ledger) | `docs/evidence/claude-FUNDS.md` |
 | `0a4e71e` | Test E2E thử lại khi dev server hot-reload hủy điều hướng | commit message |
+| (commit sau `5045f3c`) | **7 tab campaign**: mỗi mục tiêu một trang `/campaigns/<slug>` với ý tưởng riêng; chống trang trống bằng nội dung thật (ý tưởng, cách hoạt động, bàn giao, creator thật cùng loại, campaign đã đóng, lời mời đăng brief đầu tiên). Nội dung sửa ở `src/modules/requests/goal-pages.ts` | `docs/evidence/claude-CAMPAIGN-TABS.md` |
 
 Tài liệu đã cập nhật cho các mục trên: `docs/UI_CONTRACT.md` (các section 2026-09-16), `docs/NEXT_SESSION.md` §5.2.
 
@@ -100,6 +101,7 @@ Tài liệu đã cập nhật cho các mục trên: `docs/UI_CONTRACT.md` (các 
 4. **Performance campaigns còn giới hạn:** metrics giả lập (chưa nối API nền tảng thật), chưa có cờ "median tăng quá nhanh", tín hiệu gian lận mới có 2 loại.
 5. **Funds:** chưa có nạp/rút số dư kiểu Arc (deposit, withdraw về ví/ngân hàng — spec §11.7); menu Fund chỉ gom luồng tiền đã có. Danh sách tối đa 50 dòng mỗi mục.
 6. **Campaign goals:** campaign cũ không có mục tiêu (chỉ hiện ở "All campaigns"); chưa có màn sửa campaign (update_request chỉ qua API).
+8. **7 tab campaign mới dùng chung một khung:** chưa có trường/thẻ/bộ lọc riêng cho từng mục (ngày launch, giá mỗi bài Shiller, giờ AMA…) — đây là bước tiếp theo user đã thảo luận. Nội dung ý tưởng từng tab là bản nháp để user chỉnh.
 7. **Ảnh campaign:** chưa có kiểm duyệt tự động/antivirus.
 
 ## Việc tiếp theo đề xuất (theo thứ tự)

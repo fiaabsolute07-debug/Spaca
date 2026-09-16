@@ -19,12 +19,13 @@ export type CampaignGoalInfo = {
   taxonomy: 'CREATE' | 'PUBLISH' | 'ACCESS' | 'DIGITAL';
 };
 
+// Tab order on the campaigns pages, the header menu and the brief form.
 export const CAMPAIGN_GOALS: readonly CampaignGoalInfo[] = [
   { value: 'LAUNCH', slug: 'launch', title: 'Launch', short: 'Launch-day threads, videos and posts', need: 'Announce a token, product or mainnet with threads, videos and launch-day posts.', taxonomy: 'PUBLISH' },
-  { value: 'AIRDROP', slug: 'airdrop', title: 'Airdrop', short: 'Explain who qualifies and how to join', need: 'Explain how to take part and who is eligible. Posts never promise returns.', taxonomy: 'PUBLISH' },
   { value: 'SHILL', slug: 'shiller', title: 'Shiller', short: 'Disclosed posts from many creators', need: 'Short posts, replies and quote posts from many creators, each one labelled as sponsored.', taxonomy: 'PUBLISH' },
-  { value: 'TESTNET', slug: 'testnet', title: 'Testnet', short: 'Walkthroughs that bring real testers', need: 'Walkthroughs that show real users how to try your testnet and what to report.', taxonomy: 'CREATE' },
+  { value: 'AIRDROP', slug: 'airdrop', title: 'Airdrop', short: 'Explain who qualifies and how to join', need: 'Explain how to take part and who is eligible. Posts never promise returns.', taxonomy: 'PUBLISH' },
   { value: 'AMA', slug: 'ama', title: 'AMA & Spaces', short: 'Live AMAs, X Spaces and community calls', need: 'Host or join a live AMA, X Space or community call with your team.', taxonomy: 'ACCESS' },
+  { value: 'TESTNET', slug: 'testnet', title: 'Testnet', short: 'Walkthroughs that bring real testers', need: 'Walkthroughs that show real users how to try your testnet and what to report.', taxonomy: 'CREATE' },
   { value: 'EDUCATION', slug: 'education', title: 'Education', short: 'Tutorials, deep dives and explainers', need: 'Tutorials, deep dives and explainers delivered to you for your own channels.', taxonomy: 'CREATE' },
   { value: 'MEMES', slug: 'memes', title: 'Memes & art', short: 'Memes, stickers and visuals you license', need: 'Memes, stickers, banners and visuals for your community, with the rights you need.', taxonomy: 'DIGITAL' },
 ];

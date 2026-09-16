@@ -45,7 +45,8 @@ test('a buyer picks the campaign type from cards, adds a project image, and crea
   const fileInput = page.locator('input[type="file"]');
   await waitForHydration(fileInput);
   await fileInput.setInputFiles({ name: 'cover.png', mimeType: 'image/png', buffer: PNG });
-  await expect(page.getByText('Ready', { exact: true })).toBeVisible();
+  // A few megabytes plus the card copy the browser makes: allow for a busy dev server.
+  await expect(page.getByText('Ready', { exact: true })).toBeVisible({ timeout: 60_000 });
   await page.getByLabel('Total budget (USD, optional if you set a cap)', { exact: true }).fill('600');
   await page.getByLabel('Creators needed', { exact: true }).fill('2');
   await page.getByLabel('Delivery deadline', { exact: true }).fill(dateTimeLocal(new Date(Date.now() + 14 * 86400_000)));

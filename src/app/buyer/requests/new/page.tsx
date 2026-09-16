@@ -3,6 +3,7 @@ import { Notices } from '@/components/notices';
 import { PageHeading } from '@/components/page-heading';
 import { BriefTypePicker } from '@/components/campaign/brief-type-picker';
 import { goalBySlug } from '@/modules/requests/goals';
+import { GOAL_PAGES } from '@/modules/requests/goal-pages';
 import { isFlagEnabled } from '@/modules/admin/policy';
 import { sql } from '@/lib/db';
 import { FileUploadField } from '@/components/files/file-upload-field';
@@ -23,6 +24,9 @@ export default async function NewRequestPage({
   if (!actor) return prompt;
   const notices = <Notices query={query} />;
   const performanceEnabled = await isFlagEnabled(sql, 'PERFORMANCE_CAMPAIGNS_ENABLED');
+  const goal = goalBySlug(query.goal);
+  // Arriving from a campaign tab, the examples in the form match that kind of campaign.
+  const example = goal ? GOAL_PAGES[goal.value] : null;
   return <main className="container">
     {notices}
     <PageHeading
@@ -32,20 +36,20 @@ export default async function NewRequestPage({
     />
     <div className="panel">
       <CommandForm command="create_request" label="Publish brief" returnTo="/requests">
-        <BriefTypePicker performanceEnabled={performanceEnabled} initialGoal={goalBySlug(query.goal)?.value ?? null} />
+        <BriefTypePicker performanceEnabled={performanceEnabled} initialGoal={goal?.value ?? null} />
         <h3 className="brief-section">About the project</h3>
         <Field
           name="title"
           label="Brief title"
           required
-          placeholder="Three launch videos for our new product"
+          placeholder={example?.briefTitle ?? 'Three launch videos for our new product'}
         />
         <Field
           name="brief"
           label="Brief"
           type="textarea"
           required
-          placeholder="Audience, goals, deliverables, references, and constraints."
+          placeholder={example?.briefText ?? 'Audience, goals, deliverables, references, and constraints.'}
         />
         <FileUploadField purpose="REQUEST_IMAGE" name="image_ids" label="Project images (optional)" help="Up to 6 PNG, JPG, GIF or WebP images: product screenshots, brand visuals or references creators should see." maxFiles={6} />
         <h3 className="brief-section">Budget and timing</h3>

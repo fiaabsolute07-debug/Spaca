@@ -99,7 +99,8 @@ const NO_BACK = new Set(['/dashboard', '/explore', '/requests', '/auctions', '/f
 /** Back link above every other workspace page; it goes to the page's parent in the workspace. */
 export function WorkspaceBack({ type }: { type: AccountType | null }) {
   const pathname = usePathname();
-  if (NO_BACK.has(pathname)) return null;
+  // Campaign tabs are marketplace sections reached from the header, like the lists above.
+  if (NO_BACK.has(pathname) || pathname.startsWith('/campaigns/')) return null;
   const parent = parentOf(pathname, type);
   return <Link className="workspace-back" href={parent.href}><span aria-hidden>‹</span> Back to {parent.label}</Link>;
 }
