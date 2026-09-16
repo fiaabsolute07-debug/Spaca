@@ -8,9 +8,17 @@ import styles from '@/components/landing/landing.module.css';
 
 export const dynamic = 'force-dynamic';
 
-// Muted, video-only H.264 at 640×360 (~0.5 MB) with a small poster so the hero paints before the video loads.
+// Muted, video-only hero (no audio track, index at the start of the file) with a ~30 KB poster that paints first.
+// The browser downloads only the first source it can play: HEVC where supported (about a third smaller), H.264
+// otherwise; screens up to 640px get 640×360, wider ones 854×480. Codec strings match the encoded files.
 const HERO_VIDEO = '/landing/hero.mp4';
 const HERO_POSTER = '/landing/hero-poster.jpg';
+const HERO_SOURCES = [
+  { src: '/landing/hero-640.hevc.mp4', type: 'video/mp4; codecs="hvc1.1.6.L63.B0"', media: '(max-width: 640px)' },
+  { src: '/landing/hero-640.mp4', type: 'video/mp4; codecs="avc1.64001E"', media: '(max-width: 640px)' },
+  { src: '/landing/hero.hevc.mp4', type: 'video/mp4; codecs="hvc1.1.6.L90.B0"' },
+  { src: HERO_VIDEO, type: 'video/mp4; codecs="avc1.64001F"' },
+];
 
 const TICKER = [
   { label: 'Explainer threads' }, { label: 'Research deep dives' }, { label: 'Mainnet launch copy' }, { label: 'Token launch campaigns' },
@@ -53,7 +61,9 @@ export default function LandingPage() {
       <section className={styles.hero}>
         <div className={styles.heroMedia} aria-hidden style={hasVideo ? { backgroundImage: `url(${HERO_POSTER})` } : undefined}>
           {hasVideo
-            ? <video className={styles.heroVideo} src={HERO_VIDEO} poster={HERO_POSTER} autoPlay muted loop playsInline preload="auto" disablePictureInPicture />
+            ? <video className={styles.heroVideo} poster={HERO_POSTER} autoPlay muted loop playsInline preload="auto" disablePictureInPicture>
+                {HERO_SOURCES.map((source) => <source key={source.src} src={source.src} type={source.type} media={source.media} />)}
+              </video>
             : <span className={styles.videoPlaceholder}>Background video goes here — add public{HERO_VIDEO}</span>}
           <div className={styles.heroScrim} />
         </div>

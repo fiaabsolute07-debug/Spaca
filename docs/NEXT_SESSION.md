@@ -49,7 +49,11 @@ Nghĩa là:
 - **Đặt lịch ACCESS:** bỏ hẳn (migration 0017).
 - **Tài khoản:** tách buyer và creator (migration 0019, `src/lib/account.ts`).
 - **Phí nền tảng:** chưa chốt. Code cưỡng chế phí = 0. Không tự đặt số. Không viết "0% fee" trong copy.
-- **Hero landing:** video `public/landing/hero.mp4` (đã nén).
+- **Hero landing:** video thay ngày 2026-09-15 (24.8 s, không tiếng), nằm trong `public/landing/`:
+  - Bản máy tính 854×480: `hero.hevc.mp4` (1.19 MB) và `hero.mp4` (H.264, 1.84 MB).
+  - Bản điện thoại 640×360 (màn ≤ 640px): `hero-640.hevc.mp4` (525 KB) và `hero-640.mp4` (748 KB).
+  - Poster `hero-poster.jpg` (30 KB). Trình duyệt chỉ tải bản đầu tiên nó phát được (`src/app/page.tsx`, danh sách `HERO_SOURCES`).
+  - Máy không có ffmpeg: đã mã hóa bằng AVFoundation (Swift) và giữ nguyên chuỗi codec đo từ file.
 - **Điều hướng workspace:** nằm trong menu **"Account" ở góc phải header** (nhóm Workspace, Find work hoặc Hire, Account › Profile, và Log out).
   - **Không** có thanh bên, **không** có khối tên/email/avatar, **không** có nút avatar riêng trên header. User đã yêu cầu xóa từng thứ.
   - Trang con có link "‹ Back to …"; không mở tab mới trong luồng app.
