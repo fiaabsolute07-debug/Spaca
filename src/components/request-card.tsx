@@ -16,7 +16,7 @@ export function RequestCard({
   const hires = num(r.target_hires);
   const brief = str(r.brief);
   return <Link className="panel campaign-card" href={`/requests/${str(r.id)}`}>
-    <div className={`campaign-cover cat-${category.key}`}>
+    <div className="campaign-cover">
       {images[0] ? <img src={`/api/request-images/${images[0]}`} alt="" loading="lazy" /> : category.icon}
       {images.length > 1 && <span className="campaign-cover-count">+{images.length - 1}</span>}
     </div>

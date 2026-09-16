@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import Script from 'next/script';
+import { Archivo, Geist, Geist_Mono } from 'next/font/google';
 import { getActor } from '@/lib/auth';
 import { SiteChrome } from '@/components/site-chrome';
 import { HeaderNav } from '@/components/header-nav';
@@ -10,6 +11,12 @@ import { accountTypeOf } from '@/lib/account';
 import { SpacaLockup } from '@/components/brand/spaca-logo';
 import { themeBootScript } from '@/components/landing/theme-boot';
 import './globals.css';
+
+// Three faces, one job each (docs/brand/spaca-brand-kit.html): Archivo condensed for headlines and big numbers,
+// Geist for everything you read, Geist Mono for labels, buttons, table figures, hashes and wallet addresses.
+const archivo = Archivo({ subsets: ['latin'], axes: ['wdth'], variable: '--font-archivo', display: 'swap' });
+const geist = Geist({ subsets: ['latin'], variable: '--font-geist', display: 'swap' });
+const geistMono = Geist_Mono({ subsets: ['latin'], variable: '--font-geist-mono', display: 'swap' });
 
 export const metadata: Metadata = {
   title: 'spaca — Creator campaigns for web3 launches',
@@ -56,5 +63,5 @@ export default async function RootLayout({ children, auth }: { children: React.R
   const type = actor ? accountTypeOf(actor) : null;
   const back = actor ? <WorkspaceBack type={type} /> : null;
   // suppressHydrationWarning: the landing theme boot script may set data-landing-theme on <html> before hydration.
-  return <html lang="en" suppressHydrationWarning><body><Script id="landing-theme" strategy="beforeInteractive">{themeBootScript}</Script><SiteChrome header={header} footer={footer} back={back}>{children}</SiteChrome>{auth}</body></html>;
+  return <html lang="en" className={`${archivo.variable} ${geist.variable} ${geistMono.variable}`} suppressHydrationWarning><body><Script id="landing-theme" strategy="beforeInteractive">{themeBootScript}</Script><SiteChrome header={header} footer={footer} back={back}>{children}</SiteChrome>{auth}</body></html>;
 }

@@ -9,7 +9,7 @@ import { CATEGORIES } from './category';
 import { GoalIcon } from './campaign/goal-icon';
 import { CAMPAIGN_GOALS } from '@/modules/requests/goals';
 
-type MenuItem = { href: string; title: string; description: string; icon: ReactNode; tone?: string };
+type MenuItem = { href: string; title: string; description: string; icon: ReactNode };
 type Menu = {
   key: 'explore' | 'campaigns';
   label: string;
@@ -37,7 +37,7 @@ function menusFor(type: AccountType | null): Menu[] {
       featured: { href: '/explore', title: 'Explore creators', description: 'Every service, one search, with prices and samples up front.' },
       items: CATEGORIES.map((category) => ({
         href: `/explore?category=${category.value}`, title: category.title, description: EXPLORE_LINES[category.value] ?? category.need,
-        icon: category.icon, tone: `cat-${category.key}`,
+        icon: category.icon,
       })),
       all: { href: '/explore', label: 'All services' },
     },
@@ -132,7 +132,7 @@ export function HeaderNav({ type = null }: { type?: AccountType | null }) {
           </Link>
           <div className="nav-items">
             {menu.items.map((item) => <Link key={item.href} className="nav-item" href={item.href} onClick={() => setOpen(null)}>
-              <span className={`nav-item-icon${item.tone ? ` ${item.tone}` : ''}`}>{item.icon}</span>
+              <span className="nav-item-icon">{item.icon}</span>
               <span className="nav-item-text"><strong>{item.title}</strong><small>{item.description}</small></span>
             </Link>)}
             <Link className="nav-all" href={menu.all.href} onClick={() => setOpen(null)}>{menu.all.label} ›</Link>

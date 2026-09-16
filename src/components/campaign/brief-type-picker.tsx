@@ -72,7 +72,7 @@ export function BriefTypePicker({ performanceEnabled, initialGoal = null }: { pe
     <fieldset className="choice-group">
       <legend>What do you need?</legend>
       <div className="choice-cards">
-        {CATEGORIES.map((category) => <label key={category.value} className={`choice-card cat-${category.key}`}>
+        {CATEGORIES.map((category) => <label key={category.value} className="choice-card">
           <input type="radio" name="taxonomy" value={category.value} checked={taxonomy === category.value} onChange={() => setTaxonomy(category.value)} required />
           <span className="choice-icon">{category.icon}</span>
           <strong>{category.title}</strong>
@@ -93,12 +93,12 @@ export function BriefTypePicker({ performanceEnabled, initialGoal = null }: { pe
       <fieldset className="choice-group">
         <legend>License</legend>
         <div className="choice-cards choice-cards-two">
-          <label className="choice-card cat-digital">
+          <label className="choice-card">
             <input type="radio" name="license_kind" value="NON_EXCLUSIVE" checked={license === 'NON_EXCLUSIVE'} onChange={() => setLicense('NON_EXCLUSIVE')} />
             <strong>Non-exclusive</strong>
             <small>You may use the files as agreed; the creator keeps the right to license them to others.</small>
           </label>
-          <label className="choice-card cat-create">
+          <label className="choice-card">
             <input type="radio" name="license_kind" value="EXCLUSIVE" checked={license === 'EXCLUSIVE'} onChange={() => setLicense('EXCLUSIVE')} />
             <strong>Exclusive to you</strong>
             <small>The creator does not license the same files to anyone else. Expect a higher quote.</small>
@@ -125,12 +125,12 @@ export function BriefTypePicker({ performanceEnabled, initialGoal = null }: { pe
       {performanceEnabled && <fieldset className="choice-group">
         <legend>How you pay</legend>
         <div className="choice-cards choice-cards-two">
-          <label className="choice-card cat-publish">
+          <label className="choice-card">
             <input type="radio" name="payment_model" value="FIXED" checked={paymentModel === 'FIXED'} onChange={() => setPaymentModel('FIXED')} />
             <strong>Fixed fee</strong>
             <small>One agreed price per post, whatever it reaches.</small>
           </label>
-          <label className="choice-card cat-create">
+          <label className="choice-card">
             <input type="radio" name="payment_model" value="PERFORMANCE" checked={paymentModel === 'PERFORMANCE'} onChange={() => setPaymentModel('PERFORMANCE')} />
             <strong>Fixed fee plus view bonus</strong>
             <small>A smaller fee, then a bonus for measured views up to a cap you set.</small>

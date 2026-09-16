@@ -4,7 +4,7 @@ const icon = (d: string): ReactNode => <svg width="20" height="20" viewBox="0 0 
 
 export type Category = { value: string; key: 'create' | 'publish' | 'access' | 'digital'; title: string; need: string; icon: ReactNode };
 
-/** The four kinds of work, as a buyer asks for them. Each has one color (globals.css `.cat-*`). */
+/** The four kinds of work, as a buyer asks for them. Told apart by icon and word, not by colour. */
 export const CATEGORIES: readonly Category[] = [
   { value: 'CREATE', key: 'create', title: 'Create', need: 'Content delivered to you: threads, videos, articles or designs.', icon: icon('M12 20h9|M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z') },
   { value: 'PUBLISH', key: 'publish', title: 'Publish', need: 'Creators post about you on their own channel, with a disclosure.', icon: icon('M3 11v2a1 1 0 0 0 1 1h2l5 4V6L6 10H4a1 1 0 0 0-1 1z|M15 9a4 4 0 0 1 0 6|M18 6a8 8 0 0 1 0 12') },
@@ -16,5 +16,5 @@ export const categoryOf = (value: unknown): Category => CATEGORIES.find((categor
 
 export function CategoryBadge({ value }: { value: unknown }) {
   const category = categoryOf(value);
-  return <span className={`badge badge-cat cat-${category.key}`}>{category.title}</span>;
+  return <span className="badge badge-cat">{category.title}</span>;
 }
