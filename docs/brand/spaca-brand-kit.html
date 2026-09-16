@@ -1,0 +1,433 @@
+<title>spaca Brand Kit</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..100,500..800&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap">
+<style>
+:root{
+  --paper:#121214;--sheet:#1A1A1D;--raised:#232327;--ink:#E8E8EA;--ink-2:rgba(232,232,234,.78);--muted:rgba(232,232,234,.60);--faint:rgba(232,232,234,.42);
+  --rule:rgba(255,255,255,.09);--rule-strong:rgba(255,255,255,.16);--grid:rgba(255,255,255,.02);
+  --mark:#D6F25E;--mark-deep:#DDF47A;--mark-soft:rgba(214,242,94,.13);--on-mark:#121214;
+  --paid:#5CCB95;--paid-soft:rgba(92,203,149,.14);--hold:#E3B465;--hold-soft:rgba(227,180,101,.14);--flag:#EE8080;--flag-soft:rgba(238,128,128,.14);
+  --night:#16161A;--night-2:#1E1E22;--night-rule:rgba(255,255,255,.09);--night-text:#E8E8EA;--night-muted:rgba(232,232,234,.60);
+  --display:"Archivo","Arial Narrow",system-ui,sans-serif;
+  --body:"Geist",-apple-system,"Segoe UI",system-ui,sans-serif;
+  --mono:"Geist Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--paper);background-image:linear-gradient(var(--grid) 1px,transparent 1px),linear-gradient(90deg,var(--grid) 1px,transparent 1px);background-size:32px 32px;color:var(--ink);font-family:var(--body);font-size:16px;line-height:1.55;-webkit-font-smoothing:antialiased}
+.frame{max-width:1200px;margin:0 auto;background:var(--paper);border-inline:1px solid var(--rule);padding-inline:0;overflow-x:clip}
+.pad{padding-inline:clamp(16px,4vw,48px)}
+h1,h2,h3,h4{margin:0;font-family:var(--display);color:var(--ink);text-wrap:balance}
+p{margin:0}
+.mono{font-family:var(--mono)}
+.label{font:500 11px/1.2 var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+.label .br{color:var(--mark-deep)}
+.muted{color:var(--muted)}
+:focus-visible{outline:2px solid var(--ink);outline-offset:3px}
+
+/* ruled sections with crosshair corners */
+.band{position:relative;border-top:1px solid var(--rule);padding-block:56px}
+.band::before,.band::after{content:"+";position:absolute;top:-11px;font:400 18px/1 var(--mono);color:var(--rule-strong);background:var(--paper);padding-inline:2px}
+.band::before{left:-7px}.band::after{right:-7px}
+.shead{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:32px;align-items:end;margin-bottom:32px}
+.shead h2{font-size:clamp(30px,4vw,46px);line-height:1;font-weight:700;font-stretch:80%;letter-spacing:-.01em;text-transform:uppercase}
+.shead p{color:var(--ink-2);max-width:52ch}
+
+/* top strip + header */
+.strip{display:flex;justify-content:center;gap:12px;align-items:center;flex-wrap:wrap;padding:9px 16px;background:var(--sheet);border-bottom:1px solid var(--rule);color:var(--muted);font:500 11px/1.3 var(--mono);letter-spacing:.08em;text-transform:uppercase;text-align:center}
+.strip b{background:var(--mark-soft);color:var(--mark-deep);padding:3px 7px;font-weight:500}
+.head{display:flex;align-items:center;gap:28px;flex-wrap:wrap;padding-block:16px;border-bottom:1px solid var(--rule)}
+.logo{display:inline-flex;align-items:center;gap:10px;font:800 22px/1 var(--display);letter-spacing:-.02em}
+.menu{display:flex;gap:22px;flex-wrap:wrap;font:500 12px/1 var(--mono);letter-spacing:.08em;text-transform:uppercase}
+.head .end{margin-left:auto;display:flex;gap:8px;flex-wrap:wrap}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;height:38px;padding:0 14px;border-radius:4px;border:1px solid var(--rule-strong);font:500 12px/1 var(--mono);letter-spacing:.08em;text-transform:uppercase;white-space:nowrap;background:var(--sheet);color:var(--ink)}
+.btn.ink{background:var(--mark);border-color:var(--mark);color:var(--on-mark)}
+.btn.mark{background:var(--mark);border-color:var(--mark);color:var(--on-mark)}
+
+/* hero */
+.hero{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);gap:0;border-bottom:1px solid var(--rule)}
+.hero .copy{padding-block:64px;padding-right:clamp(16px,3vw,40px);display:grid;gap:22px;align-content:center}
+.hero h1{font-size:clamp(46px,7.2vw,104px);line-height:.88;font-weight:800;font-stretch:75%;text-transform:uppercase;letter-spacing:-.005em}
+.hero h1 mark{background:none;color:var(--mark-deep);padding:0}
+.hero .copy p{font-size:19px;color:var(--ink-2);max-width:44ch}
+.spot{position:relative;border-left:1px solid var(--rule);background:var(--sheet);color:var(--night-text);display:grid;align-content:space-between;padding:28px;min-height:420px;overflow:hidden}
+.spot::before{content:"";position:absolute;inset:0;background:repeating-linear-gradient(130deg,rgba(214,242,94,.16) 0 2px,transparent 2px 22px);clip-path:polygon(38% 0,100% 0,100% 62%,74% 100%,0 100%,0 78%);opacity:.9}
+.spot::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(22,22,22,.05),rgba(22,22,22,.9) 70%)}
+.spot > *{position:relative;z-index:1}
+.spot .top{display:flex;justify-content:space-between;align-items:center}
+.spot .label{color:var(--night-muted)}
+.spot h3{font-size:clamp(34px,4vw,54px);line-height:.9;font-weight:800;font-stretch:75%;text-transform:uppercase;color:var(--night-text)}
+.spot p{color:var(--night-muted);margin-top:10px;max-width:34ch}
+.facts{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));border-bottom:1px solid var(--rule)}
+.facts div{padding:18px clamp(12px,2vw,24px);border-right:1px solid var(--rule);display:grid;gap:6px}
+.facts div:last-child{border-right:0}
+.facts b{font:700 28px/1 var(--display);font-stretch:80%;text-transform:uppercase}
+
+/* references */
+.refs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));border:1px solid var(--rule);background:var(--sheet)}
+.refs > div{padding:24px;border-right:1px solid var(--rule);display:grid;gap:14px;align-content:start}
+.refs > div:last-child{border-right:0}
+.refs h3{font-size:22px;font-weight:700;font-stretch:85%;text-transform:uppercase}
+.refs ul{margin:0;padding:0;list-style:none;display:grid;gap:10px}
+.refs li{font-size:14px;color:var(--ink-2);padding-left:16px;position:relative}
+.refs li::before{content:"";position:absolute;left:0;top:.55em;width:8px;height:3px;background:var(--ink);transform:skewX(-40deg)}
+.refs .take{font:500 12px/1.4 var(--mono);color:var(--ink);background:var(--mark-soft);padding:8px 10px;border-left:2px solid var(--mark)}
+
+/* color */
+.swatches{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));border:1px solid var(--rule);background:var(--sheet)}
+.sw{border-right:1px solid var(--rule);border-bottom:1px solid var(--rule)}
+.sw:nth-child(4n){border-right:0}
+.sw:nth-last-child(-n+4){border-bottom:0}
+.sw i{display:block;height:92px;border-bottom:1px solid var(--rule)}
+.sw div{padding:12px 14px;display:grid;gap:3px}
+.sw b{font:700 17px/1.1 var(--display);font-stretch:85%;text-transform:uppercase}
+.sw span{font:400 12px/1.3 var(--mono);color:var(--muted)}
+.sw small{font-size:13px;color:var(--ink-2);line-height:1.4}
+
+.pairs{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));border:1px solid var(--rule);margin-top:20px}
+.pairs > div{padding:20px;display:grid;gap:12px;background:var(--sheet)}
+.pairs > div:first-child{border-right:1px solid var(--rule)}
+.pairs h3{font-size:18px;font-weight:700;font-stretch:85%;text-transform:uppercase;display:flex;gap:10px;align-items:center}
+.pairs h3 span{font:500 10px/1 var(--mono);letter-spacing:.08em;padding:4px 6px}
+.pairs .ok h3 span{background:var(--paid-soft);color:var(--paid)}
+.pairs .bad h3 span{background:var(--flag-soft);color:var(--flag)}
+.mini{border:1px solid var(--rule);background:var(--paper);padding:14px;display:grid;gap:10px}
+.mini .tt{display:flex;justify-content:space-between;gap:8px;align-items:baseline}
+.mini b{font:600 14px/1.3 var(--body)}
+.mini .pay{font:500 17px/1 var(--mono);color:var(--mark-deep)}
+.mini .row{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.mini .chip{font:500 10px/1 var(--mono);letter-spacing:.05em;text-transform:uppercase;padding:6px 8px;background:var(--mark-soft);color:var(--mark-deep)}
+.mini .go{font:500 11px/1 var(--mono);letter-spacing:.08em;text-transform:uppercase;padding:9px 12px;background:var(--mark);color:var(--on-mark)}
+.mini .bar{display:flex;gap:3px}
+.mini .bar i{width:14px;height:6px;transform:skewX(-40deg);background:var(--rule-strong)}
+.mini .bar i.f{background:var(--mark)}
+.mini.loud{background:#000;border-color:#000;position:relative;overflow:hidden}
+.mini.loud::before{content:"";position:absolute;inset:0;background:repeating-linear-gradient(130deg,rgba(216,242,91,.9) 0 12px,transparent 12px 26px)}
+.mini.loud > *{position:relative}
+.mini.loud .tt{background:#D8F25B;padding:8px;color:#000}
+.mini.loud b,.mini.loud .pay{color:#000}
+.mini.loud .chip{background:#D8F25B;color:#000}
+.pairs ul{margin:0;padding-left:18px;display:grid;gap:6px;font-size:13px;color:var(--ink-2)}
+@media (max-width:820px){.pairs{grid-template-columns:minmax(0,1fr)}.pairs > div:first-child{border-right:0;border-bottom:1px solid var(--rule)}}
+
+/* type */
+.specimens{display:grid;border:1px solid var(--rule);background:var(--sheet)}
+.spec{display:grid;grid-template-columns:230px minmax(0,1fr);gap:24px;padding:24px;border-bottom:1px solid var(--rule);align-items:center}
+.spec:last-child{border-bottom:0}
+.spec .who{display:grid;gap:6px}
+.spec .who b{font-size:15px}
+.spec .who small{font-size:13px;color:var(--muted)}
+.s1{font:800 clamp(40px,6vw,76px)/.9 var(--display);font-stretch:75%;text-transform:uppercase}
+.s2{font-size:18px;color:var(--ink-2);max-width:58ch}
+.s3{font:400 14px/1.9 var(--mono);font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+
+/* goal line art */
+.goals{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));border:1px solid var(--rule);background:var(--sheet)}
+.goal{border-right:1px solid var(--rule);display:grid;grid-template-rows:auto auto;min-width:0}
+.goal:last-child{border-right:0}
+.goal svg{display:block;width:100%;height:auto;aspect-ratio:1/1;border-bottom:1px solid var(--rule)}
+.goal svg *{vector-effect:non-scaling-stroke}
+.goal div{padding:12px;display:grid;gap:4px}
+.goal b{font:700 16px/1 var(--display);font-stretch:80%;text-transform:uppercase}
+.goal small{font-size:12px;color:var(--muted);line-height:1.35}
+.art{fill:none;stroke:var(--ink);stroke-width:1.5}
+.dot{fill:none;stroke:var(--faint);stroke-width:1.2;stroke-dasharray:2 4}
+.hl{fill:var(--mark-soft);stroke:var(--mark-deep);stroke-width:1.5}
+
+/* campaign board */
+.tabs{display:flex;border:1px solid var(--rule);background:var(--sheet);overflow-x:auto;scrollbar-width:none}
+.tab{flex:none;display:flex;align-items:center;gap:8px;padding:14px 18px;border-right:1px solid var(--rule);font:500 12px/1 var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted);white-space:nowrap}
+.tab b{font-weight:500;color:var(--faint)}
+.tab.on{background:var(--raised);color:var(--ink);box-shadow:inset 0 -2px 0 var(--mark)}
+.tab.on b{color:var(--mark-deep)}
+.tabhead{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);border:1px solid var(--rule);border-top:0;background:var(--sheet)}
+.tabhead .l{padding:28px;display:grid;gap:12px;border-right:1px solid var(--rule)}
+.tabhead h3{font-size:clamp(34px,4.6vw,58px);line-height:.9;font-weight:800;font-stretch:75%;text-transform:uppercase}
+.tabhead .r{display:grid;grid-template-columns:1fr 1fr}
+.tabhead .r div{padding:18px 22px;border-bottom:1px solid var(--rule);display:grid;gap:4px;align-content:center}
+.tabhead .r div:nth-child(odd){border-right:1px solid var(--rule)}
+.tabhead .r div:nth-last-child(-n+2){border-bottom:0}
+.tabhead .r b{font:700 30px/1 var(--display);font-stretch:80%}
+.filters{display:flex;gap:8px;flex-wrap:wrap;padding:14px 0}
+.fchip{display:inline-flex;align-items:center;height:32px;padding:0 12px;border:1px solid var(--rule-strong);border-radius:999px;font-size:13px;font-weight:500;background:var(--sheet);color:var(--ink)}
+.fchip.on{background:var(--mark-soft);border-color:var(--mark);color:var(--ink)}
+.board{border:1px solid var(--rule);background:var(--sheet)}
+.brow{display:grid;grid-template-columns:minmax(0,2.4fr) repeat(3,minmax(0,1fr)) minmax(0,1.3fr);align-items:center;border-bottom:1px solid var(--rule)}
+.brow:last-child{border-bottom:0}
+.brow > *{padding:16px 18px}
+.brow.hdr{background:var(--paper)}
+.brow.hdr > *{padding-block:10px}
+.camp{display:grid;grid-template-columns:40px minmax(0,1fr);gap:14px;align-items:center}
+.camp .ic{width:40px;height:40px;border:1px solid var(--ink);display:grid;place-items:center}
+.camp h4{font:600 16px/1.25 var(--body)}
+.camp small{font-size:13px;color:var(--muted)}
+.num{font:500 17px/1.2 var(--mono);font-variant-numeric:tabular-nums}
+.num small{display:block;font:400 11px/1.3 var(--mono);color:var(--muted);letter-spacing:.04em;text-transform:uppercase;margin-top:3px}
+.num.hi span{color:var(--mark-deep)}
+.slots{display:flex;gap:3px;margin-top:6px}
+.slots i{width:12px;height:6px;transform:skewX(-40deg);background:var(--rule-strong)}
+.slots i.f{background:var(--ink)}
+.st{display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 9px;font:500 11px/1 var(--mono);letter-spacing:.05em;text-transform:uppercase;border-radius:3px}
+.st.open{background:var(--mark-soft);color:var(--mark-deep)}
+.st.paid{background:var(--paid-soft);color:var(--paid)}
+.st.hold{background:var(--hold-soft);color:var(--hold)}
+.st.flag{background:var(--flag-soft);color:var(--flag)}
+.st.gray{background:var(--raised);color:var(--muted);box-shadow:inset 0 0 0 1px var(--rule)}
+.net{display:inline-flex;align-items:center;height:20px;padding:0 6px;border:1px dashed var(--hold);color:var(--hold);font:500 10px/1 var(--mono);letter-spacing:.08em;margin-left:6px;vertical-align:middle}
+
+/* money band */
+.night{background:var(--night);color:var(--night-text);border-top:1px solid var(--rule-strong)}
+.night .band{border-top-color:var(--night-rule)}
+.night .band::before,.night .band::after{background:var(--night);color:rgba(255,255,255,.3)}
+.night h2,.night h3{color:var(--night-text)}
+.night .shead p{color:var(--night-muted)}
+.night .label{color:var(--night-muted)}
+.funds{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));border:1px solid var(--night-rule)}
+.funds div{padding:22px;border-right:1px solid var(--night-rule);display:grid;gap:8px}
+.funds div:last-child{border-right:0}
+.funds b{font:700 clamp(30px,3.6vw,44px)/1 var(--display);font-stretch:78%;font-variant-numeric:tabular-nums}
+.funds div:first-child b{color:var(--mark-deep)}
+.proofs{margin-top:16px;border:1px solid var(--night-rule)}
+.proof{display:grid;grid-template-columns:120px minmax(0,1fr) auto;gap:18px;align-items:center;padding:14px 18px;border-bottom:1px solid var(--night-rule)}
+.proof:last-child{border-bottom:0}
+.proof .t{font-weight:600}
+.proof .h{font:400 12px/1.4 var(--mono);color:var(--night-muted);overflow-wrap:anywhere}
+.proof .a{font:500 16px/1 var(--mono);font-variant-numeric:tabular-nums}
+
+/* voice + code + decide */
+.two{display:grid;grid-template-columns:1fr 1fr;border:1px solid var(--rule);background:var(--sheet)}
+.two > div{padding:24px;display:grid;gap:12px;align-content:start}
+.two > div:first-child{border-right:1px solid var(--rule)}
+.two ul{margin:0;padding:0;list-style:none;display:grid;gap:10px}
+.two li{font-size:15px;padding-bottom:10px;border-bottom:1px dashed var(--rule)}
+.two li:last-child{border-bottom:0;padding-bottom:0}
+.no li{color:var(--muted);text-decoration:line-through;text-decoration-color:var(--flag)}
+.tablewrap{overflow-x:auto;border:1px solid var(--rule);background:var(--sheet)}
+table{border-collapse:collapse;width:100%;min-width:660px;font-size:14px}
+th,td{text-align:left;padding:12px 16px;border-bottom:1px solid var(--rule);vertical-align:top}
+th{font:500 11px/1.2 var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted);background:var(--paper)}
+tr:last-child td{border-bottom:0}
+td code{font:400 12px/1.4 var(--mono)}
+.decide{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));border:1px solid var(--rule);background:var(--sheet)}
+.decide div{padding:22px;border-right:1px solid var(--rule);display:grid;gap:8px;align-content:start}
+.decide div:last-child{border-right:0}
+.decide h3{font-size:20px;font-weight:700;font-stretch:85%;text-transform:uppercase}
+.decide p{font-size:14px;color:var(--ink-2)}
+.foot{padding-block:28px;border-top:1px solid var(--rule);display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap}
+
+@media (max-width:980px){
+  .goals{grid-template-columns:repeat(4,minmax(0,1fr))}
+  .goal:nth-child(4){border-right:0}
+  .goal:nth-child(-n+4){border-bottom:1px solid var(--rule)}
+  .swatches{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .sw:nth-child(4n){border-right:1px solid var(--rule)}.sw:nth-child(2n){border-right:0}
+  .sw:nth-last-child(-n+4){border-bottom:1px solid var(--rule)}.sw:nth-last-child(-n+2){border-bottom:0}
+}
+@media (max-width:820px){
+  .shead,.hero,.tabhead,.two{grid-template-columns:minmax(0,1fr)}
+  .hero .copy{padding-right:0;padding-block:40px}
+  .spot{border-left:0;border-top:1px solid var(--rule);min-height:320px}
+  .facts,.funds{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .facts div:nth-child(2),.funds div:nth-child(2){border-right:0}
+  .facts div:nth-child(-n+2){border-bottom:1px solid var(--rule)}
+  .funds div:nth-child(-n+2){border-bottom:1px solid var(--night-rule)}
+  .refs,.decide{grid-template-columns:minmax(0,1fr)}
+  .refs > div,.decide div{border-right:0;border-bottom:1px solid var(--rule)}
+  .refs > div:last-child,.decide div:last-child{border-bottom:0}
+  .tabhead .l{border-right:0;border-bottom:1px solid var(--rule)}
+  .two > div:first-child{border-right:0;border-bottom:1px solid var(--rule)}
+  .spec{grid-template-columns:minmax(0,1fr);gap:10px}
+  .brow.hdr{display:none}
+  .brow{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .brow .camp{grid-column:1/-1;padding-bottom:4px}
+  .brow > *{padding:10px 16px}
+  .proof{grid-template-columns:minmax(0,1fr)}
+}
+@media (max-width:520px){
+  .goals{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .goal{border-bottom:1px solid var(--rule)}
+  .goal:nth-child(4){border-right:1px solid var(--rule)}.goal:nth-child(2n){border-right:0}
+  .goal:last-child{border-bottom:0}
+}
+</style>
+
+<div class="strip"><b>Hướng 3 · tối dịu</b> Tham khảo arc.io · monad.xyz · zealy.io — nội dung trong trang là ví dụ, không phải số liệu thật</div>
+<div class="frame">
+  <header class="head pad">
+    <span class="logo"><svg width="28" height="22" viewBox="84 106 234 188" aria-hidden="true"><path fill="currentColor" d="M128 106h190l-44 52H84zM146 174h172l-44 52H102zM128 242h174l-44 52H84z"/></svg>spaca</span>
+    <nav class="menu" aria-label="Ví dụ menu"><span>Explore</span><span>Campaigns</span><span>Auctions</span></nav>
+    <div class="end"><span class="btn">Fund</span><span class="btn">Account</span><span class="btn ink">Post a brief</span></div>
+  </header>
+
+  <div class="hero pad">
+    <div class="copy">
+      <p class="label"><span class="br">{</span> Campaign board <span class="br">}</span></p>
+      <h1>Every launch needs <mark>voices.</mark></h1>
+      <p>Post a brief, compare creators on one board, pay each post when you approve it. Clear numbers first, like an order book.</p>
+      <div style="display:flex;gap:8px;flex-wrap:wrap"><span class="btn ink">Post a brief</span><span class="btn">Browse campaigns</span></div>
+    </div>
+    <div class="spot" aria-label="Ví dụ ô nổi bật">
+      <div class="top"><span class="label">Spotlight · Shiller</span><span class="btn mark" style="height:30px">Open</span></div>
+      <div>
+        <h3>Token week · 30 disclosed posts</h3>
+        <p>15 USDC per approved post. 18 spots left. Applications close in 3 days.</p>
+      </div>
+    </div>
+  </div>
+  <div class="facts pad" style="padding-inline:0">
+    <div><span class="label">Campaign goals</span><b>7</b></div>
+    <div><span class="label">Kinds of work</span><b>4</b></div>
+    <div><span class="label">Payment</span><b>On approval</b></div>
+    <div><span class="label">Money today</span><b>Testnet only</b></div>
+  </div>
+
+  <section class="band pad" aria-labelledby="refs">
+    <div class="shead"><h2 id="refs">Lấy gì từ ba nơi</h2><p>Không chép nguyên chất liệu của ai. Mỗi nơi cho một nguyên tắc, spaca ghép lại thành bố cục riêng: bảng kẻ ô dễ đọc số, thay cho thẻ lướt ngang.</p></div>
+    <div class="refs">
+      <div><p class="label">arc.io</p><h3>Độ chính xác</h3><ul><li>Lưới kẻ mảnh, dấu chữ thập ở góc ô như bản vẽ kỹ thuật.</li><li>Nhãn mono trong ngoặc: <span class="mono">{ARC IS LIVE}</span>.</li><li>Nút đen, bo rất nhỏ; nhiều khoảng trống.</li></ul><p class="take">spaca lấy: kẻ ô + dấu góc, nhãn trong ngoặc</p></div>
+      <div><p class="label">monad.xyz</p><h3>Nhịp trang</h3><ul><li>Nội dung nằm trong một khung có đường kẻ hai bên, nền giấy có lưới mờ.</li><li>Menu và nút viết hoa bằng mono; số liệu có nhãn mono phía trên.</li><li>Xen một dải tối cho phần kỹ thuật; minh hoạ nét mảnh.</li></ul><p class="take">spaca lấy: khung trang, dải tối cho tiền, minh hoạ nét</p></div>
+      <div><p class="label">zealy.io</p><h3>Dễ quét</h3><ul><li>Con số phần thưởng to, nằm cùng một chỗ trên mọi thẻ.</li><li>Chip lọc rõ, "Show all (n)", thanh tiến độ.</li><li>Người dùng luôn biết mình được gì và còn bao nhiêu suất.</li></ul><p class="take">spaca lấy: số tiền và suất trống luôn ở cột cố định</p></div>
+    </div>
+  </section>
+
+  <section class="band pad" aria-labelledby="color">
+    <div class="shead"><h2 id="color">Tối dịu, chữ ngà và vàng chanh</h2><p>Vàng chanh là màu nhận diện: nút chính, con số tiền, tab đang xem, thanh tiến độ. Để dễ nhìn lâu, nền không đen tuyệt đối (<span class="mono">#121214</span>), chữ không trắng tinh (<span class="mono">#E8E8EA</span>), và vàng chanh xuất hiện ở dạng chữ, nền mờ hoặc mảng nhỏ, không phủ mảng lớn.</p></div>
+    <div class="swatches">
+      <div class="sw"><i style="background:#121214"></i><div><b>Night</b><span>#121214</span><small>Nền trang</small></div></div>
+      <div class="sw"><i style="background:#1A1A1D"></i><div><b>Cell</b><span>#1A1A1D · #232327</span><small>Ô bảng, form, menu; ô đang chọn</small></div></div>
+      <div class="sw"><i style="background:#E8E8EA"></i><div><b>Text</b><span>#E8E8EA · 78% · 60% · 42%</span><small>Chữ chính, phụ, gợi ý</small></div></div>
+      <div class="sw"><i style="background:#D6F25E"></i><div><b>Spaca lime</b><span>#D6F25E · chữ #DDF47A</span><small>Nút chính, con số tiền, tab đang xem; chữ trên nền vàng chanh #121214</small></div></div>
+      <div class="sw"><i style="background:#2A2A2E"></i><div><b>Rule</b><span>white 9% · 16%</span><small>Đường kẻ ô, dấu chữ thập</small></div></div>
+      <div class="sw"><i style="background:#5CCB95"></i><div><b>Paid</b><span>#5CCB95</span><small>Đã duyệt, đã trả</small></div></div>
+      <div class="sw"><i style="background:#E3B465"></i><div><b>Hold</b><span>#E3B465</span><small>Đang giữ, testnet</small></div></div>
+      <div class="sw"><i style="background:#EE8080"></i><div><b>Flag</b><span>#EE8080</span><small>Tranh chấp, lỗi</small></div></div>
+    </div>
+    <div class="pairs" aria-label="Cách dùng vàng chanh cho khỏi chói">
+      <div class="ok"><h3>Dùng thế này <span>Dễ nhìn</span></h3>
+        <div class="mini"><div class="tt"><b>Token week · 30 posts</b><span class="pay">15 USDC</span></div><div class="bar" aria-hidden="true"><i class="f"></i><i class="f"></i><i class="f"></i><i></i><i></i><i></i></div><div class="row"><span class="chip">Taking applications</span><span class="go">Apply</span></div></div>
+        <ul><li>Chữ và số màu vàng chanh trên nền tối dịu.</li><li>Chip trạng thái: nền vàng chanh mờ 13%.</li><li>Tô đặc chỉ cho nút hành động chính và các thanh tiến độ nhỏ.</li></ul>
+      </div>
+      <div class="bad"><h3>Không dùng thế này <span>Chói</span></h3>
+        <div class="mini loud"><div class="tt"><b>Token week · 30 posts</b><span class="pay">15 USDC</span></div><div class="row"><span class="chip">Taking applications</span></div></div>
+        <ul><li>Mảng vàng chanh lớn tô đặc sau chữ.</li><li>Sọc sáng chạy khắp ô.</li><li>Vàng chanh trên nền đen tuyệt đối.</li></ul>
+      </div>
+    </div>
+  </section>
+
+  <section class="band pad" aria-labelledby="type">
+    <div class="shead"><h2 id="type">Chữ hẹp cho số, mono cho nhãn</h2><p>Archivo bản hẹp, viết hoa cho tiêu đề và con số lớn: đọc nhanh như bảng giá. Geist cho đoạn văn. Geist Mono cho nhãn, menu, địa chỉ ví và cột số.</p></div>
+    <div class="specimens">
+      <div class="spec"><div class="who"><b>Archivo 800 · width 75</b><small>Tiêu đề, tên tab, số tiền lớn. Luôn viết hoa.</small></div><div class="s1">15 USDC per post</div></div>
+      <div class="spec"><div class="who"><b>Geist 400 / 600</b><small>Đoạn văn, tên campaign, form.</small></div><p class="s2">Short disclosed posts from many creators at once. You approve each post, and the creator is paid in USDC when you do.</p></div>
+      <div class="spec"><div class="who"><b>Geist Mono 400 / 500</b><small>Nhãn, menu, nút, hash, cột số.</small></div><div class="s3">APPLICATIONS CLOSE · 3D 04H<br>0x7758…e97F · ARC TESTNET<br>18 / 30 SPOTS</div></div>
+    </div>
+  </section>
+
+  <section class="band pad" aria-labelledby="goals">
+    <div class="shead"><h2 id="goals">Bảy tab, bảy hình vẽ nét</h2><p>Thay cho mảng màu mỗi tab: một hình vẽ nét mảnh có đường dựng chấm (gần tinh thần Arc/Monad), mỗi hình có đúng một mảng tô màu nhấn. Nhận ra tab bằng hình, không cần thêm màu.</p></div>
+    <div class="goals">
+      <div class="goal"><svg viewBox="0 0 120 120" aria-hidden="true"><path class="dot" d="M18 96 Q60 -10 104 40"/><circle class="art" cx="18" cy="96" r="4"/><path class="hl" d="M92 30h18l-6 8H86z"/><path class="art" d="M18 104h86"/></svg><div><b>Launch</b><small>Quỹ đạo phóng</small></div></div>
+      <div class="goal"><svg viewBox="0 0 120 120" aria-hidden="true"><circle class="art" cx="30" cy="60" r="6"/><path class="art" d="M44 42a26 26 0 0 1 0 36M56 32a40 40 0 0 1 0 56"/><path class="dot" d="M68 22a54 54 0 0 1 0 76"/><path class="hl" d="M84 52h22l-6 8H78z"/><path class="art" d="M80 70h20l-6 8H74z"/></svg><div><b>Shiller</b><small>Sóng tín hiệu</small></div></div>
+      <div class="goal"><svg viewBox="0 0 120 120" aria-hidden="true"><path class="art" d="M24 50a36 30 0 0 1 72 0z"/><path class="dot" d="M24 50l30 34M96 50L66 84M60 50v34"/><path class="hl" d="M48 84h24v18H48z"/></svg><div><b>Airdrop</b><small>Dù và gói hàng</small></div></div>
+      <div class="goal"><svg viewBox="0 0 120 120" aria-hidden="true"><path class="art" d="M20 60v0M30 48v24M40 36v48M50 52v16M60 28v64M70 44v32M80 56v8M90 40v40M100 52v16"/><path class="dot" d="M14 60h92"/><path class="hl" d="M56 22h8v8h-8z"/></svg><div><b>AMA &amp; Spaces</b><small>Sóng giọng nói</small></div></div>
+      <div class="goal"><svg viewBox="0 0 120 120" aria-hidden="true"><path class="art" d="M48 18h24M52 18v28L28 96a6 6 0 0 0 5 8h54a6 6 0 0 0 5-8L68 46V18"/><path class="hl" d="M38 80h44l8 16H30z"/><path class="dot" d="M46 66h28M40 74h40"/><circle class="art" cx="72" cy="58" r="3"/></svg><div><b>Testnet</b><small>Bình thí nghiệm</small></div></div>
+      <div class="goal"><svg viewBox="0 0 120 120" aria-hidden="true"><path class="art" d="M60 34c-12-8-28-10-42-8v62c14-2 30 0 42 8 12-8 28-10 42-8V26c-14-2-30 0-42 8zM60 34v62"/><path class="dot" d="M26 44c10-1 20 1 26 5M26 58c10-1 20 1 26 5M68 49c6-4 16-6 26-5"/><path class="hl" d="M68 60c6-4 16-6 26-5v10c-10-1-20 1-26 5z"/></svg><div><b>Education</b><small>Sách mở</small></div></div>
+      <div class="goal"><svg viewBox="0 0 120 120" aria-hidden="true"><path class="art" d="M26 26h68v44L70 94H26z"/><path class="hl" d="M70 94V70h24z"/><circle class="art" cx="46" cy="50" r="3"/><circle class="art" cx="72" cy="50" r="3"/><path class="art" d="M44 64c8 8 22 8 30 0"/><path class="dot" d="M18 18l84 84"/></svg><div><b>Memes &amp; art</b><small>Sticker bóc góc</small></div></div>
+    </div>
+  </section>
+
+  <section class="band pad" aria-labelledby="board">
+    <div class="shead"><h2 id="board">Tab Shiller dạng bảng</h2><p>Thay hàng thẻ lướt ngang bằng một bảng: mỗi campaign một dòng, số tiền, suất trống, thời hạn và trạng thái luôn ở cùng cột. Trên điện thoại mỗi dòng gập thành hai cột.</p></div>
+    <div class="tabs" role="presentation">
+      <span class="tab">Launch <b>0</b></span><span class="tab on">Shiller <b>3</b></span><span class="tab">Airdrop <b>4</b></span><span class="tab">AMA &amp; Spaces <b>3</b></span><span class="tab">Testnet <b>0</b></span><span class="tab">Education <b>4</b></span><span class="tab">Memes &amp; art <b>3</b></span>
+    </div>
+    <div class="tabhead">
+      <div class="l"><p class="label"><span class="br">{</span> Shiller <span class="br">}</span></p><h3>Many voices, each clearly sponsored</h3><p class="muted">Short posts, replies and quotes from many creators at once. Paid per approved post.</p><div><span class="btn ink">Post a Shiller brief</span></div></div>
+      <div class="r">
+        <div><span class="label">Open campaigns</span><b>3</b></div>
+        <div><span class="label">Spots open</span><b>66</b></div>
+        <div><span class="label">Lowest per post</span><b>8 USDC</b></div>
+        <div><span class="label">Closing soonest</span><b>2D</b></div>
+      </div>
+    </div>
+    <div class="filters"><span class="fchip on">All</span><span class="fchip">X</span><span class="fchip">Telegram</span><span class="fchip">With view bonus</span><span class="fchip">Closing soon</span><span class="fchip">Highest per post</span></div>
+    <div class="board">
+      <div class="brow hdr"><span class="label">Campaign</span><span class="label">Pay</span><span class="label">Spots</span><span class="label">Closes</span><span class="label">Status</span></div>
+      <div class="brow">
+        <div class="camp"><span class="ic"><svg width="22" height="22" viewBox="0 0 120 120" aria-hidden="true"><circle class="art" cx="30" cy="60" r="8"/><path class="art" d="M48 40a28 28 0 0 1 0 40M62 28a44 44 0 0 1 0 64"/></svg></span><div><h4>Token week: 30 disclosed posts <span class="net">TESTNET</span></h4><small>by Arc Labs · X</small></div></div>
+        <div class="num hi"><span>15 USDC</span><small>per post</small></div>
+        <div class="num">18 / 30<div class="slots" aria-hidden="true"><i class="f"></i><i class="f"></i><i class="f"></i><i class="f"></i><i></i><i></i><i></i><i></i><i></i><i></i></div></div>
+        <div class="num">3D<small>Sep 19</small></div>
+        <div><span class="st open">Taking applications</span></div>
+      </div>
+      <div class="brow">
+        <div class="camp"><span class="ic"><svg width="22" height="22" viewBox="0 0 120 120" aria-hidden="true"><circle class="art" cx="30" cy="60" r="8"/><path class="art" d="M48 40a28 28 0 0 1 0 40M62 28a44 44 0 0 1 0 64"/></svg></span><div><h4>DEX v3 reply raid</h4><small>by Swapline · X, Telegram</small></div></div>
+        <div class="num hi"><span>8 USDC</span><small>per reply</small></div>
+        <div class="num">42 / 50<div class="slots" aria-hidden="true"><i class="f"></i><i class="f"></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div></div>
+        <div class="num">2D<small>Sep 18</small></div>
+        <div><span class="st hold">Posts in review</span></div>
+      </div>
+      <div class="brow">
+        <div class="camp"><span class="ic"><svg width="22" height="22" viewBox="0 0 120 120" aria-hidden="true"><circle class="art" cx="30" cy="60" r="8"/><path class="art" d="M48 40a28 28 0 0 1 0 40M62 28a44 44 0 0 1 0 64"/></svg></span><div><h4>Mainnet week quote posts</h4><small>by Northstar · X · view bonus</small></div></div>
+        <div class="num hi"><span>20 USDC</span><small>+ bonus up to 40</small></div>
+        <div class="num">6 / 20<div class="slots" aria-hidden="true"><i class="f"></i><i class="f"></i><i class="f"></i><i class="f"></i><i class="f"></i><i class="f"></i><i class="f"></i><i></i><i></i><i></i></div></div>
+        <div class="num">6D<small>Sep 22</small></div>
+        <div><span class="st paid">12 posts paid</span></div>
+      </div>
+    </div>
+  </section>
+
+  <div class="night">
+    <section class="band pad" aria-labelledby="money">
+      <div class="shead"><h2 id="money">Tiền nằm trên dải riêng</h2><p>Mọi thứ liên quan đến tiền (Funds, biên nhận, payout) đặt trên một dải nền khác một bậc, tách bằng đường kẻ, giống cách Monad tách phần kỹ thuật: con số lớn, hash và mạng dạng mono, trạng thái bằng màu có nghĩa.</p></div>
+      <div class="funds">
+        <div><span class="label">To pay</span><b>1,880.00</b><span class="label">USD · 12 orders</span></div>
+        <div><span class="label">Held for work</span><b>10,050.00</b><span class="label">USD</span></div>
+        <div><span class="label">Refunded</span><b>25.00</b><span class="label">USD</span></div>
+        <div><span class="label">Released</span><b>2,730.00</b><span class="label">USD</span></div>
+      </div>
+      <div class="proofs">
+        <div class="proof"><span class="st paid">Released</span><div><div class="t">Mainnet launch thread</div><div class="h">tx 0x3a91f0…9bc04d · ARC TESTNET</div></div><span class="a">+150.00 USDC</span></div>
+        <div class="proof"><span class="st hold">Held</span><div><div class="t">Founder AMA · 60 min</div><div class="h">Card · test provider · paid Sep 16</div></div><span class="a">200.00 USD</span></div>
+      </div>
+    </section>
+  </div>
+
+  <section class="band pad" aria-labelledby="voice">
+    <div class="shead"><h2 id="voice">Giọng văn</h2><p>Ngắn, số trước chữ sau, dùng từ của cộng đồng nhưng không hứa hẹn.</p></div>
+    <div class="two">
+      <div><p class="label">Nên nói</p><ul><li>15 USDC per approved post · 18 spots left</li><li>Every sponsored post says it is sponsored.</li><li>Paid when the project approves your work.</li><li>Testnet only. No real money moves yet.</li></ul></div>
+      <div class="no"><p class="label">Không nói</p><ul><li>Guaranteed rewards</li><li>Make a living from web3</li><li>0% fees</li><li>Trustless, audited escrow</li></ul></div>
+    </div>
+  </section>
+
+  <section class="band pad" aria-labelledby="code">
+    <div class="shead"><h2 id="code">Áp vào sản phẩm</h2><p>Giao diện hiện gom màu và bo góc vào biến CSS, nên bước đầu là đổi token; bảng campaign là component mới dùng lại cho Explore và Funds.</p></div>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>Phần</th><th>Hiện tại</th><th>Hướng 3</th></tr></thead>
+        <tbody>
+          <tr><td>Nền, chữ</td><td>Trắng / <code>#F5F5F7</code>, chữ <code>#1D1D1F</code></td><td>Tối dịu <code>#121214</code>, ô <code>#1A1A1D</code>, chữ <code>#E8E8EA</code> ở 78 / 60 / 42%, viền trắng 9%</td></tr>
+          <tr><td>Nhấn</td><td>Xanh <code>#0071E3</code></td><td>Vàng chanh <code>#D6F25E</code>: nút chính tô đặc, chữ và số màu vàng chanh, chip nền mờ 13%; không phủ mảng lớn</td></tr>
+          <tr><td>Khung trang</td><td>Thẻ bo <code>18px</code> có bóng</td><td>Khung có đường kẻ hai bên, ô chung viền, dấu <code>+</code> ở góc, bo <code>4px</code>, không bóng</td></tr>
+          <tr><td>Chữ</td><td>Font hệ thống</td><td>Archivo hẹp (tiêu đề, số) · Geist (văn bản) · Geist Mono (nhãn, menu, nút)</td></tr>
+          <tr><td>Danh sách campaign</td><td>Lưới thẻ có ảnh bìa</td><td>Bảng cột cố định: campaign, tiền, suất, hạn, trạng thái</td></tr>
+          <tr><td>7 tab</td><td>Icon + đoạn giới thiệu</td><td>Hình vẽ nét riêng mỗi tab + ô số liệu của tab</td></tr>
+          <tr><td>Tiền</td><td>Trang sáng như các trang khác</td><td>Dải nền <code>#16161A</code> tách bằng đường kẻ cho Funds, biên nhận, payout</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="band pad" aria-labelledby="decide">
+    <div class="shead"><h2 id="decide">Đã chốt và còn lại</h2><p>Nền tối đã chốt. Còn hai lựa chọn trước khi áp vào sản phẩm.</p></div>
+    <div class="decide">
+      <div><h3>Đã chốt: nền tối</h3><p>Nền tối như Zealy nhưng dịu hơn một bậc, giữ bố cục bảng và khung kẻ ô lấy từ Arc và Monad. Không làm bản sáng lúc này.</p></div>
+      <div><h3>Đã chốt: vàng chanh</h3><p>Cá tính, dễ nhớ. Dùng theo quy tắc ở phần Màu để không chói: chữ, nền mờ, mảng nhỏ.</p></div>
+      <div><h3>Bảng thay thẻ</h3><p>Campaign dạng bảng cột cố định, giống danh sách token trên sàn. Thẻ có ảnh bìa chỉ giữ cho ô nổi bật.</p></div>
+    </div>
+  </section>
+
+  <footer class="foot pad"><span class="label"><span class="br">{</span> spaca brand kit · hướng 3 · tối dịu <span class="br">}</span></span><span class="label">Font: Google Fonts · Archivo, Geist, Geist Mono</span></footer>
+</div>

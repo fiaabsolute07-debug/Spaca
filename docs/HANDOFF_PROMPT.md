@@ -104,6 +104,10 @@ Tài liệu đã cập nhật cho các mục trên: `docs/UI_CONTRACT.md` (các 
 8. **7 tab campaign mới dùng chung một khung:** chưa có trường/thẻ/bộ lọc riêng cho từng mục (ngày launch, giá mỗi bài Shiller, giờ AMA…) — đây là bước tiếp theo user đã thảo luận. Nội dung ý tưởng từng tab là bản nháp để user chỉnh.
 7. **Ảnh campaign:** chưa có kiểm duyệt tự động/antivirus.
 
+## Bộ nhận diện mới (đã duyệt 2026-09-16, chưa áp vào code)
+
+User đã chốt bộ nhận diện: nền tối dịu `#121214`, chữ `#E8E8EA`, màu nhận diện **vàng chanh `#D6F25E`** dùng có quy tắc, font Archivo (hẹp) / Geist / Geist Mono, bố cục "campaign board" (tham khảo tinh thần arc.io, monad.xyz; độ dễ quét của zealy.io). Trang nhận diện: `docs/brand/spaca-brand-kit.html`. **Prompt thực hiện chi tiết: `docs/BRAND_ROLLOUT_PROMPT.md`** — nếu nhiệm vụ của bạn là giao diện, làm theo file đó.
+
 ## Việc tiếp theo đề xuất (theo thứ tự)
 
 1. Chạy lại toàn bộ lệnh kiểm tra ở trên; sửa nếu có lỗi.
