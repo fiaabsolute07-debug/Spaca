@@ -7,7 +7,7 @@ import { SiteChrome } from '@/components/site-chrome';
 import { HeaderNav } from '@/components/header-nav';
 import { AccountMenu, WorkspaceBack } from '@/components/account-menu';
 import { FundMenu } from '@/components/fund-menu';
-import { accountTypeOf } from '@/lib/account';
+import { accountTypeOf, homePath } from '@/lib/account';
 import { getAccountSummary } from '@/lib/read-model';
 import { SpacaLockup } from '@/components/brand/spaca-logo';
 import { themeBootScript } from '@/components/landing/theme-boot';
@@ -36,7 +36,7 @@ export default async function RootLayout({ children, auth }: { children: React.R
     <div className="sandbox-banner"><span className="live-dot" /> <strong>Local sandbox</strong> Test accounts and simulated payments. No real funds move.</div>
     <div className="header-shell">
       <header className="header">
-        <Link href="/" className="wordmark" aria-label="spaca home"><SpacaLockup size={26} /></Link>
+        <Link href={homePath(Boolean(actor))} className="wordmark" aria-label="spaca home"><SpacaLockup size={26} /></Link>
         <HeaderNav type={actor ? accountTypeOf(actor) : null} />
         <form className="header-search" action="/explore" method="get" role="search">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden><circle cx="11" cy="11" r="7" /><path d="M20 20l-3.5-3.5" /></svg>
@@ -53,7 +53,7 @@ export default async function RootLayout({ children, auth }: { children: React.R
   const footer = <footer className="site-footer">
     <div className="site-footer-inner">
       <div>
-        <Link href="/" aria-label="spaca home"><SpacaLockup size={22} /></Link>
+        <Link href={homePath(Boolean(actor))} aria-label="spaca home"><SpacaLockup size={22} /></Link>
         <p>Creator campaigns on X for web3 and AI launches.</p>
       </div>
       <nav className="site-footer-links" aria-label="Footer">

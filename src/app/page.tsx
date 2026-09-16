@@ -7,6 +7,8 @@ import { GoalStrip } from '@/components/landing/goal-strip';
 import { LaunchStack } from '@/components/landing/launch-stack';
 import { PoolFlow } from '@/components/landing/pool-flow';
 import { getOpenGoalCounts } from '@/lib/read-model';
+import { getActor } from '@/lib/auth';
+import { homePath } from '@/lib/account';
 import { ThemeToggle } from '@/components/landing/theme-toggle';
 import styles from '@/components/landing/landing.module.css';
 
@@ -50,12 +52,13 @@ const HERO_FACTS = [
 
 export default async function LandingPage() {
   const hasVideo = existsSync(path.join(process.cwd(), 'public', HERO_VIDEO));
-  const goalCounts = await getOpenGoalCounts();
+  const [goalCounts, actor] = await Promise.all([getOpenGoalCounts(), getActor()]);
+  const home = homePath(Boolean(actor));
 
   return <div className={styles.page} id="top">
     <header className={styles.nav}>
       <div className={styles.navInner}>
-        <Link href="/" className={styles.brand} aria-label="spaca home"><SpacaLockup size={26} /></Link>
+        <Link href={home} className={styles.brand} aria-label="spaca home"><SpacaLockup size={26} /></Link>
         <nav className={styles.navLinks} aria-label="Landing sections">
           <a href="#how">How it works</a>
           <a href="#pools">Reward pools</a>
@@ -210,7 +213,7 @@ export default async function LandingPage() {
       <div className={styles.containerWide}>
         <div className={styles.footerGrid}>
           <div className={styles.footerBrand}>
-            <Link href="/" aria-label="spaca home" className={styles.brand}><SpacaLockup size={26} /></Link>
+            <Link href={home} aria-label="spaca home" className={styles.brand}><SpacaLockup size={26} /></Link>
             <p>Creator campaigns for web3 launches, on X. Each creator is paid when their work is approved.</p>
             <span className={styles.footerTag}><span aria-hidden>{'{'}</span> Local build · testnet only <span aria-hidden>{'}'}</span></span>
           </div>

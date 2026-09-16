@@ -10,6 +10,9 @@ type WithRoles = { roles: readonly string[] };
 export const isBuyer = (actor: WithRoles) => actor.roles.includes('buyer');
 export const isCreator = (actor: WithRoles) => actor.roles.includes('creator');
 
+/** Where the spaca logo leads: the product (workspace overview) once signed in, the landing for visitors. */
+export const homePath = (signedIn: boolean) => (signedIn ? '/dashboard' : '/');
+
 /** The account's primary type for navigation: creator when it can sell, otherwise buyer. */
 export const accountTypeOf = (actor: WithRoles): AccountType | null => (isCreator(actor) ? 'creator' : isBuyer(actor) ? 'buyer' : null);
 

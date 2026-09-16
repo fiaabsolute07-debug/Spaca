@@ -565,4 +565,5 @@ six commits per `docs/BRAND_ROLLOUT_PROMPT.md`. It replaces the neutral Apple-li
 - The dashboard shows a lime-tinted "Finish setting up your creator profile / project" link above the heading until setup is done.
 - **Account menu, account first:** the header button shows the account's photo (or initial) before "Account", with a lime dot while setup is unfinished. The panel opens on a region "Signed in as": photo, name, `@handle` (after setup), and a badge **Buyer account** / **Creator account**; then **Finish setup** (only while unfinished); then **Wallet** — the newest linked wallet as `0x12ab…9f3c` with its network (and `+N` for more), or "Connect wallet" — linking to `/settings/profile#wallets`. The workspace links follow.
 - Phones: `.container` keeps the side gutter (`var(--gutter)`, 16px minimum) instead of running content to the screen edge.
+- **The spaca logo** (app header, app footer, landing nav and landing footer) leads signed-in accounts to the product, `/dashboard` (Overview), and visitors to the landing `/` (`homePath()` in `src/lib/account.ts`).
 
