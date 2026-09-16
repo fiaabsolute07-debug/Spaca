@@ -1,4 +1,4 @@
-# Prompt bàn giao cho agent tiếp theo — spaca (2026-09-16, commit mới nhất lúc viết: `0a4e71e`)
+# Prompt bàn giao cho agent tiếp theo — spaca (2026-09-16, commit mới nhất lúc viết: `52a510f`)
 
 > Dán nguyên file này làm tin nhắn đầu tiên cho agent mới. Tài liệu gốc chi tiết hơn nằm ở `docs/NEXT_SESSION.md` (luật làm việc, môi trường, kiến trúc) — **đọc file đó trước khi sửa code**.
 
@@ -62,12 +62,14 @@ TZ=UTC ./node_modules/.bin/playwright test            # cần dev server 3100 đ
 cd contracts && forge test
 ```
 
-## Trạng thái kiểm tra cuối (2026-09-16, cây `0a4e71e`)
+## Trạng thái kiểm tra cuối (2026-09-16, sau khi áp nhận diện, cây `52a510f`)
 
 - `tsc`: sạch.
-- Vitest: **335 passed, 3 skipped** (41 file; 3 skipped là bộ anvil cần `RUN_ANVIL=1`).
+- Vitest: **336 passed, 3 skipped** (41 file; 3 skipped là bộ anvil cần `RUN_ANVIL=1`).
 - Quét secret: không phát hiện.
-- Playwright đầy đủ (commit `8c13b3b`): **45/46**; test lỗi `explore-profile` do dev server hot-reload hủy `page.goto` (trace có webpack hot-update). Đã thêm retry riêng cho `net::ERR_ABORTED` trong `visit()` (`0a4e71e`); 3 spec liên quan chạy lại 7/7. **Chưa chạy lại cả bộ sau bản sửa này** — việc đầu tiên nên làm.
+- Playwright đầy đủ: **48 passed, 1 failed**. Lỗi duy nhất là `publish.spec.ts` ở `freeLinkedAccountSlot`: creator_d trong DB dev đã giữ đủ 10 tài khoản X liên kết từ các lần chạy trước, mỗi cái gắn với một service đã đăng nên helper không xoá được cái nào để lấy chỗ. Đây là dữ liệu test tích tụ, không phải lỗi code — lỗi này đã có từ trước khi áp nhận diện. Muốn hết thì phải xoá các tài khoản `e2e…` cũ và các service giữ chúng trong DB dev.
+- Tương phản: `scripts/brand-contrast.ts` đo **2587 đoạn chữ trên 9 trang, tất cả đạt WCAG AA**, cả khi landing để chế độ sáng.
+- Ảnh giao diện: `scripts/brand-shots.ts` chụp 11 trang ở 1280px và 375px, **không trang nào cuộn ngang**.
 - forge/anvil/release-check/benchmark/restore rehearsal: đạt ở audit 2026-09-15 (`docs/evidence/claude-AUDIT-2026-09-15.md`), chưa chạy lại.
 - `docs/ACCEPTANCE.md` (116 PASS / 19 PARTIAL / 0 NOT_RUN / 2 BLOCKED / 5 REMOVED) **chưa đếm lại** cho các tính năng 2026-09-16; `docs/BUILD_STATUS.md` phần kết quả cũng là số 2026-09-15.
 
@@ -91,7 +93,14 @@ cd contracts && forge test
 | `0a4e71e` | Test E2E thử lại khi dev server hot-reload hủy điều hướng | commit message |
 | (commit sau `5045f3c`) | **7 tab campaign**: mỗi mục tiêu một trang `/campaigns/<slug>` với ý tưởng riêng; chống trang trống bằng nội dung thật (ý tưởng, cách hoạt động, bàn giao, creator thật cùng loại, campaign đã đóng, lời mời đăng brief đầu tiên). Nội dung sửa ở `src/modules/requests/goal-pages.ts` | `docs/evidence/claude-CAMPAIGN-TABS.md` |
 
-Tài liệu đã cập nhật cho các mục trên: `docs/UI_CONTRACT.md` (các section 2026-09-16), `docs/NEXT_SESSION.md` §5.2.
+| `2476cab` | Prompt áp nhận diện + bản sao trang nhận diện đã duyệt (`docs/brand/spaca-brand-kit.html`) | commit message |
+| `5a2e418` | **Nhận diện giai đoạn 1:** token nền tối dịu + vàng chanh, bỏ 4 màu loại việc, bo 4px, không đổ bóng; nạp Archivo / Geist / Geist Mono | `docs/evidence/claude-BRAND-ROLLOUT.md` |
+| `35f3803` | **Giai đoạn 2:** khung trang 1200px có đường kẻ hai bên, section kẻ ngang có dấu `+`, nhãn/menu/nút mono viết hoa, badge Open vàng chanh | như trên |
+| `a5b59f0` | **Giai đoạn 3:** campaign board thay lưới thẻ (`/requests`, 7 tab, My campaigns), 7 hình vẽ nét, `hired_count` trong read model | như trên |
+| `1c0d30b` | **Giai đoạn 4:** dải tiền `#16161A` cho `/funds`, biên nhận và view bonus; số tiền mono, số dẫn đầu vàng chanh; nhãn testnet viền nét đứt | như trên |
+| `52a510f` | **Giai đoạn 5:** landing về cùng nhận diện (giữ công tắc, mặc định tối); chữ gợi ý nâng lên 55% để đạt WCAG AA, phần trang trí giữ 42% dưới tên `--hint` | như trên |
+
+Tài liệu đã cập nhật cho các mục trên: `docs/UI_CONTRACT.md` (các section 2026-09-16, gồm mục nhận diện campaign board), `docs/NEXT_SESSION.md` §5.2.
 
 ## Còn dang dở / đã biết
 
@@ -104,14 +113,35 @@ Tài liệu đã cập nhật cho các mục trên: `docs/UI_CONTRACT.md` (các 
 8. **7 tab campaign mới dùng chung một khung:** chưa có trường/thẻ/bộ lọc riêng cho từng mục (ngày launch, giá mỗi bài Shiller, giờ AMA…) — đây là bước tiếp theo user đã thảo luận. Nội dung ý tưởng từng tab là bản nháp để user chỉnh.
 7. **Ảnh campaign:** chưa có kiểm duyệt tự động/antivirus.
 
-## Bộ nhận diện mới (đã duyệt 2026-09-16, chưa áp vào code)
+## Bộ nhận diện (đã duyệt 2026-09-16, **đã áp vào code** cùng ngày)
 
-User đã chốt bộ nhận diện: nền tối dịu `#121214`, chữ `#E8E8EA`, màu nhận diện **vàng chanh `#D6F25E`** dùng có quy tắc, font Archivo (hẹp) / Geist / Geist Mono, bố cục "campaign board" (tham khảo tinh thần arc.io, monad.xyz; độ dễ quét của zealy.io). Trang nhận diện: `docs/brand/spaca-brand-kit.html`. **Prompt thực hiện chi tiết: `docs/BRAND_ROLLOUT_PROMPT.md`** — nếu nhiệm vụ của bạn là giao diện, làm theo file đó.
+Nền tối dịu `#121214`, chữ `#E8E8EA`, màu nhận diện **vàng chanh `#D6F25E`** dùng có quy tắc, font Archivo (hẹp) /
+Geist / Geist Mono, bố cục "campaign board". Trang nhận diện: `docs/brand/spaca-brand-kit.html`. Prompt gốc:
+`docs/BRAND_ROLLOUT_PROMPT.md`. Chi tiết token, quy tắc và thành phần đã ghi vào `docs/UI_CONTRACT.md`
+(mục "2026-09-16 additions: the campaign board identity"); bản ghi quá trình ở `docs/evidence/claude-BRAND-ROLLOUT.md`.
+
+Làm theo 6 commit, mỗi commit một giai đoạn: token + font → header/menu/nút/khung trang → campaign board + 7 tab +
+7 hình vẽ nét → dải tiền → landing và các trang còn lại → tài liệu.
+
+**Không làm ngược lại:** nền tối là giao diện duy nhất của app (landing còn công tắc sáng/tối, mặc định tối);
+vàng chanh chỉ tô đặc cho một nút chính mỗi màn hình, badge Open và thanh tiến độ nhỏ, làm chữ cho số tiền và dấu
+ngoặc nhãn, làm nền mờ 13% cho tab/bộ lọc đang chọn — không bao giờ mảng lớn; bốn màu loại việc đã bỏ hẳn, loại việc
+và mục tiêu nhận ra bằng hình vẽ nét + chữ; bo 4px (trừ chip lọc là viên thuốc); không đổ bóng.
+
+**Công cụ kiểm tra mới:**
+
+```bash
+./node_modules/.bin/tsx scripts/brand-shots.ts [thư-mục]   # ảnh 11 trang ở 1280px và 375px, báo lỗi nếu cuộn ngang
+./node_modules/.bin/tsx scripts/brand-contrast.ts          # đo tương phản mọi đoạn chữ, chuẩn WCAG AA
+```
+
+**Lưu ý khi chạy Playwright:** đừng tạo/sửa file trong repo lúc bộ test đang chạy — dev server nạp lại nóng và làm
+vài spec hỏng ngẫu nhiên (đã gặp: 4 spec lỗi rồi đạt lại khi chạy riêng).
 
 ## Việc tiếp theo đề xuất (theo thứ tự)
 
-1. Chạy lại toàn bộ lệnh kiểm tra ở trên; sửa nếu có lỗi.
-2. Cập nhật `docs/ACCEPTANCE.md` + `docs/BUILD_STATUS.md` cho các tính năng 2026-09-16 (chỉ PASS khi có test).
+1. Cập nhật `docs/ACCEPTANCE.md` + `docs/BUILD_STATUS.md` cho các tính năng 2026-09-16 và cho bộ nhận diện (chỉ PASS khi có test).
+2. Dọn dữ liệu e2e tích tụ trong DB dev (10 tài khoản X của creator_d và các service giữ chúng) để `publish.spec.ts` chạy lại được.
 3. **Explore theo mục tiêu** (goal → playbook → creator → sample, ngân sách micro, §11.7) — nối với 7 mục tiêu campaign đã có.
 4. Số dư Arc: nạp/rút (§11.7) nối vào nút Fund — chỉ LOCAL/TESTNET, không tiền thật.
 5. Các dòng PARTIAL còn lại (`docs/NEXT_SESSION.md` §5.1) và hạ tầng §5.3 (rate limiter, MFA admin, scheduler thật, `reconcile:dry-run`).

@@ -491,3 +491,56 @@ Behind `PERFORMANCE_CAMPAIGNS_ENABLED`, off by default.
 - Tabs: a `nav` named "Campaign goals" with seven links (icon, name, count of open campaigns), underline on the current one, scrolling sideways inside itself on phones. The header's Campaigns menu links to the tabs and marks Campaigns current on them. Tab pages show no back link.
 - A tab page never reads as empty. In order: the goal's headline and pitch with **Post your … brief** (creators get **See open … campaigns**) and **Find creators**; three steps ("How … campaigns work"); **Open … campaigns** with a count, as cards, or when there are none a dashed invitation to post the first brief plus links to the tabs that have open campaigns; **What creators deliver** with the goal's rule; **Creators who sell this kind of work** (up to three real published services of the goal's category, hidden when there are none); **Recently filled or closed** (up to three real campaigns of the goal, hidden when there are none).
 - The words on each tab live in `src/modules/requests/goal-pages.ts` (headline, pitch, steps, deliverables, rule, brief examples) and are guidance only — no campaign, creator or number on a tab is invented. Opening Post a brief from a tab preselects the goal and uses that tab's example title and brief as placeholders.
+
+## 2026-09-16 additions: the campaign board identity (soft dark, lime, Archivo/Geist)
+
+The identity the user approved on 2026-09-16 (`docs/brand/spaca-brand-kit.html`, version 6), applied across the app in
+six commits per `docs/BRAND_ROLLOUT_PROMPT.md`. It replaces the neutral Apple-like scheme and the four category hues.
+
+- **Surfaces** (`src/app/globals.css` `:root`): `--bg` #121214 (page, under a 32px rule grid at 2% white), `--soft`
+  #1A1A1D (cells: panels, menus, form controls), `--soft-2` #232327 (raised: hover, the current tab, a selected cell),
+  `--money` #16161A (the band under anything that counts money). Text `--ink` #E8E8EA with `--ink-2` 78%, `--muted` 60%
+  and `--faint` 42%. Rules `--line` white 9% and `--line-strong` white 16%. There is no light theme for the app.
+- **Lime is the only brand colour** and is used by rule. Solid `--accent` #D6F25E: the one prominent action a screen is
+  allowed (`.button-dark`), the Open badge, and small progress marks. As text `--accent-text` #DDF47A: money figures,
+  one key word, and the braces of a `{ LABEL }`. As a 13% tint `--accent-soft`: the current tab, the chosen filter, an
+  open-status chip. Never a large lime area, never a bright hatch, never lime on pure black, never lime text below 12px.
+  Text on a lime fill is `--on-accent` #121214.
+- **Meaning colours are unchanged in role**: `--good` #5CCB95 paid/approved, `--waiting` #E3B465 held/sandbox/testnet,
+  `--bad` #EE8080 disputed/failed/destructive, each with a 14% tint.
+- **Type**: Archivo (with its `wdth` axis), Geist and Geist Mono load through `next/font/google` in
+  `src/app/layout.tsx` and are bound to `--display`, `--body` and `--mono`. Headlines are condensed uppercase Archivo
+  (700–800, `font-stretch` 75–85%); running text is Geist; labels, navigation, buttons, table headers, badges,
+  breadcrumbs, hashes and wallet addresses are Geist Mono in caps with `letter-spacing` .06–.1em and tabular figures.
+  Form controls reset to `--body` so what a person types is never mono or uppercase.
+- **Shape**: 4px corners everywhere except filter chips (`.choice-chip`, `.goal-chip`, `.chip-link`, `.goal-delivers li`),
+  which stay pills. No shadows: depth is a rule or a surface step. The strip, header, page body and footer share one
+  1200px sheet (`--gutter` clamp(16px, 4vw, 48px)) with `border-inline` down both sides; `.container` uses
+  `overflow-x: clip` so sticky sidebars keep working. `.section-heading` draws the rule between sections with a `+` at
+  each end.
+- **Campaign board** (`src/components/campaign/campaign-board.tsx`) replaces the campaign cards on `/requests`, on every
+  `/campaigns/<goal>` tab (open, and recently filled or closed) and on the buyer's My campaigns. One row per campaign,
+  each a link to `/requests/<id>`: **Campaign** (40px mark — the small uploaded copy, else the goal's line drawing —
+  with the title, "by …" and the goal badge), **Pay** (the per-creator cap when the buyer set one, otherwise the budget,
+  in lime mono), **Spots** (hired/needed with slanted marks at the logo's angle), **Closes** (time left and the day),
+  **Status**. Up to 820px the column head disappears and each row folds: name across the top, figures in two columns.
+  `hired_count` (applications with status `ACCEPTED`) was added to the three request queries in `src/lib/read-model.ts`.
+  `RequestCard` and its cover styles are gone; full project images stay on the campaign's own page.
+- **Seven tabs** (`GoalTabs`): one ruled strip of mono uppercase cells, the current one raised and underlined 2px in
+  lime. The tab head puts the label, headline, pitch and the lime action on the left; on the right, four figures read
+  off the open campaigns (open campaigns, spots open, lowest per creator when any cap is set, the first closing date) —
+  a figure the data cannot answer is left out, and a tab with no open campaign shows its line drawing there instead.
+- **Seven line drawings** (`src/components/campaign/goal-art.tsx`): one per goal, taken from the kit — Launch a launch
+  arc, Shiller widening waves, Airdrop a parachute, AMA & Spaces a waveform, Testnet a flask, Education an open book,
+  Memes & art a peeled sticker. Each is thin strokes in `currentColor`, a dotted construction line in `--faint`, and
+  exactly one lime-tinted area. They replace the four category hues as the way a tab is recognised, and appear in the
+  board's mark, the tab head and the empty state.
+- **Money band**: `/funds` figures sit in one ruled strip on `--money` with the first figure (To pay / Held for your
+  work) in lime; the receipt and view-bonus panels carry `money-panel`, their `.facts` amounts are mono tabular, and the
+  leading amount is condensed lime. A simulated or testnet rail keeps its badge, now a dashed amber frame.
+- **Landing** (`src/components/landing/landing.module.css`): the same palette, with the switch kept. Without a stored
+  choice the landing is dark; light is only an explicit choice (`data-landing-theme="light"`), so it no longer follows
+  `prefers-color-scheme`. The hero video, its overlay and `BriefComposer` stay; the brief slots share one lime underline
+  instead of a hue each.
+- **Screenshots**: `./node_modules/.bin/tsx scripts/brand-shots.ts [outDir]` captures the eleven pages the rollout is
+  judged on at 1280px and 375px and fails if any of them scrolls sideways.
