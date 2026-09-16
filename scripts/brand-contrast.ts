@@ -4,6 +4,7 @@
  * reported. Large text (>= 24px, or >= 18.66px bold) is held to 3:1, everything else to 4.5:1.
  *
  *   ./node_modules/.bin/tsx scripts/brand-contrast.ts
+ *   LANDING_THEME=light ./node_modules/.bin/tsx scripts/brand-contrast.ts   # the landing's other setting
  *
  * Needs the dev server on 3100. It signs in with fixture personas through POST /api/dev/session and writes
  * nothing. Exits non-zero if any text fails, listing the worst pairs first.
@@ -11,6 +12,8 @@
 import { chromium, type BrowserContext, type Page } from '@playwright/test';
 
 const baseURL = process.env.E2E_BASE_URL ?? 'http://127.0.0.1:3100';
+/** The landing keeps a light/dark switch; both settings have to pass, so either can be asked for here. */
+const landingTheme = process.env.LANDING_THEME === 'light' || process.env.LANDING_THEME === 'dark' ? process.env.LANDING_THEME : null;
 
 type Persona = 'buyer_a' | 'creator_d' | 'admin' | null;
 type Target = { name: string; path: string; persona: Persona };
@@ -115,6 +118,11 @@ async function login(context: BrowserContext, persona: Exclude<Persona, null>) {
 async function main() {
   const browser = await chromium.launch({ channel: 'chrome' });
   const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  if (landingTheme) {
+    await context.addInitScript((theme) => {
+      try { localStorage.setItem('capacity-landing-theme', theme); } catch { /* private mode */ }
+    }, landingTheme);
+  }
   const page: Page = await context.newPage();
   const failures: Finding[] = [];
   let measured = 0;
@@ -138,7 +146,7 @@ async function main() {
   }
 
   if (!failures.length) {
-    console.log(`\n${measured} text runs measured on ${TARGETS.length} pages. All meet WCAG AA.`);
+    console.log(`\n${measured} text runs measured on ${TARGETS.length} pages${landingTheme ? ` (landing set to ${landingTheme})` : ''}. All meet WCAG AA.`);
     return;
   }
   failures.sort((a, b) => a.ratio - b.ratio);
