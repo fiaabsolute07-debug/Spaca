@@ -1,4 +1,6 @@
-# Bàn giao cho agent/phiên tiếp theo — spaca (cập nhật 2026-09-15, cuối phiên Claude, commit `d898592`)
+# Bàn giao cho agent/phiên tiếp theo — spaca (cập nhật 2026-09-16, commit `0a4e71e`)
+
+> **Mới nhất:** đọc `docs/HANDOFF_PROMPT.md` trước — tóm tắt phiên 2026-09-16 (đã xong, dang dở, việc tiếp theo, kết quả kiểm tra). Các số liệu nghiệm thu và "Kiểm tra cuối" bên dưới vẫn là của 2026-09-15.
 
 > Đọc hết file này trước khi làm. Sau đó đọc theo thứ tự:
 > 1. `docs/MASTER_PROMPT.md`: đặc tả gốc. Roadmap ở §16, bảng acceptance ở §18.
@@ -57,9 +59,11 @@ Nghĩa là:
 - **Điều hướng workspace:** nằm trong menu **"Account" ở góc phải header** (nhóm Workspace, Find work hoặc Hire, Account › Profile, và Log out).
   - **Không** có thanh bên, **không** có khối tên/email/avatar, **không** có nút avatar riêng trên header. User đã yêu cầu xóa từng thứ.
   - Trang con có link "‹ Back to …"; không mở tab mới trong luồng app.
-- **Explore / Campaigns / Auctions:**
-  - Chỉ link trên header tô xanh mục đang xem.
+- **Explore / Campaigns / Auctions (2026-09-16):**
+  - Explore và Campaigns là menu thả xuống kiểu Zealy (ô màu nổi bật trái, mục có mô tả phải); Auctions là link. Trigger của mục đang xem được tô xanh.
   - User **không muốn** thanh tab Services/Campaigns/Auctions phía trên danh sách (đã làm rồi xóa).
+- **Nút Fund** ngay trước nút Account, gom luồng tiền; trang `/funds` (2026-09-16).
+- **Campaign theo mục tiêu:** Launch, Airdrop, Shiller, Testnet, AMA & Spaces, Education, Memes & art (2026-09-16).
 - **Form:** dùng thẻ/chip lựa chọn trực quan thay cho dropdown đơn lẻ (ví dụ "What do you need?" ở Post a brief).
 - **Màu:** chỉ ở phần quan trọng.
   - Xanh `--accent` cho nút chính và vị trí hiện tại.
@@ -106,7 +110,7 @@ export PATH=/Users/dohoangphi/.cache/codex-runtimes/codex-primary-runtime/depend
 ### 2.2 PostgreSQL embedded
 
 - Địa chỉ `127.0.0.1:55432`, user app `app_server`. Mật khẩu admin nằm trong script local; không in ra.
-- DB dev `creator_marketplace`, DB test `creator_marketplace_test`. **Cả hai đang ở migration 0025.**
+- DB dev `creator_marketplace`, DB test `creator_marketplace_test`. **Cả hai đang ở migration 0030.**
 - Backup `*_bak_0011` **đã xóa** trong audit.
 - Nếu cổng đóng: `./node_modules/.bin/tsx scripts/postgres.ts start`.
 - Migrate DB dev: `tsx scripts/migrate.ts`. Chuẩn bị DB test (migrate + seed): `tsx scripts/test-db.ts`.
@@ -166,7 +170,7 @@ cd contracts && forge test
 
 ### 3.1 Cấu trúc
 
-- **Migration:** `drizzle/00NN_<tên>.sql` (hiện tới 0025).
+- **Migration:** `drizzle/00NN_<tên>.sql` (hiện tới 0030).
   - Bất biến tài chính/tồn kho phải có ở DB: CHECK, trigger, foreign key ghép, unique partial index.
   - Ví dụ: `request_images` dùng FK `(request_id, buyer_id)` và `(asset_id, buyer_id, asset_purpose)`.
 - **`src/lib/commands.ts`:** `CommandHandler`, `CommandError(message, code)`, `statusForCode`.
