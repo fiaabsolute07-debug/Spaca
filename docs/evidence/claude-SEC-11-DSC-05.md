@@ -14,9 +14,13 @@ Runs
 - `tsx scripts/secret-scan.ts`: 376 tracked files and 51 client bundle files in `.next/static` (dev build), no findings. The first run flagged 2 lines in `tests/unit/release-rules.test.ts`, the detector's own unit test, which holds secret-shaped fixtures by design. That file is now excluded by name.
 - Observed in use: while campaign images were being added, the storage suite hit a CHECK violation. The log line showed `upload_intents_object_key_check`, SQLSTATE 23514 and the table, with no row values.
 
+Production bundle scan (2026-09-16)
+- `next.config.ts` now honours `NEXT_DIST_DIR`, so a scan can build into its own directory without disturbing a running dev server.
+- The first `next build` failed while collecting `/api/avatars/[id]`: `next build` sets `NODE_ENV=production`, and `src/lib/db.ts` refuses to load without `DATABASE_URL`. The rebuild used the local fixture URL, read from the source and never printed.
+- `NEXT_DIST_DIR=.next-scan next build` then completed, and `tsx scripts/secret-scan.ts --client-dir .next-scan/static` reported no findings over 392 tracked files and 25 client bundle files.
+
 Still open
-- The production `next build` bundle has not been scanned; only the dev bundle has.
-- No logs were captured from a deployed environment.
+- No logs were captured from a deployed environment, because none exists.
 
 ## DSC-05: a stale checkout after the creator pauses
 

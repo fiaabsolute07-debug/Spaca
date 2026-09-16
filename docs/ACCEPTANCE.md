@@ -1,6 +1,6 @@
 # Acceptance ledger
 
-As of 2026-09-15, verified baseline **90004fd**, crypto rows from W5-C1/W5-C2, DSC rows from W6-D, CAP rows from W7-CAP (active-order limit), PUBLISH/MOD/SUP-05/06 rows from W8-PUB, CRY rows from W9-ARC. One row per master §18 ID, including unstarted work. Platform fee is enforced at 0 in code; the fee model is undecided. P3 is done-local from W4-A; P4 is in progress by Claude. ACCESS rows from P6-ACCESS, DIGITAL rows (XPL-04..06) from P6-DIGITAL. Counts: **116 PASS, 19 PARTIAL, 0 NOT_RUN, 2 BLOCKED, 5 REMOVED by product decision (142 total)**. 2026-09-15: the order limit and ACCESS scheduling were removed (drizzle/0017).
+As of 2026-09-15, verified baseline **90004fd**, crypto rows from W5-C1/W5-C2, DSC rows from W6-D, CAP rows from W7-CAP (active-order limit), PUBLISH/MOD/SUP-05/06 rows from W8-PUB, CRY rows from W9-ARC. One row per master §18 ID, including unstarted work. Platform fee is enforced at 0 in code; the fee model is undecided. P3 is done-local from W4-A; P4 is in progress by Claude. ACCESS rows from P6-ACCESS, DIGITAL rows (XPL-04..06) from P6-DIGITAL. Counts: **117 PASS, 18 PARTIAL, 0 NOT_RUN, 2 BLOCKED, 5 REMOVED by product decision (142 total)**. 2026-09-15: the order limit and ACCESS scheduling were removed (drizzle/0017).
 
 | Gate | Status | Evidence / remaining work |
 |---|---|---|
@@ -22,7 +22,7 @@ Sources: [P0](evidence/p0-foundation.md), [provider report](CLAUDE_REPORT.md), [
 | Family | PASS | PARTIAL | NOT_RUN | BLOCKED | REMOVED |
 |---|---:|---:|---:|---:|---:|
 | FND | 5 | 2 | 0 | 0 | 0 |
-| SEC | 12 | 1 | 0 | 1 | 0 |
+| SEC | 13 | 0 | 0 | 1 | 0 |
 | MOD | 2 | 0 | 0 | 0 | 0 |
 | SUP | 6 | 0 | 0 | 0 | 0 |
 | CAP | 8 | 0 | 0 | 0 | 4 |
@@ -36,7 +36,7 @@ Sources: [P0](evidence/p0-foundation.md), [provider report](CLAUDE_REPORT.md), [
 | DSC | 6 | 0 | 0 | 0 | 0 |
 | XPL | 5 | 0 | 0 | 0 | 1 |
 | OPS | 4 | 4 | 0 | 0 | 0 |
-| **Total** | 116 | 19 | 0 | 2 | 5 |
+| **Total** | 117 | 18 | 0 | 2 | 5 |
 
 | ID | Summary (≤12 words) | Status | Environment | Evidence (file + test name or commit) | Gap/next task |
 |---|---|---|---|---|---|
@@ -57,7 +57,7 @@ Sources: [P0](evidence/p0-foundation.md), [provider report](CLAUDE_REPORT.md), [
 | SEC-08 | Reject foreign origins and expired sessions on financial mutations | PASS | local-db+mock | [SEC-RACE](evidence/claude-SEC-RACE.md): cross-origin approve/checkout/bank transfer/upload 403; expired session approve/book/checkout/bank transfer 401 with no state change | Local session store. |
 | SEC-09 | Reject self-booking, self-bidding and self-application across roles | PASS | local-db+mock | [W1-A](evidence/claude-W1-A.md): SEC-09 dual-role self-book; [DB](evidence/claude-db-integration.md): TEST_PLAN 6/7 self-apply/seller bid rejection; `dc68490` | Keep cross-source regression in later phases. |
 | SEC-10 | Block suspended sellers while preserving existing obligation access | PASS | local-db+mock | [SEC-RACE](evidence/claude-SEC-RACE.md): suspended creator accepts a deadline proposal and a full-refund cancellation, buyer refunded (REFUNDED), order still readable, new service 403; [W1-A](evidence/claude-W1-A.md) new-sale block and start/message/deliver | Local routes and mock provider. |
-| SEC-11 | Keep secrets and private payloads out of logs and bundles | PARTIAL | unit+local | [C4](evidence/claude-C4.md): `d05f9a2`, secret scan and environment report redaction unit tests; [SEC-11](evidence/claude-SEC-11-DSC-05.md): server errors logged through `logError` without row data, parameters or payload text (unit test with a PostgreSQL constraint error); `scripts/secret-scan.ts` over 376 tracked files and 51 dev client bundle files, no findings | Production `next build` bundle not scanned (dev bundle only); no log capture from a deployed environment. |
+| SEC-11 | Keep secrets and private payloads out of logs and bundles | PASS | unit+local-build | [C4](evidence/claude-C4.md): `d05f9a2`, secret scan and environment report redaction unit tests; [SEC-11](evidence/claude-SEC-11-DSC-05.md): server errors logged through `logError` without row data, parameters or payload text (unit test with a PostgreSQL constraint error); `scripts/secret-scan.ts` over 392 tracked files, the dev bundle and the production `next build` client bundle (25 files), no findings | No log capture from a deployed environment (none exists); production build needs `DATABASE_URL`, so it runs with the local one. |
 | SEC-12 | Separate moderation and finance authority with audited actions | PASS | local-db+mock | [W2B](evidence/claude-W2-B.md): `90678f8`, SEC-12 moderator denial, finance reason/audit, append-only audit | C6 browser role matrix also passed locally; staff step-up remains outside proof. |
 | SEC-13 | Reject client-forged system actors and job provenance | PASS | local-db+mock | [W2B](evidence/claude-W2-B.md): `90678f8`, SEC-13/04 forged system actor ignored | Server-generated system provenance only; retain HTTP regression. |
 | SEC-14 | Prevent private delivery reuse without scope and ownership consent | PASS | local-db+mock | [W2S](evidence/claude-W2-S.md): `4173ae0`, SEC-14 delivery-to-sample and cross-order FK negatives | Local filesystem/signature checks only; no Supabase or antivirus claim. |

@@ -4,6 +4,8 @@ import type { NextConfig } from 'next';
 const PRIVATE_SOURCES = ['/orders/:path*', '/dashboard/:path*', '/admin/:path*', '/buyer/:path*', '/creator/:path*', '/settings/:path*', '/api/:path*', '/sign-in', '/sign-up', '/reset-password'];
 
 const config: NextConfig = {
+  // A scan or a check can build into its own directory (NEXT_DIST_DIR=.next-scan) without disturbing a running dev server.
+  ...(process.env.NEXT_DIST_DIR ? { distDir: process.env.NEXT_DIST_DIR } : {}),
   poweredByHeader: false,
   serverExternalPackages: ['postgres'],
   experimental: { serverActions: { bodySizeLimit: '2mb' } },
