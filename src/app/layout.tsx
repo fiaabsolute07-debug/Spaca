@@ -20,7 +20,9 @@ const geist = Geist({ subsets: ['latin'], variable: '--font-geist', display: 'sw
 const geistMono = Geist_Mono({ subsets: ['latin'], variable: '--font-geist-mono', display: 'swap' });
 
 export const metadata: Metadata = {
-  title: 'spaca — Creator campaigns for web3 launches',
+  // Tab title in the marketplace pattern "brand | what it is | what you get" (2026-09-16, modelled on Fiverr's).
+  // A page that sets its own title reads "Page | spaca".
+  title: { default: 'spaca | Creator campaigns marketplace for web3 launches | Hire crypto-native creators on X', template: '%s | spaca' },
   description: 'Hire crypto-native researchers, writers and KOLs on X from one brief. Each creator is paid when their work is approved.',
 };
 

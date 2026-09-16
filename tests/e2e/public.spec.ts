@@ -5,6 +5,7 @@ test('anonymous visitors browse the landing, explore, service, requests and auct
   const errors: string[] = [];
   page.on('pageerror', error => errors.push(error.message));
   await visit(page, '/');
+  await expect(page).toHaveTitle('spaca | Creator campaigns marketplace for web3 launches | Hire crypto-native creators on X');
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Find the voices your launch needs.');
   await expect(page.getByRole('radiogroup', { name: 'Color theme' })).toBeVisible();
   await visit(page, '/explore');
