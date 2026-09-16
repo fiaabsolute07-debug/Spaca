@@ -2,7 +2,8 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { ArrowDownLeft, ChevronDown, Clock, CreditCard, Landmark, Receipt, PiggyBank, Wallet } from 'lucide-react';
+import { ChevronDown, Landmark, Wallet } from 'lucide-react';
+import { MenuIcon } from './menu-icon';
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import type { AccountType } from '@/lib/account';
 
@@ -15,17 +16,17 @@ type Entry = { href: string; title: string; description: string; icon: ReactNode
 const usd = (minor: string | undefined) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(Number(minor ?? 0) / 100);
 
 const BUYER_LINKS: Entry[] = [
-  { href: '/funds#to-pay', title: 'Pay for orders', description: 'Orders waiting for your payment', icon: <CreditCard size={17} /> },
-  { href: '/funds#held', title: 'Held for work', description: 'Paid and waiting on delivery or approval', icon: <Clock size={17} /> },
-  { href: '/funds#pools', title: 'Campaign reward pools', description: 'Deposits and rewards for your campaigns', icon: <PiggyBank size={17} /> },
-  { href: '/funds#activity', title: 'Money activity', description: 'Payments, refunds and releases', icon: <Receipt size={17} /> },
-  { href: '/funds#wallets', title: 'Wallets', description: 'Addresses you proved you control', icon: <Wallet size={17} /> },
+  { href: '/funds#to-pay', title: 'Pay for orders', description: 'Orders waiting for your payment', icon: <MenuIcon name="pay" /> },
+  { href: '/funds#held', title: 'Held for work', description: 'Paid and waiting on delivery or approval', icon: <MenuIcon name="held" /> },
+  { href: '/funds#pools', title: 'Campaign reward pools', description: 'Deposits and rewards for your campaigns', icon: <MenuIcon name="pool" /> },
+  { href: '/funds#activity', title: 'Money activity', description: 'Payments, refunds and releases', icon: <MenuIcon name="activity" /> },
+  { href: '/funds#wallets', title: 'Wallets', description: 'Addresses you proved you control', icon: <MenuIcon name="wallet" /> },
 ];
 const CREATOR_LINKS: Entry[] = [
-  { href: '/funds#held', title: 'Held for your work', description: 'Paid by buyers, released on approval', icon: <Clock size={17} /> },
-  { href: '/funds#payouts', title: 'Payouts', description: 'Releases and pool rewards on chain', icon: <ArrowDownLeft size={17} /> },
-  { href: '/funds#activity', title: 'Money activity', description: 'Payments, refunds and releases', icon: <Receipt size={17} /> },
-  { href: '/funds#wallets', title: 'Wallets', description: 'Where crypto payouts are sent', icon: <Wallet size={17} /> },
+  { href: '/funds#held', title: 'Held for your work', description: 'Paid by buyers, released on approval', icon: <MenuIcon name="held" /> },
+  { href: '/funds#payouts', title: 'Payouts', description: 'Releases and pool rewards on chain', icon: <MenuIcon name="payout" /> },
+  { href: '/funds#activity', title: 'Money activity', description: 'Payments, refunds and releases', icon: <MenuIcon name="activity" /> },
+  { href: '/funds#wallets', title: 'Wallets', description: 'Where crypto payouts are sent', icon: <MenuIcon name="wallet" /> },
 ];
 
 /**

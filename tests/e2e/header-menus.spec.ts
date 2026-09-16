@@ -90,3 +90,55 @@ test.describe('on a phone', () => {
     await expect(menu).toBeHidden();
   });
 });
+
+test('menu icons act out what they stand for on hover, once, and stay still with reduced motion', async ({ page, browser }) => {
+  await visit(page, '/requests');
+  const nav = page.getByRole('navigation', { name: 'Main navigation' });
+  const campaigns = nav.getByRole('button', { name: 'Campaigns', exact: true });
+  await waitForHydration(campaigns);
+  await campaigns.hover();
+  const menu = nav.getByRole('group', { name: 'Campaigns menu' });
+  const part = (name: RegExp, selector: string) => menu.getByRole('link', { name }).locator(`.nav-item-icon ${selector}`);
+  const motion = (name: RegExp, selector: string) => part(name, selector).evaluate((node) => {
+    const style = getComputedStyle(node);
+    return { name: style.animationName, iterations: style.animationIterationCount };
+  });
+  // At rest the rocket is a still drawing and its flame is out.
+  expect((await motion(/^Launch/, '.mi-rocket')).name).toBe('none');
+  expect(await part(/^Launch/, '.mi-flame').evaluate((node) => getComputedStyle(node).opacity)).toBe('0');
+  // Each icon moves the part that tells its story, a fixed number of times, never in a loop.
+  for (const [name, selector, keyframes, iterations] of [
+    [/^Launch/, '.mi-rocket', 'mi-launch', '1'],
+    [/^Launch/, '.mi-flame', 'mi-flame', '1'],
+    [/^Shiller/, '.mi-wave-3', 'mi-wave', '2'],
+    [/^Airdrop/, '.mi-chute', 'mi-drop', '1'],
+    [/^Testnet/, '.mi-bubble-1', 'mi-bubble', '1'],
+    [/^Education/, '.mi-tassel', 'mi-swing', '1'],
+  ] as const) {
+    await menu.getByRole('link', { name }).hover();
+    expect(await motion(name, selector)).toEqual({ name: keyframes, iterations });
+  }
+  // The rocket really leaves: partway through its run it sits outside its frame, which clips it.
+  await menu.getByRole('link', { name: /^Launch/ }).hover();
+  const icon = menu.getByRole('link', { name: /^Launch/ }).locator('.nav-item-icon');
+  const away = await icon.evaluate((frame) => {
+    const rocket = frame.querySelector('.mi-rocket')!;
+    for (const animation of frame.getAnimations({ subtree: true })) { animation.pause(); animation.currentTime = 600; }
+    const outer = frame.getBoundingClientRect();
+    const inner = rocket.getBoundingClientRect();
+    return { overflow: getComputedStyle(frame).overflow, outside: inner.left >= outer.right || inner.bottom <= outer.top || inner.right <= outer.left || inner.top >= outer.bottom };
+  });
+  expect(away).toEqual({ overflow: 'hidden', outside: true });
+
+  const reduced = await browser.newContext({ reducedMotion: 'reduce', baseURL: 'http://127.0.0.1:3100' });
+  const still = await reduced.newPage();
+  await visit(still, '/requests');
+  const stillNav = still.getByRole('navigation', { name: 'Main navigation' });
+  const stillCampaigns = stillNav.getByRole('button', { name: 'Campaigns', exact: true });
+  await waitForHydration(stillCampaigns);
+  await stillCampaigns.hover();
+  const launch = stillNav.getByRole('group', { name: 'Campaigns menu' }).getByRole('link', { name: /^Launch/ });
+  await launch.hover();
+  expect(await launch.locator('.nav-item-icon svg').evaluate((svg) => [...svg.querySelectorAll('[class]')].map((node) => getComputedStyle(node).animationName))).toEqual(expect.not.arrayContaining([expect.stringMatching(/^mi-/)]));
+  await reduced.close();
+});

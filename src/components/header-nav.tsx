@@ -6,7 +6,7 @@ import { ArrowRight, ChevronDown } from 'lucide-react';
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import type { AccountType } from '@/lib/account';
 import { CATEGORIES } from './category';
-import { GoalIcon } from './campaign/goal-icon';
+import { MenuIcon, type MenuIconName } from './menu-icon';
 import { CAMPAIGN_GOALS } from '@/modules/requests/goals';
 
 type MenuItem = { href: string; title: string; description: string; icon: ReactNode };
@@ -37,7 +37,7 @@ function menusFor(type: AccountType | null): Menu[] {
       featured: { href: '/explore', title: 'Explore creators', description: 'Every service, one search, with prices and samples up front.' },
       items: CATEGORIES.map((category) => ({
         href: `/explore?category=${category.value}`, title: category.title, description: EXPLORE_LINES[category.value] ?? category.need,
-        icon: category.icon,
+        icon: <MenuIcon name={category.key} />,
       })),
       all: { href: '/explore', label: 'All services' },
     },
@@ -49,7 +49,7 @@ function menusFor(type: AccountType | null): Menu[] {
         ? { href: '/requests', title: 'Find campaigns', description: 'Open briefs taking applications. Quote your own price.' }
         : { href: '/buyer/requests/new', title: 'Post a brief', description: 'Describe the campaign once and compare quotes from creators.' },
       items: CAMPAIGN_GOALS.map((goal) => ({
-        href: `/campaigns/${goal.slug}`, title: goal.title, description: goal.short, icon: <GoalIcon goal={goal.value} size={17} />,
+        href: `/campaigns/${goal.slug}`, title: goal.title, description: goal.short, icon: <MenuIcon name={goal.slug as MenuIconName} />,
       })),
       all: { href: '/requests', label: 'All campaigns' },
     },

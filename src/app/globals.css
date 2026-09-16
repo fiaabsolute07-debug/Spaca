@@ -713,6 +713,148 @@ td small { display: block; color: var(--faint); margin-top: 3px; font-size: 12px
 .nav-item:hover, .nav-item:focus-visible { background: var(--soft-2); }
 .nav-item-icon { display: grid; place-items: center; flex: none; width: 34px; height: 34px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--bg); color: var(--ink); }
 .nav-item:hover .nav-item-icon { background: var(--soft-2); }
+/* ---------- Menu icon motion ----------
+   Each menu icon acts out what it stands for when its item is hovered or focused (src/components/menu-icon.tsx):
+   the rocket launches, the megaphone sends out sound, the parachute drops in. Every animation runs once and then
+   rests; only transform, opacity and stroke offsets change, so nothing reflows. No motion on touch screens or with
+   reduced motion, where each icon stays a still drawing. */
+.nav-item-icon { overflow: hidden; transition: border-color 0.2s ease, color 0.2s ease; }
+.nav-item:is(:hover, :focus-visible) .nav-item-icon { border-color: var(--line-strong); color: var(--accent-text); }
+.mi { display: block; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; overflow: visible; }
+.mi [class] { transform-box: fill-box; transform-origin: center; }
+.mi .mi-fill { fill: currentColor; stroke: none; }
+.mi .mi-soft { fill: color-mix(in srgb, currentColor 22%, transparent); }
+.mi .mi-flame { fill: currentColor; stroke: none; opacity: 0; transform-origin: 50% 0; }
+.mi .mi-smoke { fill: color-mix(in srgb, currentColor 30%, transparent); stroke: none; }
+.mi .mi-rec { opacity: 0.9; }
+.mi .mi-smoke, .mi .mi-bubble, .mi .mi-ring, .mi .mi-coin, .mi .mi-wave-2, .mi .mi-wave-3 { opacity: 0; }
+.mi .mi-check { stroke-dasharray: 1; stroke-dashoffset: 1; }
+.mi .mi-ink, .mi .mi-line { stroke-dasharray: 1; stroke-dashoffset: 0; }
+.mi .mi-minute, .mi .mi-hour { transform-box: view-box; transform-origin: 12px 12px; }
+.mi .mi-tassel { transform-box: view-box; transform-origin: 20px 9.5px; }
+.mi .mi-peel { transform-origin: 100% 0; }
+.mi .mi-chute { transform-origin: 50% 0; }
+
+@media (hover: hover) and (prefers-reduced-motion: no-preference) {
+  /* Rocket: rumble, ignite, leave the frame up and right, come back in from below. */
+  .nav-item:is(:hover, :focus-visible) .mi-rocket { animation: mi-launch 1.1s cubic-bezier(0.5, 0, 0.25, 1) both; }
+  .nav-item:is(:hover, :focus-visible) .mi-flame { animation: mi-flame 1.1s ease-out both; }
+  .nav-item:is(:hover, :focus-visible) .mi-smoke-1 { animation: mi-smoke 0.9s ease-out 0.12s both; }
+  .nav-item:is(:hover, :focus-visible) .mi-smoke-2 { animation: mi-smoke 0.9s ease-out 0.22s both; }
+
+  /* Megaphone: a push, then sound carries out in three widening waves, twice. */
+  .nav-item:is(:hover, :focus-visible) .mi-horn { animation: mi-shout 0.7s ease-out 2 both; }
+  .nav-item:is(:hover, :focus-visible) .mi-wave { animation: mi-wave 0.7s ease-out 2 backwards; }
+  .nav-item:is(:hover, :focus-visible) .mi-wave-2 { animation-delay: 0.1s; }
+  .nav-item:is(:hover, :focus-visible) .mi-wave-3 { animation-delay: 0.2s; }
+
+  /* Parachute: drops in from above, sways, lands. */
+  .nav-item:is(:hover, :focus-visible) .mi-chute { animation: mi-drop 1.1s cubic-bezier(0.3, 0.6, 0.3, 1) both; }
+
+  /* Microphone: the grill lights and voice rings open on both sides. */
+  .nav-item:is(:hover, :focus-visible) .mi-mic { animation: mi-talk 0.5s ease-in-out 2 both; }
+  .nav-item:is(:hover, :focus-visible) .mi-grill { animation: mi-blink 0.5s linear 2 both; }
+  .nav-item:is(:hover, :focus-visible) .mi-ring-l { animation: mi-ring-left 0.5s ease-out 2 both; }
+  .nav-item:is(:hover, :focus-visible) .mi-ring-r { animation: mi-ring-right 0.5s ease-out 2 both; }
+
+  /* Flask: a small swirl while bubbles rise and pop. */
+  .nav-item:is(:hover, :focus-visible) .mi-flask { transform-origin: 50% 90%; animation: mi-swirl 0.9s ease-in-out both; }
+  .nav-item:is(:hover, :focus-visible) .mi-bubble { animation: mi-bubble 0.8s cubic-bezier(0.4, 0, 0.7, 1) both; }
+  .nav-item:is(:hover, :focus-visible) .mi-bubble-2 { animation-delay: 0.16s; }
+  .nav-item:is(:hover, :focus-visible) .mi-bubble-3 { animation-delay: 0.32s; }
+
+  /* Graduation cap: tossed up, turns, lands; the tassel keeps swinging a moment longer. */
+  .nav-item:is(:hover, :focus-visible) .mi-cap { animation: mi-toss 0.95s cubic-bezier(0.3, 0.6, 0.3, 1) both; }
+  .nav-item:is(:hover, :focus-visible) .mi-tassel { animation: mi-swing 1.1s ease-in-out both; }
+
+  /* Sticker: a wink and a grin, and the corner peels. */
+  .nav-item:is(:hover, :focus-visible) .mi-sticker { animation: mi-pop 0.7s ease-out both; }
+  .nav-item:is(:hover, :focus-visible) .mi-eye-r { animation: mi-wink 0.7s ease-in-out both; }
+  .nav-item:is(:hover, :focus-visible) .mi-mouth { animation: mi-grin 0.7s ease-out both; }
+  .nav-item:is(:hover, :focus-visible) .mi-peel { animation: mi-peel 0.8s ease-in-out both; }
+
+  /* Pen: writes its line from left to right. */
+  .nav-item:is(:hover, :focus-visible) .mi-pen { animation: mi-write 0.9s ease-in-out both; }
+  .nav-item:is(:hover, :focus-visible) .mi-ink { animation: mi-draw 0.6s ease-in-out both; }
+
+  /* Camera: recording light blinks, the camera leans in. */
+  .nav-item:is(:hover, :focus-visible) .mi-lens { animation: mi-focus 0.8s ease-in-out both; }
+  .nav-item:is(:hover, :focus-visible) .mi-rec { animation: mi-blink 0.45s linear 2 both; }
+  .nav-item:is(:hover, :focus-visible) .mi-rec-ring { animation: mi-pulse 0.45s ease-out 2 both; }
+
+  /* File: the download arrow drops in twice and the file takes it. */
+  .nav-item:is(:hover, :focus-visible) .mi-down { animation: mi-fall 0.55s ease-in 2 both; }
+  .nav-item:is(:hover, :focus-visible) .mi-file { transform-origin: 50% 100%; animation: mi-squash 0.55s ease-out 2 both; }
+
+  /* Card: a swipe, then the check draws. */
+  .nav-item:is(:hover, :focus-visible) .mi-card { animation: mi-swipe 0.6s ease-in-out both; }
+  .nav-item:is(:hover, :focus-visible) .mi-check { animation: mi-check 0.35s ease-out 0.45s both; }
+
+  /* Clock: the minute hand runs a full turn, the hour hand a step. */
+  .nav-item:is(:hover, :focus-visible) .mi-minute { animation: mi-turn 0.9s ease-in-out both; }
+  .nav-item:is(:hover, :focus-visible) .mi-hour { animation: mi-step 0.9s ease-in-out both; }
+
+  /* Piggy bank: a coin falls into the slot and the pig bounces. */
+  .nav-item:is(:hover, :focus-visible) svg.mi-pool .mi-coin { animation: mi-coin-in 0.7s ease-in both; }
+  .nav-item:is(:hover, :focus-visible) .mi-piggy { transform-origin: 50% 100%; animation: mi-squash 0.35s ease-out 0.55s both; }
+
+  /* Receipt: slides out of the printer and its lines print one by one. */
+  .nav-item:is(:hover, :focus-visible) .mi-receipt { animation: mi-print 0.8s ease-out both; }
+  .nav-item:is(:hover, :focus-visible) .mi-line { animation: mi-draw 0.3s ease-out both; }
+  .nav-item:is(:hover, :focus-visible) .mi-line-1 { animation-delay: 0.25s; }
+  .nav-item:is(:hover, :focus-visible) .mi-line-2 { animation-delay: 0.4s; }
+  .nav-item:is(:hover, :focus-visible) .mi-line-3 { animation-delay: 0.55s; }
+
+  /* Wallet: a coin pops out and drops back in. */
+  .nav-item:is(:hover, :focus-visible) svg.mi-wallet .mi-coin { animation: mi-coin-pop 0.8s ease-out both; }
+  .nav-item:is(:hover, :focus-visible) .mi-purse { transform-origin: 50% 100%; animation: mi-squash 0.35s ease-out 0.5s both; }
+
+  /* Payout: the arrow drops into the tray twice. */
+  .nav-item:is(:hover, :focus-visible) .mi-drop { animation: mi-fall 0.55s ease-in 2 both; }
+  .nav-item:is(:hover, :focus-visible) .mi-tray { animation: mi-tray 0.55s ease-out 2 both; }
+}
+
+@keyframes mi-launch {
+  0% { transform: none; }
+  8% { transform: translate(-0.6px, 0.6px); }
+  14% { transform: translate(0.6px, -0.4px); }
+  20% { transform: translate(-0.4px, 0.4px); }
+  54% { transform: translate(34px, -34px); }
+  54.01% { transform: translate(-34px, 34px); }
+  100% { transform: none; }
+}
+@keyframes mi-flame { 0% { opacity: 0; transform: scaleY(0.3); } 10% { opacity: 1; transform: scaleY(0.8); } 15% { transform: scaleY(0.6); } 20% { transform: scaleY(1); } 45% { opacity: 1; transform: scaleY(1.7); } 58% { opacity: 0; transform: scaleY(1.7); } 80% { opacity: 1; transform: scaleY(1.3); } 100% { opacity: 0; transform: scaleY(0.3); } }
+@keyframes mi-smoke { 0% { opacity: 0; transform: scale(0.3); } 30% { opacity: 1; transform: scale(1); } 100% { opacity: 0; transform: translate(-2.5px, 1.5px) scale(1.9); } }
+@keyframes mi-shout { 0%, 100% { transform: none; } 25% { transform: translateX(-1px) scale(1.06); } }
+@keyframes mi-wave { 0% { opacity: 0; transform: translateX(-2px) scale(0.8); } 35% { opacity: 1; } 100% { opacity: 0; transform: translateX(2px) scale(1.12); } }
+@keyframes mi-drop { 0% { opacity: 0; transform: translateY(-16px) rotate(-10deg); } 20% { opacity: 1; } 55% { transform: translateY(-2px) rotate(8deg); } 78% { transform: translateY(0.5px) rotate(-4deg); } 100% { transform: none; } }
+@keyframes mi-talk { 0%, 100% { transform: none; } 50% { transform: translateY(-1px) scale(1.04); } }
+@keyframes mi-blink { 0%, 45% { opacity: 1; } 50%, 95% { opacity: 0.15; } 100% { opacity: 1; } }
+@keyframes mi-ring-left { 0% { opacity: 0; transform: translateX(2px) scale(0.7); } 40% { opacity: 1; } 100% { opacity: 0; transform: translateX(-1.5px) scale(1.15); } }
+@keyframes mi-ring-right { 0% { opacity: 0; transform: translateX(-2px) scale(0.7); } 40% { opacity: 1; } 100% { opacity: 0; transform: translateX(1.5px) scale(1.15); } }
+@keyframes mi-swirl { 0%, 100% { transform: none; } 30% { transform: rotate(-6deg); } 65% { transform: rotate(5deg); } }
+@keyframes mi-bubble { 0% { opacity: 0; transform: translateY(0) scale(0.5); } 20% { opacity: 1; } 80% { opacity: 1; transform: translateY(-12px) scale(1); } 100% { opacity: 0; transform: translateY(-15px) scale(1.7); } }
+@keyframes mi-toss { 0%, 100% { transform: none; } 38% { transform: translateY(-8px) rotate(-16deg); } 62% { transform: translateY(-7px) rotate(10deg); } 84% { transform: translateY(0.8px) rotate(-2deg); } }
+@keyframes mi-swing { 0%, 100% { transform: none; } 30% { transform: rotate(28deg); } 55% { transform: rotate(-22deg); } 78% { transform: rotate(10deg); } }
+@keyframes mi-pop { 0%, 100% { transform: none; } 35% { transform: scale(1.08) rotate(-3deg); } }
+@keyframes mi-wink { 0%, 25%, 75%, 100% { transform: none; } 35%, 65% { transform: scale(1.3, 0.1); } }
+@keyframes mi-grin { 0%, 100% { transform: none; } 40%, 70% { transform: scale(1.25, 1.35); } }
+@keyframes mi-peel { 0%, 100% { transform: none; } 45% { transform: rotate(-22deg) scale(1.1); } }
+@keyframes mi-write { 0% { transform: translate(-2px, 3px); } 25% { transform: translate(1px, 2.4px) rotate(4deg); } 50% { transform: translate(4px, 3px) rotate(-3deg); } 67% { transform: translate(7px, 3px); } 100% { transform: none; } }
+@keyframes mi-draw { 0% { stroke-dashoffset: 1; } 100% { stroke-dashoffset: 0; } }
+@keyframes mi-focus { 0%, 100% { transform: none; } 30% { transform: scale(0.55); } 60% { transform: scale(1.15); } }
+@keyframes mi-pulse { 0% { opacity: 0.9; transform: scale(1); } 100% { opacity: 0; transform: scale(2.6); } }
+@keyframes mi-fall { 0% { opacity: 0; transform: translateY(-9px); } 55% { opacity: 1; transform: translateY(1px); } 100% { opacity: 1; transform: none; } }
+@keyframes mi-squash { 0%, 100% { transform: none; } 50% { transform: scale(1.06, 0.9); } }
+@keyframes mi-swipe { 0%, 100% { transform: none; } 45% { transform: translateX(5px); } 75% { transform: translateX(-1.5px); } }
+@keyframes mi-check { 0% { stroke-dashoffset: 1; } 100% { stroke-dashoffset: 0; } }
+@keyframes mi-turn { 0% { transform: none; } 100% { transform: rotate(360deg); } }
+@keyframes mi-step { 0% { transform: none; } 100% { transform: rotate(30deg); } }
+@keyframes mi-coin-in { 0% { opacity: 0; transform: translateY(-7px); } 20% { opacity: 1; } 55% { opacity: 1; transform: translateY(1px); } 80% { opacity: 1; transform: translateY(4px) scaleY(0.25); } 100% { opacity: 0; transform: translateY(4.5px) scaleY(0.1); } }
+@keyframes mi-coin-pop { 0% { opacity: 0; transform: translateY(4px); } 40% { opacity: 1; transform: translateY(-6px); } 75% { opacity: 1; transform: translateY(-5px); } 100% { opacity: 0; transform: translateY(4px); } }
+@keyframes mi-print { 0% { transform: translateY(-10px); } 100% { transform: none; } }
+@keyframes mi-tray { 0%, 45%, 100% { transform: none; } 65% { transform: translateY(1px) scaleX(1.05); } }
+
 .nav-item-text { display: grid; gap: 2px; min-width: 0; }
 .nav-item-text strong { font-size: 14px; font-weight: 600; }
 .nav-item-text small { font-size: 12.5px; line-height: 1.35; color: var(--muted); }
