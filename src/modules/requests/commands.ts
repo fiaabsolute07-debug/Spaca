@@ -183,25 +183,35 @@ const createRequest: CommandHandler = async ({ tx, actor, form }) => {
       ${performance.measureAfterDays},${performance.verifyDays},${performance.medianMultiplier}) returning id`;
   const requestId = String(request!.id);
   const images = text(form, 'image_ids', false, 400);
-  if (images) await replaceRequestImages(tx, actor, requestId, images);
+  if (images) await replaceRequestImages(tx, actor, requestId, images, text(form, 'thumb_ids', false, 400));
   return done(requestId, 'Brief published. Creators can now apply.', requestId);
 };
 
 const MAX_REQUEST_IMAGES = 6;
 
-/** Replaces a campaign's images with the buyer's own finished REQUEST_IMAGE uploads, in the order given. */
-async function replaceRequestImages(tx: Tx, actor: Actor, requestId: string, value: string): Promise<number> {
-  const ids = [...new Set(value.split(/[\s,]+/).map((id) => id.trim().toLowerCase()).filter(Boolean))];
+const assetIds = (value: string) => [...new Set(value.split(/[\s,]+/).map((id) => id.trim().toLowerCase()).filter(Boolean))];
+
+/**
+ * Replaces a campaign's images with the buyer's own finished REQUEST_IMAGE uploads, in the order given. `thumbs` holds
+ * the small copy the browser made for each image, in the same order; a blank entry (or none at all) means the campaign
+ * cards fall back to the full-size image.
+ */
+async function replaceRequestImages(tx: Tx, actor: Actor, requestId: string, value: string, thumbValue = ''): Promise<number> {
+  const ids = assetIds(value);
+  const thumbs = thumbValue.split(',').map((id) => id.trim().toLowerCase());
   if (ids.some((id) => !UUID_PATTERN.test(id))) throw new CommandError('image_ids must be file ids from finished uploads');
+  if (thumbs.some((id) => id && !UUID_PATTERN.test(id))) throw new CommandError('thumb_ids must be file ids from finished uploads');
   if (ids.length > MAX_REQUEST_IMAGES) throw new CommandError(`A campaign can show at most ${MAX_REQUEST_IMAGES} images`);
-  if (ids.length) {
-    const assets = await tx<Row[]>`select id,lifecycle_state from app.storage_assets where id = any(${ids}::uuid[]) and owner_id=${actor.id} and purpose='REQUEST_IMAGE' for share`;
-    if (assets.length !== ids.length) throw new CommandError('Upload the images first', 'NOT_FOUND');
+  const wanted = [...new Set([...ids, ...thumbs.filter(Boolean)])];
+  if (wanted.length) {
+    const assets = await tx<Row[]>`select id,lifecycle_state from app.storage_assets where id = any(${wanted}::uuid[]) and owner_id=${actor.id} and purpose='REQUEST_IMAGE' for share`;
+    if (assets.length !== wanted.length) throw new CommandError('Upload the images first', 'NOT_FOUND');
     if (assets.some((asset) => asset.lifecycle_state !== 'READY')) throw new CommandError('An image did not pass the upload checks', 'DOMAIN_RULE');
   }
   await tx`delete from app.request_images where request_id=${requestId}`;
   for (const [position, id] of ids.entries()) {
-    await tx`insert into app.request_images (request_id,buyer_id,asset_id,position) values (${requestId},${actor.id},${id},${position})`;
+    const thumb = thumbs[position] && thumbs[position] !== id ? thumbs[position]! : null;
+    await tx`insert into app.request_images (request_id,buyer_id,asset_id,thumb_asset_id,position) values (${requestId},${actor.id},${id},${thumb},${position})`;
   }
   return ids.length;
 }
@@ -214,7 +224,7 @@ const setRequestImages: CommandHandler = async ({ tx, actor, form }) => {
   const clear = text(form, 'clear', false, 10) === 'true';
   const images = clear ? '' : text(form, 'image_ids', false, 400);
   if (!clear && !images) throw new CommandError('Upload at least one image, or remove the current images');
-  const count = await replaceRequestImages(tx, actor, requestId, images);
+  const count = await replaceRequestImages(tx, actor, requestId, images, clear ? '' : text(form, 'thumb_ids', false, 400));
   return done(requestId, count ? 'Campaign images updated.' : 'Campaign images removed.');
 };
 

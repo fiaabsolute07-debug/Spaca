@@ -1,8 +1,31 @@
+import { crc32, deflateSync } from 'node:zlib';
 import { expect, test } from '@playwright/test';
 import { dateTimeLocal, login, submit, uniqueSuffix, visit, waitForHydration } from './helpers';
 
-// A valid 1×1 PNG: it passes the upload signature check and renders in the browser.
-const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
+/** A real RGB PNG of noise, large enough (1600×1000, a few MB) that the browser makes a card-sized copy of it. */
+function noisePng(width: number, height: number): Buffer {
+  const chunk = (type: string, data: Buffer) => {
+    const body = Buffer.concat([Buffer.from(type, 'ascii'), data]);
+    const length = Buffer.alloc(4);
+    length.writeUInt32BE(data.length);
+    const crc = Buffer.alloc(4);
+    crc.writeUInt32BE(crc32(body) >>> 0);
+    return Buffer.concat([length, body, crc]);
+  };
+  const header = Buffer.alloc(13);
+  header.writeUInt32BE(width, 0);
+  header.writeUInt32BE(height, 4);
+  header[8] = 8; // bit depth
+  header[9] = 2; // RGB
+  const rows = Buffer.alloc((width * 3 + 1) * height);
+  let seed = 7;
+  for (let i = 0; i < rows.length; i++) {
+    seed = (seed * 1103515245 + 12345) & 0x7fffffff;
+    rows[i] = i % (width * 3 + 1) === 0 ? 0 : seed & 0xff;
+  }
+  return Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), chunk('IHDR', header), chunk('IDAT', deflateSync(rows)), chunk('IEND', Buffer.alloc(0))]);
+}
+const PNG = noisePng(1600, 1000);
 
 test('a buyer picks the campaign type from cards, adds a project image, and creators see it on the campaign', async ({ page }) => {
   const title = `E2E visual brief ${uniqueSuffix()}`;
@@ -33,6 +56,9 @@ test('a buyer picks the campaign type from cards, adds a project image, and crea
   const image = page.getByRole('img', { name: imageName, exact: true });
   await expect(image).toBeVisible();
   await expect.poll(() => image.evaluate((img: HTMLImageElement) => img.complete && img.naturalWidth > 0)).toBe(true);
+  // The campaign page shows the full image.
+  expect(await image.evaluate((img: HTMLImageElement) => img.naturalWidth)).toBe(1600);
+  const original = await image.getAttribute('src');
   await expect(page.getByRole('button', { name: 'Replace images', exact: true })).toBeVisible();
 
   await login(page, 'creator_c');
@@ -41,6 +67,12 @@ test('a buyer picks the campaign type from cards, adds a project image, and crea
   await expect(page.getByRole('navigation', { name: 'Marketplace sections' })).toHaveCount(0);
   const card = page.getByRole('link', { name: new RegExp(title) });
   await expect(card.locator('img')).toHaveCount(1);
+  // The card loads the small copy the browser made at upload, not the full image.
+  const cover = card.locator('img');
+  await cover.scrollIntoViewIfNeeded();
+  await expect.poll(() => cover.evaluate((img: HTMLImageElement) => img.complete && img.naturalWidth > 0)).toBe(true);
+  expect(await cover.getAttribute('src')).not.toBe(original);
+  expect(await cover.evaluate((img: HTMLImageElement) => Math.max(img.naturalWidth, img.naturalHeight))).toBe(640);
   await Promise.all([page.waitForURL(new RegExp(`${requestPath}$`)), card.click()]);
   await expect(page.getByRole('img', { name: imageName, exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Replace images', exact: true })).toHaveCount(0);

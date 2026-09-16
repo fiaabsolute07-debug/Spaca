@@ -288,6 +288,17 @@ const quarantineFile: CommandHandler = async ({ tx, actor, form }) => {
   if (before.purpose === 'SAMPLE') {
     await tx`update app.samples set moderation_status='REJECTED',moderated_by=${actor.id},moderated_at=now(),moderation_reason=${reason} where storage_asset_id=${assetId}`;
   }
+  if (before.purpose === 'REQUEST_IMAGE') {
+    // A campaign image and its card copy are one picture: quarantining either takes both out of view.
+    const pairs = await tx<Row[]>`select asset_id,thumb_asset_id from app.request_images where asset_id=${assetId} or thumb_asset_id=${assetId}`;
+    for (const pair of pairs) {
+      for (const other of [pair.asset_id, pair.thumb_asset_id]) {
+        if (!other || String(other) === assetId) continue;
+        const [state] = await tx<Row[]>`select lifecycle_state from app.storage_assets where id=${String(other)}`;
+        if (state && !['QUARANTINED', 'DELETED'].includes(String(state.lifecycle_state))) await quarantineAsset(tx, String(other), reason);
+      }
+    }
+  }
   await audit(tx, actor, 'asset.quarantine', 'storage_asset', assetId, reason, { lifecycle_state: before.lifecycle_state, bucket: before.bucket }, { lifecycle_state: 'QUARANTINED' });
   return { path: before.order_id ? `/admin/orders/${before.order_id}` : '/admin/moderation', message: 'File quarantined' };
 };

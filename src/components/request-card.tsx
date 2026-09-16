@@ -9,7 +9,8 @@ export function RequestCard({
   item: unknown;
 }) {
   const r = row(item);
-  const images = Array.isArray(r.image_ids) ? r.image_ids.map(String) : [];
+  // Cards load the small copy made at upload; a campaign without one falls back to the original.
+  const images = Array.isArray(r.thumb_ids) && r.thumb_ids.length ? r.thumb_ids.map(String) : Array.isArray(r.image_ids) ? r.image_ids.map(String) : [];
   const category = categoryOf(r.taxonomy);
   const hires = num(r.target_hires);
   const brief = str(r.brief);

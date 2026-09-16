@@ -402,4 +402,39 @@ describe.skipIf(!RUN_DB)('Campaign images — the buyer\'s own uploads, public o
     expect((await imageGet(buyer, a.id)).status).toBe(302);
     expect((await setImages(buyer, { request_id: requestId, image_ids: b.id })).status).toBe(422);
   });
+
+  it('cards get the small copy made at upload; quarantining either picture takes both out of view', async () => {
+    const buyer = await createUser('img-thumb', ['buyer']);
+    const full = await upload(buyer, 'REQUEST_IMAGE', PNG, { filename: 'screen.png' });
+    const small = await upload(buyer, 'REQUEST_IMAGE', PNG, { filename: 'thumb-screen.png' });
+    const plain = await upload(buyer, 'REQUEST_IMAGE', PNG, { filename: 'no-thumb.png' });
+    // Thumbnails line up with images by position; a blank entry means that image has no copy.
+    const created = await createCampaign(buyer, { image_ids: `${full.id},${plain.id}`, thumb_ids: `${small.id},` });
+    expect(created.status, JSON.stringify(created.body)).toBe(200);
+    const requestId = String(created.body.id);
+    expect((await sql`select asset_id,thumb_asset_id from app.request_images where request_id=${requestId} order by position`).map((r) => [String(r.asset_id), r.thumb_asset_id && String(r.thumb_asset_id)]))
+      .toEqual([[full.id, small.id], [plain.id, null]]);
+    const [card] = (await sql`select coalesce((select array_agg(coalesce(i.thumb_asset_id,i.asset_id) order by i.position) from app.request_images i where i.request_id=${requestId}),'{}') as thumb_ids`);
+    expect((card!.thumb_ids as string[]).map(String)).toEqual([small.id, plain.id]);
+    expect((await imageGet(null, small.id)).status).toBe(302);
+
+    // A copy must be the buyer's own image, and never the image itself.
+    const other = await createUser('img-thumb-other', ['buyer']);
+    const theirs = await upload(other, 'REQUEST_IMAGE', PNG);
+    expect((await setImages(buyer, { request_id: requestId, image_ids: full.id, thumb_ids: theirs.id })).status).toBe(404);
+    await expect(sql`update app.request_images set thumb_asset_id=asset_id where request_id=${requestId} and position=0`).rejects.toThrow();
+    await expect(sql`update app.storage_assets set lifecycle_state='DELETED',deleted_at=now() where id=${small.id}`).rejects.toThrow(/referenced/);
+
+    const email = `it-mod-${randomUUID().slice(0, 8)}@example.test`;
+    const [row] = await sql<{ id: string }[]>`insert into app.users (email,display_name,roles,is_test,status) values (${email},'IT moderator',${[]},true,'ACTIVE') returning id`;
+    await sql`insert into app.user_roles (user_id,role,granted_reason) values (${row!.id},'moderator','Integration test operator grant')`;
+    const moderator: TestUser = { id: row!.id, email, token: await createSession(row!.id) };
+    const quarantined = await command(moderator, { command: 'admin_quarantine_asset', idempotency_key: key('q'), asset_id: full.id, reason: 'The screenshot shows another project\'s private dashboard.' });
+    expect(quarantined.status, JSON.stringify(quarantined.body)).toBe(200);
+    expect((await sql`select id,lifecycle_state from app.storage_assets where id in (${full.id},${small.id}) order by id`).map((r) => String(r.lifecycle_state))).toEqual(['QUARANTINED', 'QUARANTINED']);
+    expect((await imageGet(null, full.id)).status).toBe(404);
+    expect((await imageGet(null, small.id)).status).toBe(404);
+    expect((await imageGet(buyer, small.id)).status).toBe(404);
+    expect((await imageGet(null, plain.id)).status).toBe(302);
+  });
 });

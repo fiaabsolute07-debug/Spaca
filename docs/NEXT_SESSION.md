@@ -257,7 +257,7 @@ cd contracts && forge test
 > Đã xong 2026-09-16: UI campaign pool và UI liên kết ví (`docs/evidence/claude-POOL-WALLET-UI.md`); Performance campaigns §9.6 với metrics **giả lập** + màn quyết định thưởng cho vận hành (`docs/evidence/claude-PERFORMANCE.md`); campaign ACCESS và DIGITAL với điều khoản riêng (`docs/evidence/claude-ACCESS-DIGITAL.md`).
 
 2. **Explore theo mục tiêu:** goal → playbook → creator → sample, ngân sách micro (§11.7).
-6. **Ảnh campaign:** kiểm duyệt ảnh và tạo thumbnail (hiện thẻ tải ảnh gốc, tối đa 10 MB).
+6. **Ảnh campaign:** đã có ảnh thu nhỏ tạo ở trình duyệt và cách ly theo cặp (`docs/evidence/claude-CAMPAIGN-IMAGES.md`); còn thiếu kiểm duyệt tự động/antivirus.
 
 ### 5.3 Hạ tầng
 
