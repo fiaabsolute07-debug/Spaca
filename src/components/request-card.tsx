@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { CategoryBadge, categoryOf } from './category';
 import { Badge, date, money, num, row, str } from './ui';
+import { goalByValue } from '@/modules/requests/goals';
 
 /** Campaign card: the buyer's first image (or the category's color and icon), what they need, budget and interest. */
 export function RequestCard({
@@ -21,6 +22,7 @@ export function RequestCard({
     </div>
     <div className="campaign-body">
       <div className="inline-actions">
+        {goalByValue(r.campaign_goal) ? <span className="badge badge-goal">{goalByValue(r.campaign_goal)!.title}</span> : null}
         <CategoryBadge value={r.taxonomy} />
         <Badge>{str(r.status).toLowerCase()}</Badge>
       </div>

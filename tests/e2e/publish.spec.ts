@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { chooseOption, expectOrderState, login, orderPath, payOrder, submit, uniqueSuffix, visit } from './helpers';
+import { chooseOption, expectOrderState, freeLinkedAccountSlot, login, orderPath, payOrder, submit, uniqueSuffix, visit } from './helpers';
 
 test('a PUBLISH order is delivered with the post link on the sold X channel and approved by the buyer', async ({ page }) => {
   const suffix = uniqueSuffix();
@@ -9,6 +9,7 @@ test('a PUBLISH order is delivered with the post link on the sold X channel and 
   await login(page, 'creator_d');
   await visit(page, '/settings/profile');
   const accounts = page.getByRole('region', { name: 'Linked accounts' });
+  await freeLinkedAccountSlot(page);
   await accounts.getByLabel('Handle or link').fill(`https://twitter.com/${handle}`);
   await submit(page, accounts.getByRole('button', { name: 'Link account', exact: true }));
   await expect(accounts.getByRole('link', { name: `@${handle}`, exact: true })).toBeVisible();

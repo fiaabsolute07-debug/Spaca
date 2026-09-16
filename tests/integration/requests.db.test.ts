@@ -401,3 +401,36 @@ describe.skipIf(!RUN_DB)('§9.2 — campaigns for live sessions and for licensed
     await expect(sql`update app.requests set license_kind='EXCLUSIVE',license_rights_text=${rights} where id=${createRequestId}`).rejects.toThrow(/requests_license_complete/);
   });
 });
+
+describe.skipIf(!RUN_DB)('campaign goals — launch, airdrop, shiller and the rest', () => {
+  it('stores the goal, refuses an unknown one, and filters open campaigns by it with counts for every goal', async () => {
+    const { getPublicData } = await import('@/lib/read-model');
+    const buyer = await createUser('goal-buyer');
+    const launch = await createRequest(buyer, { title: 'Mainnet launch threads', campaign_goal: 'LAUNCH' });
+    const shill = await createRequest(buyer, { title: 'Disclosed posts for our token week', campaign_goal: 'shill' });
+    const unlabelled = await createRequest(buyer, { title: 'A campaign posted through the API without a goal' });
+    expect((await requestRow(launch)).campaign_goal).toBe('LAUNCH');
+    expect((await requestRow(shill)).campaign_goal).toBe('SHILL');
+    expect((await requestRow(unlabelled)).campaign_goal).toBeNull();
+
+    const unknown = await command(buyer, {
+      command: 'create_request', idempotency_key: key('req'), title: 'Pump campaign', brief: 'We need launch threads and follow-up posts for our public beta across creators.',
+      taxonomy: 'CREATE', budget: '500', target_hires: '2', deadline: inDays(14), campaign_goal: 'PUMP',
+    });
+    expect(unknown.status).toBe(400);
+    await expect(sql`update app.requests set campaign_goal='PUMP' where id=${launch}`).rejects.toThrow(/check constraint/);
+
+    const all = await getPublicData();
+    const ids = (rows: Record<string, unknown>[]) => rows.map((r) => String(r.id));
+    expect(ids(all.requests)).toEqual(expect.arrayContaining([launch, shill, unlabelled]));
+    const launches = await getPublicData({ goal: 'LAUNCH' });
+    expect(ids(launches.requests)).toContain(launch);
+    expect(ids(launches.requests)).not.toContain(shill);
+    expect(ids(launches.requests)).not.toContain(unlabelled);
+    expect(launches.requests.every((r) => r.campaign_goal === 'LAUNCH')).toBe(true);
+    // Counts describe every open campaign, whichever goal is being viewed.
+    expect(launches.goal_counts).toEqual(all.goal_counts);
+    expect(launches.request_total).toBe(all.request_total);
+    expect(all.goal_counts.SHILL).toBeGreaterThanOrEqual(1);
+  });
+});

@@ -68,10 +68,10 @@ async function serviceRows(options: { ownerId?: string; publicCreatorId?: string
   return withAvailability(rows);
 }
 
-export async function getPublicData(options: { q?: string; category?: string } = {}) {
-  const [allServices, requests, auctions] = await Promise.all([
+export async function getPublicData(options: { q?: string; category?: string; goal?: string | null } = {}) {
+  const [allServices, allRequests, auctions] = await Promise.all([
     serviceRows(),
-    sql`select r.id,r.buyer_id,r.title,r.brief,r.taxonomy,r.budget_minor,r.per_creator_cap_minor,r.target_hires,r.deadline,r.status,r.application_deadline,u.display_name as buyer_name,(select count(*) from app.applications a where a.request_id=r.id) as application_count,coalesce((select array_agg(i.asset_id order by i.position) from app.request_images i where i.request_id=r.id),'{}') as image_ids,coalesce((select array_agg(coalesce(i.thumb_asset_id,i.asset_id) order by i.position) from app.request_images i where i.request_id=r.id),'{}') as thumb_ids from app.requests r join app.users u on u.id=r.buyer_id where r.status='OPEN' and r.application_deadline>now() order by r.application_deadline asc`,
+    sql`select r.id,r.buyer_id,r.title,r.brief,r.taxonomy,r.campaign_goal,r.budget_minor,r.per_creator_cap_minor,r.target_hires,r.deadline,r.status,r.application_deadline,u.display_name as buyer_name,(select count(*) from app.applications a where a.request_id=r.id) as application_count,coalesce((select array_agg(i.asset_id order by i.position) from app.request_images i where i.request_id=r.id),'{}') as image_ids,coalesce((select array_agg(coalesce(i.thumb_asset_id,i.asset_id) order by i.position) from app.request_images i where i.request_id=r.id),'{}') as thumb_ids from app.requests r join app.users u on u.id=r.buyer_id where r.status='OPEN' and r.application_deadline>now() order by r.application_deadline asc`,
     sql`select a.id,a.service_id,a.seller_id,s.title,u.display_name as creator_name,a.starting_price_minor,a.current_price_minor,a.minimum_increment_minor,a.buy_now_price_minor,a.ends_at,a.starts_at,a.status,a.bid_count,a.winner_id from app.auctions a join app.services s on s.id=a.service_id join app.users u on u.id=a.seller_id where a.status in ('SCHEDULED','LIVE') and a.ends_at>now() order by a.ends_at asc`,
   ]);
   const q = options.q?.trim().toLowerCase();
@@ -81,7 +81,12 @@ export async function getPublicData(options: { q?: string; category?: string } =
     const haystack = `${service.title} ${service.description} ${service.creator_name} ${service.niche}`.toLowerCase();
     return matchesCategory && (!q || haystack.includes(q));
   });
-  return { services, requests: asRows(requests), auctions: asRows(auctions) };
+  // Campaigns browse by goal; the counts cover every open campaign so the goal choices can say how many each holds.
+  const openRequests = asRows(allRequests);
+  const goalCounts: Record<string, number> = {};
+  for (const request of openRequests) if (request.campaign_goal) goalCounts[String(request.campaign_goal)] = (goalCounts[String(request.campaign_goal)] ?? 0) + 1;
+  const requests = options.goal ? openRequests.filter((request) => request.campaign_goal === options.goal) : openRequests;
+  return { services, requests, request_total: openRequests.length, goal_counts: goalCounts, auctions: asRows(auctions) };
 }
 
 export async function getDashboardData(actor: Actor) {
@@ -93,7 +98,7 @@ export async function getDashboardData(actor: Actor) {
       from app.applications a join app.requests r on r.id=a.request_id join app.users cu on cu.id=a.creator_id
       left join lateral (select * from app.hire_offers h where h.application_id=a.id order by h.created_at desc limit 1) o on true
       where a.creator_id=${actor.id} order by a.created_at desc`,
-    sql`select r.id,r.buyer_id,r.title,r.brief,r.taxonomy,r.budget_minor,r.per_creator_cap_minor,r.target_hires,r.deadline,r.status,r.application_deadline,u.display_name as buyer_name,(select count(*) from app.applications a where a.request_id=r.id) as application_count,coalesce((select array_agg(i.asset_id order by i.position) from app.request_images i where i.request_id=r.id),'{}') as image_ids,coalesce((select array_agg(coalesce(i.thumb_asset_id,i.asset_id) order by i.position) from app.request_images i where i.request_id=r.id),'{}') as thumb_ids from app.requests r join app.users u on u.id=r.buyer_id where r.buyer_id=${actor.id} order by r.created_at desc`,
+    sql`select r.id,r.buyer_id,r.title,r.brief,r.taxonomy,r.campaign_goal,r.budget_minor,r.per_creator_cap_minor,r.target_hires,r.deadline,r.status,r.application_deadline,u.display_name as buyer_name,(select count(*) from app.applications a where a.request_id=r.id) as application_count,coalesce((select array_agg(i.asset_id order by i.position) from app.request_images i where i.request_id=r.id),'{}') as image_ids,coalesce((select array_agg(coalesce(i.thumb_asset_id,i.asset_id) order by i.position) from app.request_images i where i.request_id=r.id),'{}') as thumb_ids from app.requests r join app.users u on u.id=r.buyer_id where r.buyer_id=${actor.id} order by r.created_at desc`,
     sql`select a.id,a.service_id,a.seller_id,s.title,u.display_name as creator_name,a.starting_price_minor,a.current_price_minor,a.minimum_increment_minor,a.buy_now_price_minor,a.ends_at,a.starts_at,a.status,a.bid_count,a.winner_id from app.auctions a join app.services s on s.id=a.service_id join app.users u on u.id=a.seller_id where a.seller_id=${actor.id} order by a.created_at desc`,
     sql`select p.handle,p.bio,p.niche,p.avatar_color,p.avatar_asset_id,p.headline,p.location,p.languages,p.social_url,u.display_name,u.email,
       (select count(*)::int from app.samples s where s.creator_id=u.id and s.visibility='PUBLIC' and s.moderation_status='APPROVED') as public_samples,
@@ -222,7 +227,7 @@ export async function getCreatorData(handle: string) {
 }
 
 export async function getRequestData(actor: Actor | null, id: string) {
-  const [request] = asRows(await sql`select r.id,r.buyer_id,r.title,r.brief,r.taxonomy,r.budget_minor,r.per_creator_cap_minor,r.target_hires,r.deadline,r.application_deadline,
+  const [request] = asRows(await sql`select r.id,r.buyer_id,r.title,r.brief,r.taxonomy,r.campaign_goal,r.budget_minor,r.per_creator_cap_minor,r.target_hires,r.deadline,r.application_deadline,
       r.status,r.version,r.currency,r.reserved_minor,r.committed_minor,r.reserved_hires,r.committed_hires,u.display_name as buyer_name,
       r.publish_platform,r.publish_format,r.min_live_hours,r.disclosure_text,r.access_session_minutes,r.license_kind,r.license_rights_text,
       r.payment_model,r.base_fee_minor,r.rpm_rate_minor,r.bonus_cap_minor,r.measure_after_days,r.verify_days,r.median_multiplier,

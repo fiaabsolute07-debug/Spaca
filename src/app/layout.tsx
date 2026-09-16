@@ -27,7 +27,7 @@ export default async function RootLayout({ children, auth }: { children: React.R
     <div className="header-shell">
       <header className="header">
         <Link href="/" className="wordmark" aria-label="spaca home"><SpacaLockup size={26} /></Link>
-        <HeaderNav />
+        <HeaderNav type={actor ? accountTypeOf(actor) : null} />
         <form className="header-search" action="/explore" method="get" role="search">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden><circle cx="11" cy="11" r="7" /><path d="M20 20l-3.5-3.5" /></svg>
           <input name="q" type="search" placeholder="Search creators and services" aria-label="Search creators and services" />

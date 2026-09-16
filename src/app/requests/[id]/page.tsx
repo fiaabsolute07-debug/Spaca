@@ -4,6 +4,7 @@ import { ReportForm } from '@/components/report-form';
 import { notFound } from 'next/navigation';
 import { getActor } from '@/lib/auth';
 import { getRequestData } from '@/lib/read-model';
+import { goalByValue } from '@/modules/requests/goals';
 import { sql } from '@/lib/db';
 import { isFlagEnabled } from '@/modules/admin/policy';
 import { getPoolData, listPoolNetworks, type PoolNetwork } from '@/modules/pools/service';
@@ -147,6 +148,7 @@ export default async function RequestPage({ params, searchParams }: PageProps<{ 
           </div>}
           <p className="prewrap">{str(r.brief)}</p>
           <ul className="facts">
+            {goalByValue(r.campaign_goal) && <li><span>Campaign goal</span><strong>{goalByValue(r.campaign_goal)!.title}</strong></li>}
             <li><span>Total budget</span><strong>{money(r.budget_minor)}</strong></li>
             {r.per_creator_cap_minor != null && <li><span>Per creator cap</span><strong>{money(r.per_creator_cap_minor)}</strong></li>}
             <li><span>Creators needed</span><strong>{num(r.target_hires)}</strong></li>

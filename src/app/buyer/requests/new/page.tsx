@@ -2,6 +2,7 @@ import { CommandForm, Field } from '@/components/ui';
 import { Notices } from '@/components/notices';
 import { PageHeading } from '@/components/page-heading';
 import { BriefTypePicker } from '@/components/campaign/brief-type-picker';
+import { goalBySlug } from '@/modules/requests/goals';
 import { isFlagEnabled } from '@/modules/admin/policy';
 import { sql } from '@/lib/db';
 import { FileUploadField } from '@/components/files/file-upload-field';
@@ -31,7 +32,7 @@ export default async function NewRequestPage({
     />
     <div className="panel">
       <CommandForm command="create_request" label="Publish brief" returnTo="/requests">
-        <BriefTypePicker performanceEnabled={performanceEnabled} />
+        <BriefTypePicker performanceEnabled={performanceEnabled} initialGoal={goalBySlug(query.goal)?.value ?? null} />
         <h3 className="brief-section">About the project</h3>
         <Field
           name="title"

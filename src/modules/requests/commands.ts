@@ -17,6 +17,7 @@ import { assertContentPolicy } from '@/modules/moderation/policy';
 import { DELIVERABLE_BY_TAXONOMY } from '@/modules/catalog/commands';
 import { EDITORIAL_POLICY_VERSION, channelOf, isSocialPlatform, ownedSocialAccount, publishFields } from '@/modules/publish';
 import { baselineFor } from '@/modules/publish/metrics';
+import { CAMPAIGN_GOAL_VALUES, type CampaignGoal } from './goals';
 import { DEFAULT_MEASURE_AFTER_DAYS, DEFAULT_MEDIAN_MULTIPLIER, DEFAULT_VERIFY_DAYS, MIN_ELIGIBLE_POSTS, PERFORMANCE_POLICY_VERSION, maxPayoutMinor, viewsCap } from '@/modules/publish/performance';
 
 const TAXONOMIES = ['CREATE', 'PUBLISH', 'ACCESS', 'DIGITAL'];
@@ -153,6 +154,14 @@ function requestLicense(taxonomy: string, form: FormData, existing?: Row) {
   return { kind, rights };
 }
 
+/** What the campaign is for. The brief form always asks; campaigns created through the API without one stay unlabelled. */
+function campaignGoalOf(form: FormData): CampaignGoal | null {
+  const value = text(form, 'campaign_goal', false, 20).toUpperCase();
+  if (!value) return null;
+  if (!CAMPAIGN_GOAL_VALUES.includes(value as CampaignGoal)) throw new CommandError('Choose what the campaign is for');
+  return value as CampaignGoal;
+}
+
 const createRequest: CommandHandler = async ({ tx, actor, form }) => {
   if (actor.status !== 'ACTIVE') throw new CommandError('Suspended accounts cannot publish requests', 'ACCOUNT_SUSPENDED');
   await assertFlags(tx, ['REQUESTS_ENABLED']);
@@ -165,6 +174,7 @@ const createRequest: CommandHandler = async ({ tx, actor, form }) => {
   const { deadline, applicationDeadline } = deadlines(form);
   if (applicationDeadline <= new Date()) throw new CommandError('Deadlines must be in the future');
   const publish = requestPublishTerms(taxonomy, form);
+  const goal = campaignGoalOf(form);
   const sessionMinutes = requestAccessMinutes(taxonomy, form);
   const license = requestLicense(taxonomy, form);
   const performance = await performanceFields(tx, form, taxonomy);
@@ -173,10 +183,10 @@ const createRequest: CommandHandler = async ({ tx, actor, form }) => {
     if (perHire > budget) throw new CommandError('The budget must cover at least one hire at the fixed fee plus the bonus cap', 'BUDGET_EXCEEDED');
     if (cap !== null && cap < perHire) throw new CommandError('The per-creator cap must cover the fixed fee plus the bonus cap', 'BUDGET_EXCEEDED');
   }
-  const [request] = await tx<Row[]>`insert into app.requests (buyer_id,title,brief,taxonomy,budget_minor,per_creator_cap_minor,target_hires,deadline,application_deadline,
+  const [request] = await tx<Row[]>`insert into app.requests (buyer_id,title,brief,taxonomy,campaign_goal,budget_minor,per_creator_cap_minor,target_hires,deadline,application_deadline,
       publish_platform,publish_format,min_live_hours,disclosure_text,access_session_minutes,license_kind,license_rights_text,
       payment_model,base_fee_minor,rpm_rate_minor,bonus_cap_minor,measure_after_days,verify_days,median_multiplier)
-    values (${actor.id},${title},${brief},${taxonomy},${budget.toString()},${cap?.toString() ?? null},${target},${deadline.toISOString()},${applicationDeadline.toISOString()},
+    values (${actor.id},${title},${brief},${taxonomy},${goal},${budget.toString()},${cap?.toString() ?? null},${target},${deadline.toISOString()},${applicationDeadline.toISOString()},
       ${publish?.platform ?? null},${publish?.format ?? null},${publish?.minLiveHours ?? null},${publish?.disclosure ?? null},
       ${sessionMinutes},${license?.kind ?? null},${license?.rights ?? null},
       ${performance.model},${performance.baseFee?.toString() ?? null},${performance.rpm?.toString() ?? null},${performance.bonusCap?.toString() ?? null},

@@ -2,6 +2,8 @@
 
 import { useState } from 'react';
 import { CATEGORIES } from '../category';
+import { GoalIcon } from './goal-icon';
+import { CAMPAIGN_GOALS, goalByValue, type CampaignGoal } from '@/modules/requests/goals';
 
 const PLATFORMS: [string, string][] = [['X', 'X'], ['INSTAGRAM', 'Instagram'], ['TIKTOK', 'TikTok'], ['YOUTUBE', 'YouTube'], ['NEWSLETTER', 'Newsletter'], ['WEBSITE', 'Website']];
 const FORMATS: [string, string][] = [['POST', 'Post'], ['THREAD', 'Thread'], ['QUOTE_POST', 'Quote post'], ['VIDEO', 'Video'], ['NEWSLETTER_ISSUE', 'Newsletter issue'], ['ARTICLE', 'Article']];
@@ -30,8 +32,9 @@ const usd = (value: string) => {
  * bonus for measured views, capped in two ways: per thousand views up to a cap, and never above the creator's own
  * recent median times the multiplier.
  */
-export function BriefTypePicker({ performanceEnabled }: { performanceEnabled: boolean }) {
-  const [taxonomy, setTaxonomy] = useState(CATEGORIES[0]!.value);
+export function BriefTypePicker({ performanceEnabled, initialGoal = null }: { performanceEnabled: boolean; initialGoal?: CampaignGoal | null }) {
+  const [goal, setGoal] = useState<CampaignGoal | null>(initialGoal);
+  const [taxonomy, setTaxonomy] = useState<string>(goalByValue(initialGoal)?.taxonomy ?? CATEGORIES[0]!.value);
   const [platform, setPlatform] = useState('X');
   const [format, setFormat] = useState('POST');
   const [paymentModel, setPaymentModel] = useState('FIXED');
@@ -47,7 +50,25 @@ export function BriefTypePicker({ performanceEnabled }: { performanceEnabled: bo
   const performance = publish && performanceEnabled && paymentModel === 'PERFORMANCE';
   const maxPerHire = usd(baseFee) + usd(bonusCap);
 
+  // A goal suggests the kind of work that usually fits it; the buyer can still pick another below.
+  const chooseGoal = (next: CampaignGoal) => {
+    setGoal(next);
+    setTaxonomy(goalByValue(next)!.taxonomy);
+  };
+
   return <>
+    <fieldset className="choice-group">
+      <legend>What is the campaign for?</legend>
+      <div className="choice-cards goal-cards">
+        {CAMPAIGN_GOALS.map((item) => <label key={item.value} className="choice-card goal-card">
+          <input type="radio" name="campaign_goal" value={item.value} checked={goal === item.value} onChange={() => chooseGoal(item.value)} required />
+          <span className="choice-icon"><GoalIcon goal={item.value} size={19} /></span>
+          <strong>{item.title}</strong>
+          <small>{item.short}</small>
+        </label>)}
+      </div>
+    </fieldset>
+
     <fieldset className="choice-group">
       <legend>What do you need?</legend>
       <div className="choice-cards">

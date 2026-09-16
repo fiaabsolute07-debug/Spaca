@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import { baselineFor, postViews } from '../../src/modules/publish/metrics';
-import { chooseOption, dateTimeLocal, flagCard, login, payOrder, runJobs, setFlag, submit, uniqueSuffix, visit } from './helpers';
+import { chooseOption, dateTimeLocal, flagCard, freeLinkedAccountSlot, login, payOrder, runJobs, setFlag, submit, uniqueSuffix, visit } from './helpers';
 
 /** A handle the mock metrics treat as having enough recent posts for a priced bonus. X handles hold 15 characters. */
 function eligibleHandle(): string {
@@ -35,6 +35,7 @@ async function eligibleXAccount(page: Page): Promise<string> {
     if (baselineFor({ handle, accountId: handle }).eligible) return handle;
   }
   const handle = eligibleHandle();
+  await freeLinkedAccountSlot(page);
   await accounts.getByLabel('Handle or link').fill(`https://twitter.com/${handle}`);
   await submit(page, accounts.getByRole('button', { name: 'Link account', exact: true }));
   await expect(accounts.getByRole('link', { name: `@${handle}`, exact: true })).toBeVisible();
@@ -57,6 +58,7 @@ test('a performance campaign pays a fixed fee plus a measured bonus, and returns
     const title = `E2E performance campaign ${uniqueSuffix()}`;
     await login(page, 'buyer_a');
     await visit(page, '/buyer/requests/new');
+    await page.getByRole('group', { name: 'What is the campaign for?' }).getByRole('radio', { name: /^Launch/ }).check();
     await page.getByRole('group', { name: 'What do you need?' }).getByRole('radio', { name: /^Publish/ }).check();
     await page.getByRole('group', { name: 'How you pay' }).getByRole('radio', { name: /view bonus/ }).check();
     await expect(page.getByText(/You pay at most \$100\.00 per creator/)).toBeVisible();

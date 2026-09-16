@@ -64,6 +64,22 @@ export async function submit(page: Page, button: Locator) {
 }
 
 /**
+ * The shared dev database keeps every account earlier runs linked, and a creator may link only ten. Before linking a new
+ * one, remove accounts that browser tests linked (handles e2e… or perf…) until there is room; an account a published
+ * service still posts from cannot be removed, so those are skipped.
+ */
+export async function freeLinkedAccountSlot(page: Page) {
+  const accounts = page.getByRole('region', { name: 'Linked accounts' });
+  const handles = (await accounts.getByRole('link').allInnerTexts()).map((text) => text.trim()).filter((text) => /^@(e2e|perf)\d/.test(text));
+  for (const handle of handles) {
+    if ((await accounts.locator('.record').count()) < 10) return;
+    const record = accounts.locator('.record').filter({ has: page.getByRole('link', { name: handle, exact: true }) });
+    await Promise.all([page.waitForNavigation({ waitUntil: 'domcontentloaded' }), record.getByRole('button', { name: 'Remove', exact: true }).click()]);
+  }
+  expect(await accounts.locator('.record').count(), 'no removable test account left to free a slot').toBeLessThan(10);
+}
+
+/**
  * Picks an option in a spaca select (Radix UI): opens the combobox named by its label and clicks the option by its
  * visible text. Retries the open until the client component has hydrated.
  */

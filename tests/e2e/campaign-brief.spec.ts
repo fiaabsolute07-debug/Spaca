@@ -33,9 +33,10 @@ test('a buyer picks the campaign type from cards, adds a project image, and crea
   await login(page, 'buyer_a');
   await visit(page, '/buyer/requests/new');
 
-  // Posting terms appear only once the buyer picks Publish.
+  // Posting terms appear only once the work is a post; picking the Shiller goal suggests Publish.
   await expect(page.getByRole('group', { name: 'Post format' })).toBeHidden();
-  await page.getByRole('group', { name: 'What do you need?' }).getByRole('radio', { name: /^Publish/ }).check();
+  await page.getByRole('group', { name: 'What is the campaign for?' }).getByRole('radio', { name: /^Shiller/ }).check();
+  await expect(page.getByRole('group', { name: 'What do you need?' }).getByRole('radio', { name: /^Publish/ })).toBeChecked();
   await expect(page.getByRole('group', { name: 'Platform' }).getByRole('radio', { name: 'X', exact: true })).toBeChecked();
   await page.getByRole('group', { name: 'Post format' }).getByRole('radio', { name: 'Thread', exact: true }).check();
 
@@ -53,6 +54,7 @@ test('a buyer picks the campaign type from cards, adds a project image, and crea
   const requestPath = new URL(page.url()).pathname;
   expect(requestPath).toMatch(/^\/requests\/[0-9a-f-]{36}$/);
   await expect(page.getByRole('listitem').filter({ hasText: /^Creators post on/ })).toContainText('X · thread');
+  await expect(page.getByRole('listitem').filter({ hasText: /^Campaign goal/ })).toContainText('Shiller');
   const image = page.getByRole('img', { name: imageName, exact: true });
   await expect(image).toBeVisible();
   await expect.poll(() => image.evaluate((img: HTMLImageElement) => img.complete && img.naturalWidth > 0)).toBe(true);
@@ -63,7 +65,7 @@ test('a buyer picks the campaign type from cards, adds a project image, and crea
 
   await login(page, 'creator_c');
   await visit(page, '/requests');
-  await expect(page.getByRole('navigation', { name: 'Main navigation' }).getByRole('link', { name: 'Campaigns', exact: true })).toHaveAttribute('aria-current', 'page');
+  await expect(page.getByRole('navigation', { name: 'Main navigation' }).getByRole('button', { name: 'Campaigns', exact: true })).toHaveAttribute('aria-current', 'page');
   await expect(page.getByRole('navigation', { name: 'Marketplace sections' })).toHaveCount(0);
   const card = page.getByRole('link', { name: new RegExp(title) });
   await expect(card.locator('img')).toHaveCount(1);
@@ -85,7 +87,8 @@ test('an access campaign asks for a session length, and a digital one for the ri
   await visit(page, '/buyer/requests/new');
 
   // Each category asks only for its own terms: a session length here, no posting terms and no license.
-  await page.getByRole('group', { name: 'What do you need?' }).getByRole('radio', { name: /^Access/ }).check();
+  await page.getByRole('group', { name: 'What is the campaign for?' }).getByRole('radio', { name: /^AMA/ }).check();
+  await expect(page.getByRole('group', { name: 'What do you need?' }).getByRole('radio', { name: /^Access/ })).toBeChecked();
   await expect(page.getByRole('group', { name: 'Session length' })).toBeVisible();
   await expect(page.getByRole('group', { name: 'Post format' })).toHaveCount(0);
   await expect(page.getByRole('group', { name: 'License' })).toHaveCount(0);
@@ -103,7 +106,8 @@ test('an access campaign asks for a session length, and a digital one for the ri
 
   const filesTitle = `E2E licensed files ${uniqueSuffix()}`;
   await visit(page, '/buyer/requests/new');
-  await page.getByRole('group', { name: 'What do you need?' }).getByRole('radio', { name: /^Digital/ }).check();
+  await page.getByRole('group', { name: 'What is the campaign for?' }).getByRole('radio', { name: /^Memes/ }).check();
+  await expect(page.getByRole('group', { name: 'What do you need?' }).getByRole('radio', { name: /^Digital/ })).toBeChecked();
   await expect(page.getByRole('group', { name: 'Session length' })).toHaveCount(0);
   await page.getByRole('group', { name: 'License' }).getByRole('radio', { name: /^Exclusive to you/ }).check();
   const rights = 'Use in our own marketing on any channel, edit for size and language, worldwide, with no time limit.';
