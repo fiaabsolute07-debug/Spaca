@@ -2,6 +2,7 @@
 import { createHash } from 'node:crypto';
 import type { Hex } from 'viem';
 import { CommandError, type Row, type Tx } from '@/lib/commands';
+import { sql } from '@/lib/db';
 import { NATIVE_TOKEN } from './abi';
 import { localChainsEnabled } from './chain';
 
@@ -64,4 +65,10 @@ export function escrowReference(kind: 'order' | 'pool', id: string): Hex {
 /** Opaque bytes32 reference; carries no order data on chain (no PII, §11.3). */
 export function settlementReference(orderId: string, intentId: string): Hex {
   return `0x${createHash('sha256').update(`creator-marketplace:order:${orderId}:intent:${intentId}`).digest('hex')}`;
+}
+
+/** Networks a user can link a wallet on or pay from, without their assets. */
+export async function listEnabledNetworks(): Promise<{ chain_id: number; name: string; mode: string }[]> {
+  const rows = await sql<Row[]>`select chain_id,name,mode from app.chain_networks where enabled order by chain_id`;
+  return rows.map((row: Row) => ({ chain_id: Number(row.chain_id), name: String(row.name), mode: String(row.mode) }));
 }

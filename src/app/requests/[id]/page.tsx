@@ -4,6 +4,10 @@ import { ReportForm } from '@/components/report-form';
 import { notFound } from 'next/navigation';
 import { getActor } from '@/lib/auth';
 import { getRequestData } from '@/lib/read-model';
+import { sql } from '@/lib/db';
+import { isFlagEnabled } from '@/modules/admin/policy';
+import { getPoolData, listPoolNetworks, type PoolNetwork } from '@/modules/pools/service';
+import { PoolPanel } from '@/components/pools/pool-panel';
 import { Badge, CommandForm, Empty, Field, date, money, num, row, rows, str, type Row } from '@/components/ui';
 import { Notices } from '@/components/notices';
 import { PageHeading } from '@/components/page-heading';
@@ -113,6 +117,12 @@ export default async function RequestPage({ params, searchParams }: PageProps<{ 
     applications = rows(d.applications),
     mine = applications.find((a) => str(a.creator_id) === actor?.id),
     images = Array.isArray(r.image_ids) ? r.image_ids.map(String) : [];
+  // A reward pool can be added only before the first application, and only the buyer sees its balances.
+  const poolData = await getPoolData(actor, id);
+  const canCreatePool = owner && !poolData && applications.length === 0 && ['OPEN', 'FILLED'].includes(str(r.status));
+  const [poolNetworks, cryptoEnabled, tokenRewards, nftRewards] = canCreatePool
+    ? await Promise.all([listPoolNetworks(), isFlagEnabled(sql, 'CRYPTO_CHECKOUT_ENABLED'), isFlagEnabled(sql, 'TOKEN_REWARDS_ENABLED'), isFlagEnabled(sql, 'NFT_REWARDS_ENABLED')])
+    : [[] as PoolNetwork[], false, false, false];
   // REQ-11: the buyer can reorder and filter the comparison; creators only ever see their own application.
   const sort = parseSort(query.sort), filter = parseFilter(query.status);
   const shown = owner ? compareApplications(applications, sort, filter) : applications;
@@ -151,6 +161,7 @@ export default async function RequestPage({ params, searchParams }: PageProps<{ 
           </ul>
           {actor && !owner && <ReportForm targetType="REQUEST" targetId={str(r.id)} returnTo={route} label="Report this brief" />}
         </div>
+        <PoolPanel data={poolData} owner={owner} route={route} requestId={str(r.id)} networks={poolNetworks} cryptoEnabled={cryptoEnabled} tokenRewards={tokenRewards} nftRewards={nftRewards} canCreate={canCreatePool} />
         {d.campaign ? <CampaignPanel campaign={row(d.campaign)} /> : null}
         <div className="panel">
           <h2>{owner ? 'Compare applications' : 'Your application'}</h2>

@@ -3,7 +3,10 @@ import { getDashboardData } from '@/lib/read-model';
 import { Avatar } from '@/components/avatar';
 import { FileUploadField } from '@/components/files/file-upload-field';
 import { SelectField } from '@/components/select';
-import { Badge, CommandForm, Field, row, rows, str } from '@/components/ui';
+import { Badge, CommandForm, Field, date, row, rows, str } from '@/components/ui';
+import { WalletLink } from '@/components/crypto/wallet-link';
+import { listEnabledNetworks } from '@/modules/crypto/registry';
+import { listVerifiedWallets } from '@/modules/crypto/wallets';
 import { Notices } from '@/components/notices';
 import { PageHeading } from '@/components/page-heading';
 import { requireActorOrLoginPrompt } from '@/components/require-actor';
@@ -24,6 +27,7 @@ export default async function ProfilePage({
   const notices = <Notices query={query} />;
   const d = row(await getDashboardData(actor));
   const profile = row(d.profile);
+  const [wallets, networks] = await Promise.all([listVerifiedWallets(actor.id), listEnabledNetworks()]);
   const isCreator = actor.roles.includes('creator');
   const checks = [
     { label: 'Profile photo', done: Boolean(profile.avatar_asset_id) },
@@ -93,6 +97,17 @@ export default async function ProfilePage({
       </CommandForm>
     </section>
         </>}
+        <section className="panel" aria-labelledby="wallets-heading">
+          <h2 id="wallets-heading">Wallets</h2>
+          <p className="muted">Link a wallet to receive crypto payouts and to fund campaign pools. Signing proves you control the address; it never authorizes a payment.</p>
+          {wallets.length ? <ul className="facts">
+            {wallets.map((wallet) => <li key={str(wallet.id)}>
+              <span>{str(wallet.network_name)} · {str(wallet.network_mode).toLowerCase()} · linked {date(wallet.verified_at)}</span>
+              <strong className="prewrap">{str(wallet.address)}</strong>
+            </li>)}
+          </ul> : <p className="muted">No wallet linked yet.</p>}
+          <WalletLink networks={networks} />
+        </section>
       </div>
       <aside>
         <section className="panel profile-strength" aria-labelledby="strength-heading">

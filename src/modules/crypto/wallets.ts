@@ -28,6 +28,13 @@ export function walletMessage(challenge: Row): string {
   ].join('\n');
 }
 
+/** The account's verified wallets, newest first, with the network they belong to. */
+export async function listVerifiedWallets(userId: string): Promise<Row[]> {
+  return sql<Row[]>`select w.id,w.address,w.chain_id,w.verified_at,n.name as network_name,n.mode as network_mode
+    from app.wallets w join app.chain_networks n on n.chain_id=w.chain_id
+    where w.user_id=${userId} and w.revoked_at is null order by w.verified_at desc`;
+}
+
 export async function createWalletChallenge(actor: Actor, input: { chainId: number; address: string; domain: string; uri: string }) {
   if (!isAddress(input.address, { strict: false })) throw new CommandError('Enter a valid wallet address');
   return sql.begin(async (tx) => {

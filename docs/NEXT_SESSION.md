@@ -132,7 +132,7 @@ export PATH=/Users/dohoangphi/.cache/codex-runtimes/codex-primary-runtime/depend
     - Nếu vẫn gặp: restart dev server (mất state mock provider).
 - Chạy job local: `POST /api/dev/jobs` (same-origin).
 - Persona: `creator_c`, `creator_d`, `buyer_a`, `buyer_b`, `dual_e`, `suspended`, `moderator`, `finance`, `admin`.
-- DB dev đang bật `DIGITAL_PRODUCTS_ENABLED` (do E2E). `BANK_FUNDING_ENABLED` đang tắt.
+- DB dev đang bật `DIGITAL_PRODUCTS_ENABLED` và `CRYPTO_CHECKOUT_ENABLED` (để test tay UI pool). `BANK_FUNDING_ENABLED` đang tắt.
 
 ### 2.4 Lệnh kiểm tra chuẩn
 
@@ -254,10 +254,10 @@ cd contracts && forge test
 
 ### 5.2 Tính năng sản phẩm chưa làm
 
+> Đã xong 2026-09-16: UI campaign pool và UI liên kết ví (`docs/evidence/claude-POOL-WALLET-UI.md`).
+
 1. **Performance campaigns** (master §9.6): trả theo kết quả đo bằng click/on-chain, adapter metrics mock, flag mặc định tắt.
 2. **Explore theo mục tiêu:** goal → playbook → creator → sample, ngân sách micro (§11.7).
-3. **UI campaign pool:** backend có ở `src/modules/pools`.
-4. **UI liên kết ví:** backend có ở `src/modules/crypto/wallets.ts` và `/api/wallets`.
 5. **Request/hire cho ACCESS và DIGITAL.**
 6. **Ảnh campaign:** kiểm duyệt ảnh và tạo thumbnail (hiện thẻ tải ảnh gốc, tối đa 10 MB).
 

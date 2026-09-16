@@ -426,3 +426,24 @@ Commands:
   - Link chips: `nav` "Sort applications" (`?sort=received|quote_low|quote_high|turnaround|updated`) and `nav` "Filter applications" (`?status=all|SUBMITTED|OFFERED|ACCEPTED|DECLINED|WITHDRAWN`). The current chip has `aria-current="true"`, and unknown values fall back to received and all.
   - Sorting and filtering never select a creator.
   - "Download CSV" calls `GET /api/requests/[id]/applications`: buyer only, 404 for anyone else, `text/csv`. Columns: creator, handle, status, quote_usd, turnaround_hours, quote_version, valid_until, offer_status, received_at, updated_at, note. Every cell is quoted, and a value starting with =, +, -, @, a tab or a carriage return gets an apostrophe prefix.
+
+## 2026-09-16 additions: campaign reward pool UI
+
+On `/requests/[id]`, below the brief:
+
+- **Before a pool exists** (buyer only, no applications yet, campaign OPEN or FILLED): a region "Reward pool (optional)" explains that every applicant quotes the same amount and the money is held on-chain until the work is approved.
+  - `PoolTemplateBuilder` (client) collects the network (chips, only when more than one is enabled), the amount per hire and its asset (USD-pegged assets only), an optional token reward (only while `TOKEN_REWARDS_ENABLED`), and up to three perks (type chips, description, how it is delivered, days). NFT perks appear only while `NFT_REWARDS_ENABLED`.
+  - It writes hidden `chain_id` and `items` fields for `create_campaign_pool`; the server validates the template.
+  - With `CRYPTO_CHECKOUT_ENABLED` off, the form is replaced by a notice and no pool can be created.
+- **Once a pool exists**: a region "Reward pool" that everyone can see, with the funded/waiting badge, pool status, network name and mode, template version, and one row per reward (cash and token by amount and symbol, perks by description). A notice lists what is still to deposit and says hires cannot be accepted until it arrives.
+- **Owner only**, added below that: Balances (asset, target, deposited, free, held, paid out, refunded); "Get a deposit reference" (`create_pool_funding`); "Refund free balance" (`refund_pool_unused`); "Close the pool" (`close_campaign_pool`); Deposits (amount, recipient, reference, status, created); "Held and paid per hire" (order, reward, amount, state, attempts); "Perks you owe" with `fulfill_entitlement` (proof, plus contract and token id for NFT); and Refunds.
+- Amounts are shown in their own asset and never converted to dollars. Creators see no balances, no deposit references and no buttons.
+
+## 2026-09-16 additions: wallet linking
+
+On `/settings/profile`, a region "Wallets" for every signed-in account:
+
+- Linked wallets are listed newest first as network, mode, link date and the address; otherwise "No wallet linked yet."
+- `WalletLink` (client) picks the network (chips, only when more than one is enabled) and runs the proof: `eth_requestAccounts` → `POST /api/wallets/challenge` (`chain_id`, `address`) → `personal_sign` of the returned message → `POST /api/wallets/verify` (`challenge_id`, `signature`), then refreshes the page.
+- With no injected wallet, the button reports that instead of failing silently, and nothing is shown as linked.
+- Errors from the API (expired or reused challenge, wrong domain, address already linked to another account) are shown as returned. The copy states that signing proves control of the address and authorizes no payment.

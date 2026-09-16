@@ -357,6 +357,23 @@ export async function claimEntitlement(tx: Tx, actor: Actor, entitlementId: stri
 }
 
 /** Owner sees every bucket; applicants see rewards per hire and whether required assets are funded (§11.5). */
+export type PoolNetwork = { chain_id: number; name: string; mode: string; assets: { asset_id: string; symbol: string; kind: string; decimals: number; usd_pegged: boolean }[] };
+
+/** Enabled networks with their allowlisted assets, for the buyer's reward pool form. USD-pegged assets come first. */
+export async function listPoolNetworks(): Promise<PoolNetwork[]> {
+  const rows = await sql<Row[]>`select n.chain_id,n.name,n.mode,a.id as asset_id,a.symbol,a.kind,a.decimals,a.usd_pegged
+    from app.chain_networks n join app.chain_assets a on a.chain_id=n.chain_id
+    where n.enabled and a.allowlisted order by n.chain_id, a.usd_pegged desc, a.symbol, a.decimals`;
+  const networks = new Map<number, PoolNetwork>();
+  for (const row of rows) {
+    const chainId = Number(row.chain_id);
+    const network = networks.get(chainId) ?? { chain_id: chainId, name: String(row.name), mode: String(row.mode), assets: [] };
+    network.assets.push({ asset_id: String(row.asset_id), symbol: String(row.symbol), kind: String(row.kind), decimals: Number(row.decimals), usd_pegged: row.usd_pegged === true });
+    networks.set(chainId, network);
+  }
+  return [...networks.values()];
+}
+
 export async function getPoolData(actor: Actor | null, requestId: string) {
   if (!UUID_PATTERN.test(requestId)) return null;
   const [pool] = await sql<Row[]>`select p.*,n.name as network_name,n.mode as network_mode from app.campaign_pools p join app.chain_networks n on n.chain_id=p.chain_id where p.request_id=${requestId}`;
@@ -373,9 +390,13 @@ export async function getPoolData(actor: Actor | null, requestId: string) {
   };
   if (!owner) return { pool: base };
   const [intents, allocations, refunds, entitlements] = await Promise.all([
-    sql<Row[]>`select id,pool_asset_id,amount_atomic,reference,recipient,status,status_reason,created_at from app.pool_funding_intents where pool_id=${String(pool.id)} order by created_at desc`,
-    sql<Row[]>`select id,order_id,item_key,kind,required,amount_atomic,state,attempts,last_error,release_tx,template_version from app.pool_allocations where pool_id=${String(pool.id)} order by created_at`,
-    sql<Row[]>`select r.id,r.amount_atomic,r.state,r.last_error,r.refund_tx,r.created_at,a.symbol from app.pool_refunds r join app.pool_assets pa on pa.id=r.pool_asset_id join app.chain_assets a on a.id=pa.asset_id where pa.pool_id=${String(pool.id)} order by r.created_at desc`,
+    sql<Row[]>`select i.id,i.pool_asset_id,i.amount_atomic,i.reference,i.recipient,i.status,i.status_reason,i.created_at,a.symbol,a.decimals
+      from app.pool_funding_intents i join app.pool_assets pa on pa.id=i.pool_asset_id join app.chain_assets a on a.id=pa.asset_id
+      where i.pool_id=${String(pool.id)} order by i.created_at desc`,
+    sql<Row[]>`select al.id,al.order_id,al.item_key,al.kind,al.required,al.amount_atomic,al.state,al.attempts,al.last_error,al.release_tx,al.template_version,a.symbol,a.decimals
+      from app.pool_allocations al join app.pool_assets pa on pa.id=al.pool_asset_id join app.chain_assets a on a.id=pa.asset_id
+      where al.pool_id=${String(pool.id)} order by al.created_at`,
+    sql<Row[]>`select r.id,r.amount_atomic,r.state,r.last_error,r.refund_tx,r.created_at,a.symbol,a.decimals from app.pool_refunds r join app.pool_assets pa on pa.id=r.pool_asset_id join app.chain_assets a on a.id=pa.asset_id where pa.pool_id=${String(pool.id)} order by r.created_at desc`,
     sql<Row[]>`select id,order_id,item_key,kind,perk_type,description,fulfillment_method,required,deadline_at,status,fulfilled_at,claimed_at from app.reward_entitlements where pool_id=${String(pool.id)} order by created_at`,
   ]);
   return {
