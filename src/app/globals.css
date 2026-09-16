@@ -556,7 +556,10 @@ td small { display: block; color: var(--faint); margin-top: 3px; font-size: 12px
 
 /* ---------- Page-level refinements ---------- */
 .section-heading > .page-heading { margin: 0; }
-.container > .section-heading:first-child, .container > .notice + .section-heading { margin-top: 8px; margin-bottom: 28px; align-items: flex-end; }
+/* A page does not open with a divider: the first section head on a page drops its rule and its + marks. */
+.container > .section-heading:first-child, .container > .notice + .section-heading { margin-top: 8px; margin-bottom: 28px; padding-top: 0; border-top: 0; align-items: flex-end; }
+.container > .section-heading:first-child::before, .container > .section-heading:first-child::after,
+.container > .notice + .section-heading::before, .container > .notice + .section-heading::after { content: none; }
 .filters + .muted { margin: 0 4px 14px; }
 .panel .service-bottom { margin-top: 18px; }
 .panel .inline-actions + h3 { margin-top: 14px; }
@@ -737,6 +740,14 @@ td small { display: block; color: var(--faint); margin-top: 3px; font-size: 12px
 @media (max-width: 860px) { .goal-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 440px) { .goal-cards { grid-template-columns: minmax(0, 1fr); } }
 
+/* ---------- Money band: wherever money is counted, the ground darkens and the figures go mono ---------- */
+.money-panel { background: var(--money); }
+.facts strong { font-family: var(--mono); font-size: 13px; font-variant-numeric: tabular-nums; }
+.facts strong.is-lead { font-family: var(--display); font-size: 24px; font-weight: 700; font-stretch: 80%; color: var(--accent-text); }
+.facts li { align-items: baseline; }
+/* A simulated or testnet rail is always said out loud, in a dashed frame so it cannot read as live money. */
+.crypto-badge { background: transparent; box-shadow: none; border: 1px dashed var(--waiting); color: var(--waiting); }
+
 /* ---------- Fund menu (beside Account) and the Funds page ---------- */
 .fund-menu { position: relative; }
 .fund-menu-button { display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 12px; border: 1px solid var(--line-strong); border-radius: var(--radius); background: var(--soft); font-family: var(--mono); font-size: 11px; font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink); cursor: pointer; }
@@ -755,13 +766,23 @@ td small { display: block; color: var(--faint); margin-top: 3px; font-size: 12px
 .fund-menu-panel nav { display: grid; gap: 2px; }
 .fund-open { justify-content: center; gap: 6px; width: 100%; }
 .fund-note { margin: 0; padding: 0 4px 2px; font-size: 12px; color: var(--muted); }
-.funds-stats .stat small { display: block; margin-top: 4px; font-size: 12.5px; }
-.funds-section { margin-top: 16px; scroll-margin-top: 90px; }
+.funds-stats { grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 0; margin: 0 0 20px; border: 1px solid var(--line); background: var(--money); }
+.funds-stats .stat { background: transparent; border: 0; border-right: 1px solid var(--line); padding: 22px; }
+.funds-stats .stat:last-child { border-right: 0; }
+.funds-stats .stat strong { font-size: clamp(28px, 3.2vw, 40px); font-stretch: 78%; }
+/* The figure that answers "what do I owe / what is owed to me" is the one written in lime. */
+.funds-stats .stat:first-child strong { color: var(--accent-text); }
+.funds-stats .stat small { display: block; margin-top: 6px; font-family: var(--body); font-size: 12.5px; letter-spacing: normal; text-transform: none; }
+@media (max-width: 640px) {
+  .funds-stats .stat { border-right: 0; border-bottom: 1px solid var(--line); }
+  .funds-stats .stat:last-child { border-bottom: 0; }
+}
+.funds-section { margin-top: 16px; scroll-margin-top: 90px; background: var(--money); }
 .funds-list { display: grid; gap: 0; margin: 8px 0 12px; padding: 0; list-style: none; }
 .funds-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; padding: 12px 0; border-top: 1px solid var(--line); }
 .funds-row > div:first-child { display: grid; gap: 2px; flex: 1 1 260px; min-width: 0; }
-.funds-amount { font-size: 15px; font-variant-numeric: tabular-nums; }
-.funds-address { font-size: 13px; font-weight: 600; }
+.funds-amount { font-family: var(--mono); font-size: 15px; font-variant-numeric: tabular-nums; }
+.funds-address { font-family: var(--mono); font-size: 13px; }
 @media (max-width: 640px) {
   .fund-menu { position: static; }
   .fund-menu-panel { left: 12px; right: 12px; width: auto; top: 100%; }

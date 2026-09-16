@@ -28,11 +28,11 @@ export function OrderReceiptPanel({ order: o }: { order: Row }) {
   const method = str(o.payment_rail) === 'CRYPTO' ? 'Stablecoin' : str(o.funding_method) === 'BANK_TRANSFER' ? 'Bank transfer' : 'Card';
   const payout = str(o.settlement_status, 'NOT_READY');
   const refunded = Number(o.cancellation_refund_minor ?? 0) > 0;
-  return <section className="panel" aria-labelledby="receipt-heading">
+  return <section className="panel money-panel" aria-labelledby="receipt-heading">
     <h2 id="receipt-heading">Receipt</h2>
     <ul className="facts">
       <li><span>Order</span><strong>#{str(o.id).slice(0, 8)}</strong></li>
-      <li><span>Amount charged</span><strong>{money(o.amount_minor)}</strong></li>
+      <li><span>Amount charged</span><strong className="is-lead">{money(o.amount_minor)}</strong></li>
       <li><span>Platform fee</span><strong>{money(o.platform_fee_minor)}</strong></li>
       <li><span>Paid with</span><strong>{method}</strong></li>
       <li><span>Paid on</span><strong>{date(o.funded_at)}</strong></li>
