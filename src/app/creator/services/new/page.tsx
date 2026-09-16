@@ -5,6 +5,7 @@ import { Notices } from '@/components/notices';
 import { PageHeading } from '@/components/page-heading';
 import { CategoryField } from '@/components/category-field';
 import { SelectField } from '@/components/select';
+import { FileUploadField } from '@/components/files/file-upload-field';
 import { requireActorOrLoginPrompt } from '@/components/require-actor';
 import type { PageProps } from '@/components/page-props';
 
@@ -81,14 +82,13 @@ export default async function NewServicePage({
         </div>
         <Field name="digital_rights_text" label="What buyers may do with the files" type="textarea" placeholder="For example: use in personal and client projects; do not resell or share the files." />
         <h3>Work samples</h3>
-        <p className="muted">One strong sample is enough to publish. Add up to two more if you have them.</p>
+        <p className="muted">Show the work itself: buyers see the pictures and play the video here instead of following a link. One strong sample is enough to publish; add up to two more if you have them.</p>
+        <FileUploadField purpose="SAMPLE" name="sample_asset_ids" label="Upload work samples" maxFiles={3}
+          help="Up to 3 images, videos or PDFs. Each one takes its name from the file." />
+        <p className="muted">Work that only lives online — a post, a thread, a video on someone else&apos;s channel — can be a link instead.</p>
         <div className="form-grid">
-          <Field name="sample_url_1" label="Sample URL 1" required />
-          <Field name="sample_title_1" label="Sample title 1" required />
-          <Field name="sample_url_2" label="Sample URL 2" />
-          <Field name="sample_title_2" label="Sample title 2" />
-          <Field name="sample_url_3" label="Sample URL 3" />
-          <Field name="sample_title_3" label="Sample title 3" />
+          <Field name="sample_url_1" label="Link to work online (optional)" />
+          <Field name="sample_title_1" label="What that work is" />
         </div>
         <p className="muted">
           The draft is created first. Publishing is a separate action so you can review

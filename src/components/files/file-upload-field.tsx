@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 
 import { uploadFile, type UploadPurpose as Purpose } from './upload';
@@ -55,6 +55,8 @@ export function FileUploadField({ purpose, orderId, name = 'asset_ids', label, h
   refreshOnReady?: boolean;
 }) {
   const router = useRouter();
+  // A file input with no label has no accessible name at all, so the field's own words are tied to it.
+  const inputId = useId();
   const [items, setItems] = useState<Item[]>([]);
   const wrapper = useRef<HTMLDivElement>(null);
   const busy = items.some((item) => item.state === 'uploading');
@@ -107,10 +109,10 @@ export function FileUploadField({ purpose, orderId, name = 'asset_ids', label, h
   }
 
   return <div className="field file-field" ref={wrapper}>
-    <span>{label}</span>
+    <label htmlFor={inputId}>{label}</label>
     {!refreshOnReady && <input type="hidden" name={name} value={ready.join(',')} />}
     {!refreshOnReady && withThumbnails && <input type="hidden" name="thumb_ids" value={readyItems.map((item) => item.thumbId ?? '').join(',')} />}
-    <input type="file" multiple={maxFiles > 1} accept={IMAGE_ONLY.has(purpose) ? ACCEPTED_IMAGES : purpose === 'DIGITAL' ? `${ACCEPTED_FILES},.zip` : ACCEPTED_FILES} onChange={(event) => { choose(event.target.files); event.target.value = ''; }} />
+    <input id={inputId} type="file" multiple={maxFiles > 1} accept={IMAGE_ONLY.has(purpose) ? ACCEPTED_IMAGES : purpose === 'DIGITAL' ? `${ACCEPTED_FILES},.zip` : ACCEPTED_FILES} onChange={(event) => { choose(event.target.files); event.target.value = ''; }} />
     {help && <small>{help}</small>}
     {items.length > 0 && <ul className="file-list" aria-live="polite">
       {items.map((item) => <li key={item.key} className={`file-item file-${item.state}`}>

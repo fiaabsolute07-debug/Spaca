@@ -39,8 +39,8 @@ test('SUP-02 / REV-03: a brand-new creator shows as new, with no invented rating
   await chooseOption(page, page, 'What are you offering?', 'Create · content you deliver');
   await page.getByLabel('Price (USD)', { exact: true }).fill('90');
   await page.getByLabel('Scope and deliverables').fill(`One launch thread with a clear CTA for ${title}.`);
-  await page.getByLabel('Sample URL 1', { exact: true }).fill(`${baseURL}/?sample=${suffix}`);
-  await page.getByLabel('Sample title 1', { exact: true }).fill('A previous launch thread');
+  await page.getByLabel('Link to work online (optional)', { exact: true }).fill(`${baseURL}/?sample=${suffix}`);
+  await page.getByLabel('What that work is', { exact: true }).fill('A previous launch thread');
   await submit(page, page.getByRole('button', { name: 'Save draft service', exact: true }));
   const card = page.locator('div.panel').filter({ has: page.getByRole('heading', { name: title, exact: true }) });
   await submit(page, card.getByRole('button', { name: 'Publish', exact: true }));
@@ -103,8 +103,8 @@ test('SEC-07: markup in briefs and messages stays text, and script or data links
   await chooseOption(page, page, 'What are you offering?', 'Create · content you deliver');
   await page.getByLabel('Price (USD)', { exact: true }).fill('50');
   await page.getByLabel('Scope and deliverables').fill('A scope long enough to be accepted by the service form rules.');
-  await page.getByLabel('Sample URL 1', { exact: true }).fill('javascript:alert(document.cookie)');
-  await page.getByLabel('Sample title 1', { exact: true }).fill('Bad sample');
+  await page.getByLabel('Link to work online (optional)', { exact: true }).fill('javascript:alert(document.cookie)');
+  await page.getByLabel('What that work is', { exact: true }).fill('Bad sample');
   await Promise.all([page.waitForNavigation(), page.getByRole('button', { name: 'Save draft service', exact: true }).click()]);
   expect(new URL(page.url()).searchParams.has('error')).toBe(true);
   await expect(page.getByRole('main').getByRole('alert')).toBeVisible();

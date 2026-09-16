@@ -35,7 +35,9 @@ export async function getOperatorQueues(actor: Actor) {
     finance ? sql<Row[]>`select id,semantic_key,status,attempts,available_at from app.outbox where status='FAILED' order by available_at limit 200` : [],
     finance ? sql<Row[]>`select c.order_id,c.creator_id,u.display_name as creator_name,c.units,c.expires_at from app.workload_claims c join app.users u on u.id=c.creator_id
       where c.state='EXPIRY_RECONCILING' order by c.expires_at limit 200` : [],
-    moderation ? sql<Row[]>`select s.id,s.creator_id,s.title,s.url,s.storage_asset_id,s.visibility,s.created_at from app.samples s where s.moderation_status='PENDING' order by s.created_at limit 200` : [],
+    moderation ? sql<Row[]>`select s.id,s.creator_id,s.title,s.url,s.description,s.visibility,s.created_at,a.id as storage_asset_id,a.mime as asset_mime
+      from app.samples s left join app.storage_assets a on a.id=s.storage_asset_id and a.lifecycle_state='READY'
+      where s.moderation_status='PENDING' order by s.created_at limit 200` : [],
     finance ? sql<Row[]>`select id,status,delivery_due_at from app.orders where status in ('FUNDED','IN_PROGRESS') and delivery_due_at < now() order by delivery_due_at limit 200` : [],
     sql<Row[]>`select key,enabled,description,changed_by,changed_reason,updated_at from app.feature_flags order by key`,
     // Runbook §20.4: counters must equal the sum of claims; any row here means pause the creator and investigate.

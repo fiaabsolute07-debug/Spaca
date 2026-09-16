@@ -23,8 +23,8 @@ test('a PUBLISH order is delivered with the post link on the sold X channel and 
   await page.getByLabel('Scope and deliverables').fill(`One disclosed thread on my X account explaining your launch (${suffix}).`);
   await chooseOption(page, page, 'Posting account', `@${handle} · X`);
   await chooseOption(page, page, 'Post format', 'Thread');
-  await page.getByLabel('Sample URL 1', { exact: true }).fill(`https://x.com/${handle}/status/1000000000001`);
-  await page.getByLabel('Sample title 1', { exact: true }).fill('A past launch thread');
+  await page.getByLabel('Link to work online (optional)', { exact: true }).fill(`https://x.com/${handle}/status/1000000000001`);
+  await page.getByLabel('What that work is', { exact: true }).fill('A past launch thread');
   await submit(page, page.getByRole('button', { name: 'Save draft service', exact: true }));
   // The journey books creator_d, so new orders must be open (manual QA on the shared dev database may have paused them).
   const resume = page.getByRole('button', { name: 'Resume new orders', exact: true });

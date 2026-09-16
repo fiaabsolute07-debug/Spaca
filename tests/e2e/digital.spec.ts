@@ -22,13 +22,14 @@ test('a DIGITAL product is released, bought, delivered on payment and downloaded
   await page.getByLabel('Scope and deliverables').fill(`Notion and Figma templates for a token launch week (${suffix}).`);
   await page.getByLabel('Downloads per purchase').fill('3');
   await page.getByLabel('What buyers may do with the files').fill('Use in your own and client launches. Do not resell or share the files.');
-  await page.getByLabel('Sample URL 1', { exact: true }).fill('https://example.com/kit-preview');
-  await page.getByLabel('Sample title 1', { exact: true }).fill('Kit preview');
+  await page.getByLabel('Link to work online (optional)', { exact: true }).fill('https://example.com/kit-preview');
+  await page.getByLabel('What that work is', { exact: true }).fill('Kit preview');
   await submit(page, page.getByRole('button', { name: 'Save draft service', exact: true }));
 
   const card = page.locator('div.panel').filter({ has: page.getByRole('heading', { name: title, exact: true }) });
   await expect(card.getByText('Upload the product file before publishing.')).toBeVisible();
-  const fileInput = card.locator('input[type="file"]');
+  // The card now holds two upload fields — the product file and work samples — so name the one this test means.
+  const fileInput = card.getByLabel('Product file');
   // The upload field is a client component: files chosen before hydration would never be sent.
   await waitForHydration(fileInput);
   await fileInput.setInputFiles({ name: 'launch-kit.zip', mimeType: 'application/zip', buffer: fileBytes });

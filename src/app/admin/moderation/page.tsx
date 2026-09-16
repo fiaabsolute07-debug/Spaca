@@ -3,6 +3,7 @@ import { requireActorOrLoginPrompt } from '@/components/require-actor';
 import type { PageProps } from '@/components/page-props';
 import { Badge, Field, date, str } from '@/components/ui';
 import { AdminCommand, AdminPage, SelectField, operatorRead } from '@/components/admin/ui';
+import { SampleGallery } from '@/components/samples/sample-gallery';
 
 export const dynamic = 'force-dynamic';
 
@@ -52,6 +53,8 @@ export default async function ModerationPage({ searchParams }: PageProps) {
         <h2>{str(sample.title, 'Untitled sample')}</h2>
         <Badge>{str(sample.visibility)}</Badge>
         <p>Sample: {str(sample.id)}<br />Creator: {str(sample.creator_id)}<br />Submitted: {date(sample.created_at)}</p>
+        {/* A picture or a video is decided by looking at it, so the queue shows the file rather than only its id. */}
+        <SampleGallery samples={[sample]} label={`Sample ${str(sample.id)}`} />
         <AdminCommand command="admin_moderate_sample" route={route}
           values={{ sample_id: str(sample.id) }} label="Save moderation decision">
           <SelectField name="decision" label="Decision" options={['APPROVED', 'REJECTED']} />

@@ -131,8 +131,9 @@ export class LocalStorageProvider implements StorageProvider {
     return written;
   }
 
-  openObject(bucket: StorageBucket, key: string) {
-    return createReadStream(this.pathFor(bucket, key));
+  /** `range` is the inclusive byte window a media player asked for; without it the whole object is read. */
+  openObject(bucket: StorageBucket, key: string, range?: { start: number; end: number }) {
+    return createReadStream(this.pathFor(bucket, key), range);
   }
 
   async stat(bucket: StorageBucket, key: string): Promise<ObjectInfo | null> {

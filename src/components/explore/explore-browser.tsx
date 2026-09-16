@@ -5,6 +5,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { X } from 'lucide-react';
 import { Avatar } from '../avatar';
 import { availabilityLabel, money, num, rows, str, type Row } from '../ui';
+import { SampleGallery } from '../samples/sample-gallery';
 
 const CATEGORY: Record<string, string> = { CREATE: 'Create', PUBLISH: 'Publish', ACCESS: 'Access', DIGITAL: 'Digital' };
 const FORMAT: Record<string, string> = { POST: 'post', THREAD: 'thread', QUOTE_POST: 'quote post', VIDEO: 'video', NEWSLETTER_ISSUE: 'newsletter issue', ARTICLE: 'article' };
@@ -65,9 +66,7 @@ function Detail({ s, onClose }: { s: Row; onClose: () => void }) {
       <Included s={s} />
       {rows(s.samples).length > 0 && <>
         <h3>Work samples</h3>
-        <ul className="sample-links">
-          {rows(s.samples).map((sample) => <li key={str(sample.url)}><a className="text-link" href={str(sample.url)} target="_blank" rel="noreferrer nofollow">{str(sample.title, 'Sample')} ›</a></li>)}
-        </ul>
+        <SampleGallery samples={rows(s.samples)} label="Work samples" />
       </>}
     </div>
   </article>;

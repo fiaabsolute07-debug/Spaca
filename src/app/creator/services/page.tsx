@@ -5,6 +5,7 @@ import { Notices } from '@/components/notices';
 import { PageHeading } from '@/components/page-heading';
 import { requireActorOrLoginPrompt } from '@/components/require-actor';
 import { FileUploadField } from '@/components/files/file-upload-field';
+import { SampleGallery } from '@/components/samples/sample-gallery';
 import type { PageProps } from '@/components/page-props';
 
 export const dynamic = 'force-dynamic';
@@ -85,6 +86,19 @@ export default async function CreatorServicesPage({
             <Field name="notes" label="What changed (optional)" />
           </CommandForm>}
         </div>}
+        <details className="service-edit">
+          <summary>Work samples ({rows(s.samples).length})</summary>
+          {rows(s.samples).length > 0
+            ? <SampleGallery samples={rows(s.samples)} label={`Work samples for ${str(s.title)}`} />
+            : <p className="muted">This service has no samples yet, and it cannot be published without one.</p>}
+          {str(s.status) !== 'ARCHIVED' && <CommandForm command="add_sample" label="Add work sample" variant="secondary" values={{ service_id: str(s.id) }} returnTo={route}>
+            <p className="muted">Show the work itself: an uploaded picture or video plays on the service page. A sample added here waits for moderation before buyers see it.</p>
+            <FileUploadField purpose="SAMPLE" name="asset_id" label="Sample file" maxFiles={1} help="One image, video or PDF. Leave this empty if the work only lives online." />
+            <Field name="title" label="What this work is" required />
+            <Field name="url" label="Link to it online (needed when there is no file)" />
+            <Field name="description" label="A line about it (optional)" />
+          </CommandForm>}
+        </details>
         {str(s.status) !== 'ARCHIVED' && <details className="service-edit">
           <summary>Edit service</summary>
           <CommandForm command="update_service" label="Save changes" values={{ service_id: str(s.id), expected_version: str(s.version) }} returnTo={route}>

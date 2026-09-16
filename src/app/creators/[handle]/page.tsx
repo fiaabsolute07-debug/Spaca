@@ -5,6 +5,7 @@ import { getCreatorData } from '@/lib/read-model';
 import { Badge, Empty, ServiceCard, num, row, rows, str } from '@/components/ui';
 import { Notices } from '@/components/notices';
 import { PageHeading } from '@/components/page-heading';
+import { SampleGallery } from '@/components/samples/sample-gallery';
 import type { PageProps } from '@/components/page-props';
 
 export const dynamic = 'force-dynamic';
@@ -73,15 +74,9 @@ export default async function CreatorPage({
       <h2>Work samples</h2>
     </div>
     <div className="panel">
-      {rows(d.samples).length ? rows(d.samples).map(s => <div className="record" key={str(s.url)}>
-        <a className="text-link" href={str(s.url)} target="_blank" rel="noreferrer">
-          {str(s.title)}
-          {" ›"}
-        </a>
-        <p>
-          {str(s.description)}
-        </p>
-      </div>) : <Empty title="No samples yet" />}
+      {rows(d.samples).length
+        ? <SampleGallery samples={rows(d.samples)} label="Work samples" />
+        : <Empty title="No samples yet" />}
     </div>
   </main>;
 }

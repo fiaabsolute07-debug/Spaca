@@ -39,9 +39,10 @@ async function serviceRows(options: { ownerId?: string; publicCreatorId?: string
         order by s.created_at desc`;
   // Samples linked to each listed service (service_samples), newest first and capped, instead of every creator sample.
   const serviceIds = asRows(services).map((service) => String(service.id));
-  const samples = serviceIds.length ? await sql`select service_id,id,creator_id,title,url,description,visibility,moderation_status,created_at from (
-      select ss.service_id,sm.*,row_number() over (partition by ss.service_id order by sm.created_at desc) as rank
+  const samples = serviceIds.length ? await sql`select service_id,id,creator_id,title,url,description,visibility,moderation_status,created_at,ready_asset_id as storage_asset_id,asset_mime from (
+      select ss.service_id,sm.*,a.id as ready_asset_id,a.mime as asset_mime,row_number() over (partition by ss.service_id order by sm.created_at desc) as rank
       from app.service_samples ss join app.samples sm on sm.id=ss.sample_id
+      left join app.storage_assets a on a.id=sm.storage_asset_id and a.lifecycle_state='READY'
       where ss.service_id = any(${serviceIds}::uuid[]) and (${actorId ?? null}::uuid is not null or (sm.visibility='PUBLIC' and sm.moderation_status='APPROVED'))
     ) ranked where rank <= 6` : [];
   const sampleMap = new Map<string, ReadRow[]>();
@@ -275,7 +276,9 @@ export async function getServiceData(id: string) {
   const [latestRelease] = service!.taxonomy === 'DIGITAL' ? asRows(await sql`select version,created_at from app.digital_releases where service_id=${id} order by version desc limit 1`) : [];
   const digitalInfo = service!.taxonomy === 'DIGITAL' ? { latest_version: latestRelease?.version ?? null, updated_at: latestRelease?.created_at ?? null, purchases_enabled: await isFlagEnabled(sql, 'DIGITAL_PRODUCTS_ENABLED') } : null;
   // The service page shows the samples the creator linked to this service (service_samples), not their whole portfolio.
-  const samples = await sql`select sm.id,sm.creator_id,sm.title,sm.url,sm.description,sm.created_at from app.service_samples ss join app.samples sm on sm.id=ss.sample_id
+  const samples = await sql`select sm.id,sm.creator_id,sm.title,sm.url,sm.description,sm.created_at,a.id as storage_asset_id,a.mime as asset_mime
+    from app.service_samples ss join app.samples sm on sm.id=ss.sample_id
+    left join app.storage_assets a on a.id=sm.storage_asset_id and a.lifecycle_state='READY'
     where ss.service_id=${id} and sm.visibility='PUBLIC' and sm.moderation_status='APPROVED' order by sm.created_at desc limit 12`;
   return { service: service!, digital: digitalInfo, creator: { id: service!.creator_id, display_name: service!.creator_name, bio: service!.bio, niche: service!.niche, handle: service!.handle, avatar_color: service!.avatar_color, avatar_asset_id: service!.avatar_asset_id, headline: service!.headline }, samples: asRows(samples) };
 }
@@ -285,7 +288,9 @@ export async function getCreatorData(handle: string) {
   if (!creator) return null;
   const [services, samples, socialAccounts] = await Promise.all([
     serviceRows({ publicCreatorId: String(creator.id) }),
-    sql`select id,creator_id,title,url,description,created_at from app.samples where creator_id=${String(creator.id)} and visibility='PUBLIC' and moderation_status='APPROVED' order by created_at desc limit 24`,
+    sql`select sm.id,sm.creator_id,sm.title,sm.url,sm.description,sm.created_at,a.id as storage_asset_id,a.mime as asset_mime
+      from app.samples sm left join app.storage_assets a on a.id=sm.storage_asset_id and a.lifecycle_state='READY'
+      where sm.creator_id=${String(creator.id)} and sm.visibility='PUBLIC' and sm.moderation_status='APPROVED' order by sm.created_at desc limit 24`,
     // XPL-01: every link is shown with its verification status; manual links read "Self-reported".
     sql`select id,platform,handle,canonical_url as url,verification_status from app.social_accounts where creator_id=${String(creator.id)} and removed_at is null order by created_at`,
   ]);

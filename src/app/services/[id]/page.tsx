@@ -6,6 +6,7 @@ import { Badge, CommandForm, Empty, Field, availabilityLabel, money, num, row, r
 import { Notices } from '@/components/notices';
 import { ReportForm } from '@/components/report-form';
 import { Avatar } from '@/components/avatar';
+import { SampleGallery } from '@/components/samples/sample-gallery';
 import type { PageProps } from '@/components/page-props';
 
 export const dynamic = 'force-dynamic';
@@ -93,15 +94,9 @@ export default async function ServicePage({
         </div>
         <div className="panel">
           <h2>A look at their work</h2>
-          {rows(d.samples).length ? rows(d.samples).map(sample => <div className="record" key={str(sample.id ?? sample.url)}>
-            <a href={str(sample.url)} target="_blank" rel="noreferrer" className="text-link">
-              {str(sample.title, 'View sample')}
-              {" ›"}
-            </a>
-            <p>
-              {str(sample.description)}
-            </p>
-          </div>) : <p>No linked work samples.</p>}
+          {rows(d.samples).length
+            ? <SampleGallery samples={rows(d.samples)} label="Work samples for this service" />
+            : <p>No linked work samples.</p>}
         </div>
       </div>
       <aside>

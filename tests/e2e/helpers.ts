@@ -138,11 +138,10 @@ export async function createPublishedService(page: Page, purpose: string) {
   await page.getByLabel('Price (USD)', { exact: true }).fill('100');
   await page.getByLabel('Delivery time (hours)').fill('24');
   await page.getByLabel('Scope and deliverables').fill(`A complete launch narrative with one revision for ${title}.`);
-  for (let n = 1; n <= 3; n++) {
-    // These local sample references are stored only; the test never navigates to them.
-    await page.getByLabel(`Sample URL ${n}`, { exact: true }).fill(`${baseURL}/?sample=${encodeURIComponent(title)}-${n}`);
-    await page.getByLabel(`Sample title ${n}`, { exact: true }).fill(`${title} sample ${n}`);
-  }
+  // One link sample is enough to publish. Uploaded samples cost an upload intent, and creator_c has a budget of 30 an
+  // hour across the whole suite, so only the work-sample tests upload files.
+  await page.getByLabel('Link to work online (optional)', { exact: true }).fill(`${baseURL}/?sample=${encodeURIComponent(title)}`);
+  await page.getByLabel('What that work is', { exact: true }).fill(`${title} sample link`);
   await submit(page, page.getByRole('button', { name: 'Save draft service', exact: true }));
   // Service panels have no semantic container role; scope by their unique h3.
   const card = page.locator('div.panel').filter({ has: page.getByRole('heading', { name: title, exact: true }) });

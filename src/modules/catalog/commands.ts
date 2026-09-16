@@ -11,6 +11,7 @@ import {
   orderEvent,
   text,
   uuid,
+  UUID_PATTERN,
   type CommandHandler,
   type Row,
   type Tx,
@@ -206,6 +207,24 @@ const completeOnboarding: CommandHandler = async ({ tx, actor, form }) => {
   return { path: nextPath(text(form, 'next', false, 300)), message: creator ? 'Your creator profile is ready' : 'Your project profile is ready' };
 };
 
+/** Three samples is what the form offers, and what a service card has room to show. */
+const MAX_SERVICE_SAMPLES = 3;
+
+/** The comma-joined ids a file upload field submits, checked as ids before any of them reaches a query. */
+function assetIdList(form: FormData, name: string, max: number): string[] {
+  const ids = text(form, name, false, 2000).split(',').map((value) => value.trim()).filter(Boolean);
+  if (ids.length > max) throw new CommandError(`Attach at most ${max} work samples`);
+  for (const id of ids) if (!UUID_PATTERN.test(id)) throw new CommandError(`${name} is invalid`, 'NOT_FOUND');
+  if (new Set(ids).size !== ids.length) throw new CommandError('The same file is attached twice');
+  return ids.map((id) => id.toLowerCase());
+}
+
+/** A file name reads well enough as a sample title once the extension and the separators are gone. */
+function sampleTitleFrom(filename: string): string {
+  const cleaned = filename.replace(/\.[^.]+$/, '').replace(/[_-]+/g, ' ').trim();
+  return (cleaned || 'Work sample').slice(0, 120);
+}
+
 const addSample: CommandHandler = async ({ tx, actor, form }) => {
   const title = text(form, 'title', true, 120);
   const assetId = text(form, 'asset_id', false, 60) || null;
@@ -250,11 +269,19 @@ const createService: CommandHandler = async ({ tx, actor, form }) => {
       ${digital?.license ?? null},${digital?.rightsText ?? null},${digital?.stock ?? null},${digital?.updates ?? null},${digital?.downloadLimit ?? null},'DRAFT') returning id`;
   const serviceId = String(service!.id);
 
-  for (let n = 1; n <= 3; n++) {
+  // Uploaded samples are the work itself — a picture, a video, a PDF — and are named after the file they came from.
+  for (const assetId of assetIdList(form, 'sample_asset_ids', MAX_SERVICE_SAMPLES)) {
+    await lockSampleAsset(tx, actor.id, assetId);
+    const [asset] = await tx<Row[]>`select filename from app.storage_assets where id=${assetId}`;
+    const sampleTitle = sampleTitleFrom(String(asset!.filename));
+    const [sample] = await tx<Row[]>`insert into app.samples (creator_id,title,description,storage_asset_id) values (${actor.id},${sampleTitle},'Work sample for this service',${assetId}) returning id`;
+    await tx`insert into app.service_samples (service_id,sample_id,creator_id) values (${serviceId},${String(sample!.id)},${actor.id})`;
+  }
+  for (let n = 1; n <= MAX_SERVICE_SAMPLES; n++) {
     const url = text(form, `sample_url_${n}`, false, 1000);
     const sampleTitle = text(form, `sample_title_${n}`, false, 120);
     if (!url && !sampleTitle) continue;
-    if (!url || !sampleTitle) throw new CommandError(`Sample ${n} needs both a title and a URL`);
+    if (!url || !sampleTitle) throw new CommandError(`Sample ${n} needs both a title and a link`);
     // Link samples submitted with the service use the schema default moderation state (APPROVED until the
     // moderation queue in W2-B exists); samples added later via add_sample start PENDING.
     const [sample] = await tx<Row[]>`insert into app.samples (creator_id,title,url,description) values (${actor.id},${sampleTitle},${httpUrl(url, `sample_url_${n}`)},'Linked sample for this service') returning id`;
