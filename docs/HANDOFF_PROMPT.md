@@ -1,4 +1,4 @@
-# Prompt bàn giao cho agent tiếp theo — spaca (2026-09-16, commit mới nhất lúc viết: `52a510f`)
+# Prompt bàn giao cho agent tiếp theo — spaca (2026-09-16, commit mới nhất lúc viết: `904b910`)
 
 > Dán nguyên file này làm tin nhắn đầu tiên cho agent mới. Tài liệu gốc chi tiết hơn nằm ở `docs/NEXT_SESSION.md` (luật làm việc, môi trường, kiến trúc) — **đọc file đó trước khi sửa code**.
 
@@ -23,11 +23,17 @@ Nghĩa: commit đều; chưa dùng Supabase (PostgreSQL local); crypto nhắm Ar
 - Phí nền tảng **chưa chốt**: code giữ `platform_fee_bps: 0`, không tự đặt số, không viết "0% fee" trong copy.
 - Nhãn luôn tách bạch mock / sandbox / LOCAL devnet / TESTNET / live. Không claim PASS nếu chưa có test thật chạy qua.
 - Không sửa tay dữ kiện thanh toán (vd. set RELEASED, refunded) trong DB.
-- Git: chỉ `git add <đường dẫn cụ thể>` (không `-A`); không `reset`/`rebase`/`stash`; chạy `git diff --cached --stat` trước khi commit; không commit `next-env.d.ts`; commit message kết thúc bằng dòng `Co-Authored-By:` theo quy ước của repo.
+- Git: chỉ `git add <đường dẫn cụ thể>` (không `-A`); không `reset`/`rebase`/`stash`; chạy `git diff --cached --stat` trước khi commit; không commit `next-env.d.ts` và `AGENTS.md` (hai file này đang sửa sẵn, để nguyên); commit message kết thúc bằng dòng `Co-Authored-By:` theo quy ước của repo.
+- Repo **chưa có remote GitHub**: chỉ push khi user đưa URL repo (`git remote add origin <URL>` rồi `git push -u origin main`).
+- Xoá/đổi tên DB dev hay dọn dữ liệu cần user trả lời đúng **"đồng ý dọn"** (auto-mode đã chặn một lần).
+- `AGENTS.md` (do `next dev` thêm): Next.js ở repo là bản 16 có thay đổi phá vỡ — đọc hướng dẫn trong `node_modules/next/dist/docs/` trước khi viết code Next mới.
 
 ## Quyết định UI/sản phẩm của user — không làm ngược lại
 
-- Điều hướng workspace nằm trong menu **Account** góc phải header (không sidebar, không khối tên/avatar, không nút avatar riêng). Trang con có link "‹ Back to …"; không mở tab mới.
+- Điều hướng workspace nằm trong menu **Account** góc phải header (không sidebar, không nút avatar riêng). Trang con có link "‹ Back to …"; không mở tab mới. **Đổi 2026-09-16 theo yêu cầu user:** menu mở ra với tài khoản trước — avatar, tên, @handle, nhãn Buyer/Creator account, "Finish setup" khi chưa xong hồ sơ, dòng Wallet (địa chỉ rút gọn hoặc "Connect wallet") — rồi mới tới các nhóm link; ảnh đại diện nằm trong nút Account.
+- **Đăng ký:** chọn Buyer/Creator bằng 2 thẻ trước, rồi mới email + mật khẩu. **Onboarding `/welcome` được ưu tiên:** avatar/logo, tên creator hoặc tên dự án, một dòng "làm gì", giới thiệu ≥40 ký tự (bắt buộc); lĩnh vực, link, ví (tuỳ chọn). Cho phép "Do this later" nhưng đăng dịch vụ / ứng tuyển / đăng campaign phải chờ xong hồ sơ.
+- **Icon menu:** animation hover phải diễn đúng ý nghĩa icon (tên lửa phóng, loa phát sóng âm, dù rơi…), không lắc chung chung; CSS thuần, chạy một lần, tắt trên cảm ứng/giảm chuyển động.
+- **Landing:** thanh tìm kiếm kiểu Fiverr trên video hero (giữ video), các section bên dưới có phần tử 3D tương tác / 2D chuyển động; footer thả tự do, không ô vuông.
 - Header: **Explore** và **Campaigns** là menu thả xuống kiểu Zealy (ô màu nổi bật bên trái, mục có tiêu đề + 1 dòng mô tả bên phải); **Auctions** là link thường. Không làm thanh tab Explore/Campaigns/Auctions phía trên danh sách (user đã bắt xóa) — khác với 7 tab mục tiêu trong Campaigns, là thứ user muốn.
 - Nút **Fund** nằm ngay trước nút Account, gom mọi luồng tiền; trang `/funds`.
 - Campaign chia thành **7 tab, mỗi tab một trang riêng** (`/campaigns/<slug>`): Launch, Shiller, Airdrop, AMA & Spaces, Testnet, Education, Memes & art (`src/modules/requests/goals.ts`, nội dung `goal-pages.ts`). Tab không được trông trống: chỉ dùng nội dung thật, không bịa campaign mẫu.
@@ -46,7 +52,7 @@ export PATH=/Users/dohoangphi/.cache/codex-runtimes/codex-primary-runtime/depend
 ```
 
 - Máy khác: `corepack pnpm install --frozen-lockfile`, Node 24, Chrome hệ thống cho Playwright, Foundry cho `contracts/`.
-- Migration hiện tới **0030**. Cả DB dev và test đã áp dụng.
+- Migration hiện tới **0031** (`onboarded_at`). Cả DB dev và test đã áp dụng.
 - Dev server: `.claude/launch.json` → `marketplace-dev` (Next dev webpack, cổng **3100**). Mock payment provider nằm trong bộ nhớ process: restart dev server là mất lịch sử provider.
 - Job local: `POST /api/dev/jobs` (same-origin). Flag bật trên DB dev: `DIGITAL_PRODUCTS_ENABLED`, `CRYPTO_CHECKOUT_ENABLED`, `PERFORMANCE_CAMPAIGNS_ENABLED`.
 - Nếu PostgreSQL hoặc dev server tắt (`ECONNREFUSED` / `ERR_CONNECTION_REFUSED`): khởi động lại như trên.
@@ -62,7 +68,14 @@ TZ=UTC ./node_modules/.bin/playwright test            # cần dev server 3100 đ
 cd contracts && forge test
 ```
 
-## Trạng thái kiểm tra cuối (2026-09-16, sau khi áp nhận diện, cây `52a510f`)
+## Trạng thái kiểm tra mới nhất (cây `904b910`)
+
+- `tsc`: sạch. Vitest toàn bộ: **340 passed, 3 skipped** (42 file).
+- Playwright **chưa chạy toàn bộ** sau landing/icon/onboarding. Đã chạy riêng và đạt: `onboarding` + `auth-dialog` (lặp 2 lần, 16/16), `workspace-nav`, `public`, `landing`, `header-menus`, `funds`, `explore-profile`, `responsive`, `honest-states` (trừ AUC-13).
+- **AUC-13 (`honest-states.spec.ts`) hỏng:** ô "Starts at" của form đấu giá được server đọc theo múi giờ hồ sơ creator (UTC) trong khi test/trình duyệt dùng giờ máy (+07), form không ghi múi giờ → phiên đấu giá bắt đầu trễ 7 giờ. Chưa chạy trên code cũ để xác nhận có từ trước; thay đổi gần đây không đụng đấu giá.
+- Không chạy ESLint được: repo không có `eslint.config.*`.
+
+## Trạng thái kiểm tra trước đó (2026-09-16, sau khi áp nhận diện, cây `52a510f`)
 
 - `tsc`: sạch.
 - Vitest: **336 passed, 3 skipped** (41 file; 3 skipped là bộ anvil cần `RUN_ANVIL=1`).
@@ -99,12 +112,20 @@ cd contracts && forge test
 | `a5b59f0` | **Giai đoạn 3:** campaign board thay lưới thẻ (`/requests`, 7 tab, My campaigns), 7 hình vẽ nét, `hired_count` trong read model | như trên |
 | `1c0d30b` | **Giai đoạn 4:** dải tiền `#16161A` cho `/funds`, biên nhận và view bonus; số tiền mono, số dẫn đầu vàng chanh; nhãn testnet viền nét đứt | như trên |
 | `52a510f` | **Giai đoạn 5:** landing về cùng nhận diện (giữ công tắc, mặc định tối); chữ gợi ý nâng lên 55% để đạt WCAG AA, phần trang trí giữ 42% dưới tên `--hint` | như trên |
+| `30959f9` | **Landing:** thanh tìm kiếm kiểu Fiverr trên video hero (tab Find creators / Plan a campaign, chip campaign phổ biến), dải 7 mục tiêu có hình SVG chuyển động + số campaign đang mở, khối 3D "How a campaign moves" (Brief/Post/Paid, nghiêng theo chuột, tự chuyển bước), sơ đồ pool thưởng chuyển động | `docs/evidence/claude-LANDING-SEARCH-MOTION.md` |
+| `8d2434b` | Footer landing viết lại theo trang, bỏ ô vuông, không chữ giữ chỗ | như trên |
+| `7b2ce0e` | **Icon menu diễn đúng ý nghĩa khi hover** (`src/components/menu-icon.tsx`, CSS "Menu icon motion" trong `globals.css`) cho menu Explore/Campaigns/Fund | test trong `header-menus.spec.ts`, `docs/UI_CONTRACT.md` |
+| `904b910` | **Đăng ký chọn Buyer/Creator trước; onboarding `/welcome`** (lệnh `complete_onboarding`, migration 0031, chặn `publish_service`/`apply`/`create_request` bằng 422 khi chưa xong, nhắc ở dashboard, đăng nhập lại về `/welcome`); **menu Account bắt đầu bằng tài khoản** (avatar, loại tài khoản, ví); tách bước upload ra `src/components/files/upload.ts`; sửa lề ngang 16px trên điện thoại cho `.container` | `docs/evidence/claude-ONBOARDING.md` |
 
 Tài liệu đã cập nhật cho các mục trên: `docs/UI_CONTRACT.md` (các section 2026-09-16, gồm mục nhận diện campaign board), `docs/NEXT_SESSION.md` §5.2.
 
 ## Còn dang dở / đã biết
 
-1. **Chạy lại toàn bộ Playwright** sau `0a4e71e` để xác nhận 46/46.
+0. **Việc user đang chờ/đã giao:**
+   - **Dọn dữ liệu dummy** trong DB dev: chờ user trả lời "đồng ý dọn". Kế hoạch đã báo user: đổi tên DB dev thành `creator_marketplace_bak_20260916`, tạo lại + migrate + seed, bật lại 3 flag (`DIGITAL_PRODUCTS_ENABLED`, `CRYPTO_CHECKOUT_ENABLED`, `PERFORMANCE_CAMPAIGNS_ENABLED`), chuyển `.local/storage` sang `.local/storage-bak-20260916`, khởi động lại dev server.
+   - **Push GitHub:** chờ user đưa URL repo.
+   - **Sửa lệch múi giờ form đấu giá (AUC-13)** — đã đề xuất thành task riêng; kiểm tra luôn các ô `datetime-local` khác (hạn campaign…).
+1. **Chạy lại toàn bộ Playwright** (`TZ=UTC` như lệnh chuẩn) sau `904b910`, ghi số thật vào bằng chứng.
 2. **Dữ liệu dev bị lỗi từ trước bản sửa `1f7ad3e`:** vài đơn performance trong DB dev vẫn có case `UNEXPECTED_REFUND`/`REFUND_FAILED` mở và `/funds` hiện phần giữ (40–80 USD) là "đang giữ". Không sửa tay; nếu cần, xử lý qua console vận hành/retry operation, hoặc bỏ qua vì là dữ liệu test.
 3. **Tài liệu tổng chưa cập nhật số mới:** `docs/ACCEPTANCE.md` (thêm/đếm lại dòng cho performance, goals, funds, ACCESS/DIGITAL campaign), `docs/BUILD_STATUS.md` (kết quả mới), `docs/REQUIREMENTS_TRACEABILITY.md`, `docs/COLLABORATION.md`.
 4. **Performance campaigns còn giới hạn:** metrics giả lập (chưa nối API nền tảng thật), chưa có cờ "median tăng quá nhanh", tín hiệu gian lận mới có 2 loại.
@@ -112,6 +133,7 @@ Tài liệu đã cập nhật cho các mục trên: `docs/UI_CONTRACT.md` (các 
 6. **Campaign goals:** campaign cũ không có mục tiêu (chỉ hiện ở "All campaigns"); chưa có màn sửa campaign (update_request chỉ qua API).
 8. **7 tab campaign mới dùng chung một khung:** chưa có trường/thẻ/bộ lọc riêng cho từng mục (ngày launch, giá mỗi bài Shiller, giờ AMA…) — đây là bước tiếp theo user đã thảo luận. Nội dung ý tưởng từng tab là bản nháp để user chỉnh.
 7. **Ảnh campaign:** chưa có kiểm duyệt tự động/antivirus.
+9. **Onboarding còn giới hạn:** creator mới chỉ nhập link X dạng text ở bước setup (tài khoản liên kết cho dịch vụ PUBLISH vẫn thêm ở trang profile); bước ví cần ví trình duyệt nên chưa có test tự động; trang profile công khai của buyer (tên dự án/logo) chưa có — logo/tên mới hiện ở menu, preview và nơi đang dùng `display_name`/avatar.
 
 ## Bộ nhận diện (đã duyệt 2026-09-16, **đã áp vào code** cùng ngày)
 
@@ -140,7 +162,8 @@ vài spec hỏng ngẫu nhiên (đã gặp: 4 spec lỗi rồi đạt lại khi 
 
 ## Việc tiếp theo đề xuất (theo thứ tự)
 
-1. Cập nhật `docs/ACCEPTANCE.md` + `docs/BUILD_STATUS.md` cho các tính năng 2026-09-16 và cho bộ nhận diện (chỉ PASS khi có test).
+1. Cập nhật `docs/ACCEPTANCE.md` + `docs/BUILD_STATUS.md` cho các tính năng 2026-09-16 (nhận diện, landing, icon, đăng ký + onboarding) — chỉ PASS khi có test.
+1b. Hiện logo + tên dự án của buyer trên thẻ/trang campaign (dữ liệu đã có từ onboarding).
 2. Dọn dữ liệu e2e tích tụ trong DB dev (10 tài khoản X của creator_d và các service giữ chúng) để `publish.spec.ts` chạy lại được.
 3. **Explore theo mục tiêu** (goal → playbook → creator → sample, ngân sách micro, §11.7) — nối với 7 mục tiêu campaign đã có.
 4. Số dư Arc: nạp/rút (§11.7) nối vào nút Fund — chỉ LOCAL/TESTNET, không tiền thật.
