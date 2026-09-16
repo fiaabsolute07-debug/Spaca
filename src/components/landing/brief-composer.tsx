@@ -49,8 +49,11 @@ function Slot({ slot, value, open, onOpen, onPick }: { slot: SlotKey; value: str
   </span>;
 }
 
-/** The hero headline is a fill-in campaign brief; each slot is a picker. Selections only prefill the next step. */
-export function BriefComposer() {
+/**
+ * A fill-in campaign brief; each slot is a picker. Selections only prefill the next step. In the hero search panel
+ * (`variant="panel"`) the sentence is a paragraph under the page's own headline instead of being the headline.
+ */
+export function BriefComposer({ variant = 'hero' }: { variant?: 'hero' | 'panel' }) {
   const [values, setValues] = useState<Record<SlotKey, string>>({ launch: 'mainnet', count: '5', creator: 'researchers', when: '14' });
   const [open, setOpen] = useState<SlotKey | null>(null);
   const ref = useRef<HTMLDivElement>(null);
@@ -74,11 +77,20 @@ export function BriefComposer() {
 
   const next = new URLSearchParams({ role: 'buyer', launch: values.launch, creators: values.count, creator_type: values.creator, within_days: values.when });
 
+  const sentence = <>We&apos;re launching a {slot('launch')} and need {slot('count')} {slot('creator')} on X within {slot('when')}.</>;
+  if (variant === 'panel') {
+    return <div ref={ref} className={styles.composerPanel}>
+      <p className={styles.composerSentence}>{sentence}</p>
+      <div className={styles.composerActions}>
+        <Link className={styles.composerGo} href={`/sign-up?${next.toString()}`}>Start this campaign <span aria-hidden>→</span></Link>
+        <span className={styles.heroNote}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M5 12l5 5 9-10" /></svg>Each creator is paid when their work is approved.</span>
+      </div>
+    </div>;
+  }
+
   return <div ref={ref} className={styles.composer}>
     <p className={styles.heroKicker}>Creator campaigns for web3 launches, on X.</p>
-    <h1 className={styles.heroTitle}>
-      We&apos;re launching a {slot('launch')} and need {slot('count')} {slot('creator')} on X within {slot('when')}.
-    </h1>
+    <h1 className={styles.heroTitle}>{sentence}</h1>
     <div className={styles.heroActions}>
       <Link className={`${styles.buttonPrimary} ${styles.buttonOnDark}`} href={`/sign-up?${next.toString()}`}>Start this campaign</Link>
       <Link className={styles.heroLink} href="/explore">Browse creators <span aria-hidden>›</span></Link>

@@ -5,7 +5,7 @@ test('anonymous visitors browse the landing, explore, service, requests and auct
   const errors: string[] = [];
   page.on('pageerror', error => errors.push(error.message));
   await visit(page, '/');
-  await expect(page.getByRole('heading', { level: 1 })).toContainText("We're launching a");
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Find the voices your launch needs.');
   await expect(page.getByRole('radiogroup', { name: 'Color theme' })).toBeVisible();
   await visit(page, '/explore');
   await expect(page.getByRole('heading', { name: 'Find creators for your launch.' })).toBeVisible();

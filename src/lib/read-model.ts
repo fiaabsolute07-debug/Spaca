@@ -108,6 +108,17 @@ export async function getGoalPageData(goal: string, taxonomy: string) {
   return { requests: publicData.requests, request_total: publicData.request_total, goal_counts: publicData.goal_counts, recent: asRows(recent), creators };
 }
 
+/** Open campaigns per goal, for the landing's goal tiles. The landing must still render if the database is down. */
+export async function getOpenGoalCounts(): Promise<Record<string, number>> {
+  try {
+    const rows = await sql`select campaign_goal, count(*)::int as n from app.requests
+      where status='OPEN' and application_deadline > now() and campaign_goal is not null group by campaign_goal`;
+    return Object.fromEntries(asRows(rows).map((row) => [String(row.campaign_goal), Number(row.n)]));
+  } catch {
+    return {};
+  }
+}
+
 export async function getDashboardData(actor: Actor) {
   const [services, orders, applications, requests, auctions, profile, stats] = await Promise.all([
     serviceRows({ ownerId: actor.id }),

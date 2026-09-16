@@ -544,3 +544,12 @@ six commits per `docs/BRAND_ROLLOUT_PROMPT.md`. It replaces the neutral Apple-li
   instead of a hue each.
 - **Screenshots**: `./node_modules/.bin/tsx scripts/brand-shots.ts [outDir]` captures the eleven pages the rollout is
   judged on at 1280px and 375px and fails if any of them scrolls sideways.
+
+## 2026-09-16 additions: landing search and moving sections
+
+- **Hero** keeps the video and scrim. Centered: mono kicker, the headline "Find the voices your launch needs.", and a search panel in the familiar marketplace shape: a tablist "Start with" with **Find creators** and **Plan a campaign** (arrow keys switch tabs). Find creators is a `role="search"` form (`GET /explore?q=`) with a light pill field, a round dark search button with a lime icon, and a "Popular campaigns" row of five chips linking to real campaign tabs. Plan a campaign holds the fill-in brief (`BriefComposer variant="panel"`), whose "Start this campaign" prefills sign-up exactly as before.
+- Where marketplaces show client logos, a facts bar states true things instead (Paid on approval, Sponsored posts disclosed, No wallet needed to hire, Reward pools on testnet); spaca has no clients to show.
+- **Pick what your launch needs**: seven tiles, one per campaign goal, each a link to `/campaigns/<slug>` with a moving line drawing (launch dot flies its arc, waves carry out, parachute sways, voice wave talks, bubbles rise, a page gets highlighted, the sticker winks), the goal's one-liner and its real open-campaign count (`getOpenGoalCounts`, "Be the first brief" at zero; the landing still renders if the database is down). Motion runs only while the strip is on screen.
+- **How it works** is the logo in 3D: three slanted bars (Brief, Post, Paid) in CSS 3D that tilt with a mouse; the chosen bar lifts out in lime. A vertical tablist "How a campaign moves" is the accessible control; it advances every 4.2 s with a progress line until the visitor picks a step, and never advances with reduced motion.
+- **Reward pools** tile gains an SVG flow: shares travel from the pool to three creators, a check appears as each lands, and the unused share flows back. It is labelled as an illustration of a testnet feature.
+- Reduced motion: every loop, travelling token and auto-advance stops; checks show still. Both landing settings (dark default, light) pass the contrast script; no horizontal scroll at 375 px (the goal tiles and chips scroll inside themselves).

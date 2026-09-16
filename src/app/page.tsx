@@ -2,7 +2,11 @@ import { existsSync } from 'node:fs';
 import path from 'node:path';
 import Link from 'next/link';
 import { SpacaLockup } from '@/components/brand/spaca-logo';
-import { BriefComposer } from '@/components/landing/brief-composer';
+import { HeroSearch } from '@/components/landing/hero-search';
+import { GoalStrip } from '@/components/landing/goal-strip';
+import { LaunchStack } from '@/components/landing/launch-stack';
+import { PoolFlow } from '@/components/landing/pool-flow';
+import { getOpenGoalCounts } from '@/lib/read-model';
 import { ThemeToggle } from '@/components/landing/theme-toggle';
 import styles from '@/components/landing/landing.module.css';
 
@@ -20,11 +24,6 @@ const HERO_SOURCES = [
   { src: HERO_VIDEO, type: 'video/mp4; codecs="avc1.64001F"' },
 ];
 
-const TICKER = [
-  { label: 'Explainer threads' }, { label: 'Research deep dives' }, { label: 'Mainnet launch copy' }, { label: 'Token launch campaigns' },
-  { label: 'Testnet quest content' }, { label: 'Sponsored posts', soon: true }, { label: 'Spaces & AMAs', soon: true }, { label: 'Protocol docs rewrites' },
-];
-
 const FAQ = [
   { q: 'How do I pay?', a: 'By card at launch. USDC and token reward pools are on testnet and not live yet. You never need a wallet to hire.' },
   { q: 'When does a creator get paid?', a: 'When you approve their delivery, or when the review window you agreed to at checkout closes without a revision request or dispute.' },
@@ -34,9 +33,17 @@ const FAQ = [
   { q: 'How do I become a creator?', a: 'Apply with your X handle, the topics you cover and a few work samples. We are onboarding a small group of founding creators first.' },
 ];
 
-export default function LandingPage() {
+/** Honest facts in the spot where marketplaces put client logos: spaca has no clients to show yet. */
+const HERO_FACTS = [
+  { label: 'Paid on approval', tone: 'green' },
+  { label: 'Sponsored posts disclosed', tone: 'plain' },
+  { label: 'No wallet needed to hire', tone: 'plain' },
+  { label: 'Reward pools on testnet', tone: 'orange' },
+];
+
+export default async function LandingPage() {
   const hasVideo = existsSync(path.join(process.cwd(), 'public', HERO_VIDEO));
-  const ticker = [...TICKER, ...TICKER];
+  const goalCounts = await getOpenGoalCounts();
 
   return <div className={styles.page}>
     <header className={styles.nav}>
@@ -67,18 +74,23 @@ export default function LandingPage() {
             : <span className={styles.videoPlaceholder}>Background video goes here — add public{HERO_VIDEO}</span>}
           <div className={styles.heroScrim} />
         </div>
-        <div className={styles.heroContent}>
-          <BriefComposer />
+        <div className={`${styles.heroContent} ${styles.heroCenter}`}>
+          <p className={styles.heroKicker}>Creator campaigns for web3 launches, on X.</p>
+          <h1 className={styles.heroHeadline}>Find the voices your launch needs.</h1>
+          <HeroSearch />
         </div>
-        <div className={styles.ticker} aria-label="What you can hire">
-          <span className={styles.tickerLabel}>Hire for</span>
-          <div className={styles.tickerViewport}>
-            <div className={styles.tickerTrack}>
-              {ticker.map((item, index) => <span key={index} className={styles.tickerItem} aria-hidden={index >= TICKER.length || undefined}>
-                {item.label}{item.soon && <sup>soon</sup>}<span className={styles.tickerSlash}>/</span>
-              </span>)}
-            </div>
+        <ul className={styles.heroFacts} aria-label="How spaca works">
+          {HERO_FACTS.map((fact) => <li key={fact.label} data-tone={fact.tone}>{fact.label}</li>)}
+        </ul>
+      </section>
+
+      <section className={styles.goalsSection} aria-labelledby="goals-heading">
+        <div className={styles.containerWide}>
+          <div className={styles.goalsHead}>
+            <div><p className={styles.kicker}>Campaigns</p><h2 id="goals-heading" className={styles.h2Flush}>Pick what your launch needs.</h2></div>
+            <Link className={styles.more} href="/campaigns">All campaign tabs ›</Link>
           </div>
+          <GoalStrip counts={goalCounts} />
         </div>
       </section>
 
@@ -94,15 +106,9 @@ export default function LandingPage() {
         </div>
       </section>
 
-      <section id="how" className={styles.section}>
-        <div className={styles.container}>
-          <h2 className={styles.h2}>How it works.</h2>
-          <ol className={styles.steps}>
-            <li><span className={styles.stepNo}>1</span><h3 className={styles.h4}>Post a campaign</h3><p className={styles.body}>The launch, the content you need, how many creators and the budget.</p></li>
-            <li><span className={styles.stepNo}>2</span><h3 className={styles.h4}>Pick creators</h3><p className={styles.body}>Creators apply with samples and a quote. Hire the ones who fit.</p></li>
-            <li><span className={styles.stepNo}>3</span><h3 className={styles.h4}>Receive the work</h3><p className={styles.body}>Drafts, files and links in one workspace per order, every version kept.</p></li>
-            <li><span className={`${styles.stepNo} ${styles.stepDone}`}>4</span><h3 className={styles.h4}>Approve and release</h3><p className={styles.body}>That creator is paid. Unused budget stays with you.</p></li>
-          </ol>
+      <section id="how" className={styles.howSection}>
+        <div className={styles.containerWide}>
+          <LaunchStack />
         </div>
       </section>
 
@@ -125,11 +131,14 @@ export default function LandingPage() {
             <p className={styles.bodyOnTile}>Deposit USDC or tokens for the campaign. Each hire reserves its share, approval releases it, and the rest comes back to you. Not live yet.</p>
             <Link className={styles.moreOnTile} href="/sign-up?role=buyer">Join the pilot ›</Link>
           </div>
-          <ol className={styles.tileSteps}>
-            <li><span>1</span><div><strong>Deposit rewards</strong><p>USDC, plus optional tokens, whitelist spots or perks.</p></div></li>
-            <li><span>2</span><div><strong>A hire reserves a share</strong><p>Required rewards are set aside before work starts.</p></div></li>
-            <li><span>3</span><div><strong>Approval releases it</strong><p>Each reward is paid once. Unused balance is refundable.</p></div></li>
-          </ol>
+          <div className={styles.tileVisual}>
+            <PoolFlow />
+            <ol className={styles.tileSteps}>
+              <li><span>1</span><div><strong>Deposit rewards</strong><p>USDC, plus optional tokens, whitelist spots or perks.</p></div></li>
+              <li><span>2</span><div><strong>A hire reserves a share</strong><p>Required rewards are set aside before work starts.</p></div></li>
+              <li><span>3</span><div><strong>Approval releases it</strong><p>Each reward is paid once. Unused balance is refundable.</p></div></li>
+            </ol>
+          </div>
         </div>
       </section>
 
