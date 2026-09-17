@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { SupabaseStorageError, SupabaseStorageProvider } from '@/modules/storage/supabase';
 
 const KEY = 'avatar/11111111-1111-4111-8111-111111111111/22222222-2222-4222-8222-222222222222.png';
-const SECRET = 'sb_secret_test_only_not_a_real_key_000';
+const SECRET = 'fixture-not-a-real-server-key';
 const NOW = Date.parse('2026-09-17T10:00:00Z');
 
 type Call = { url: string; init: RequestInit & { headers?: Record<string, string> } };

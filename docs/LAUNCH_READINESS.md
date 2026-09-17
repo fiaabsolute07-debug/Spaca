@@ -9,8 +9,8 @@ Updated 2026-09-17 at commit `6d0a2d9` (migrations through `0037`). Nothing is d
 | `tsc --noEmit` | clean |
 | `release:check` | every check PASS (fee 0, no client funding writes, dev routes guarded — fixed today for the X/Google sandbox routes, no secrets in `.env.example`, mainnet blocked) |
 | Production build (`next build`, documented local build env, `NEXT_DIST_DIR=.next-scan`) | compiles; the whole-project file tracing warning from local storage was fixed today |
-| Secret scan over tracked files and the production client bundle | 554 tracked files, 42 client files: clean, after a fixture shaped like an `sb_secret_` key was replaced in `tests/unit/env-rules.test.ts` |
-| `RUN_DB_INTEGRATION=1 vitest run` | 442 passed, 3 skipped (anvil) |
+| Secret scan over tracked files and the production client bundle | 569 tracked files, 42 client files: clean, after two fixtures shaped like `sb_secret_` keys were replaced (`tests/unit/env-rules.test.ts`, `tests/unit/supabase-storage.test.ts`) |
+| `RUN_DB_INTEGRATION=1 vitest run` | 444 passed, 3 skipped (anvil) |
 | Playwright | 78 tests: everything passes except `publish.spec.ts`, which is blocked on development data — see §5 |
 
 ## 2. Engineering blockers and their state
@@ -39,8 +39,8 @@ The owner answered D1–D3 and D5 on 2026-09-17: **Vercel + Supabase, first-part
 | D5 | Launch scope: services and orders, campaigns, item auctions (Beta), crypto pools, digital products. | Everything off stays behind `/admin/flags`. |
 | D6 | X developer app with pay-per-use credits (`X_CLIENT_ID`, `X_CLIENT_SECRET`, `X_BEARER_TOKEN`), callback `<APP_BASE_URL>/api/x/callback`. | Each X sign-in is one billed profile read. |
 | D7 | Google Cloud OAuth web client (`GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`), redirect `<APP_BASE_URL>/api/auth/google/callback`, consent screen published. | |
-| D8 | Legal entity, terms, privacy, refund policy, support contact; platform fee decision (currently 0). | Policy pages are sandbox text today. |
-| D9 | Monitoring (Sentry DSN), backups/retention owner, incident contact. | |
+| D8 | Legal entity, terms, privacy, refund policy, support contact; platform fee decision (currently 0). | Policy pages are sandbox text today. The privacy policy must also cover Vercel Analytics, which is now in the deployed build. |
+| D9 | Monitoring (Sentry DSN), backups/retention owner, incident contact. | Vercel Analytics is wired in (`@vercel/analytics`), counting page views on the deployments only, never locally. It has to be switched on for the project in Vercel before it records anything. |
 | D10 | Dev data: the local database holds hundreds of test services and accounts. Production starts empty; local cleanup needs "đồng ý dọn". | |
 
 ## 4. Suggested order once D1–D3 are answered

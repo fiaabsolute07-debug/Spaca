@@ -14,6 +14,7 @@ import { accountTypeOf, homePath } from '@/lib/account';
 import { getAccountSummary } from '@/lib/read-model';
 import { SpacaLockup } from '@/components/brand/spaca-logo';
 import { themeBootScript } from '@/components/landing/theme-boot';
+import { Analytics } from '@vercel/analytics/next';
 import './globals.css';
 
 // Three faces, one job each (docs/brand/spaca-brand-kit.html): Archivo condensed for headlines and big numbers,
@@ -39,6 +40,9 @@ export default async function RootLayout({ children, auth, dialog }: { children:
   const [account, unread] = actor ? await Promise.all([getAccountSummary(actor), unreadCount(actor.id)]) : [null, 0];
   // The strip above the header says what kind of place this is: the local sandbox, staging, or early access without payments.
   const stage = appStage();
+  // Vercel Analytics counts page views on the deployments only. Local development is not an audience, and a
+  // beacon from a developer's machine would be noise in the numbers the owner reads.
+
   const banner = stage === 'local'
     ? <div className="sandbox-banner"><span className="live-dot" /> <strong>Local sandbox</strong> Test accounts and simulated payments. No real funds move.</div>
     : stage === 'staging'
@@ -81,5 +85,5 @@ export default async function RootLayout({ children, auth, dialog }: { children:
   const type = actor ? accountTypeOf(actor) : null;
   const back = actor ? <WorkspaceBack type={type} /> : null;
   // suppressHydrationWarning: the landing theme boot script may set data-landing-theme on <html> before hydration.
-  return <html lang="en" className={`${archivo.variable} ${geist.variable} ${geistMono.variable}`} suppressHydrationWarning><body><Script id="landing-theme" strategy="beforeInteractive">{themeBootScript}</Script><SiteChrome header={header} footer={footer} back={back}>{children}</SiteChrome>{auth}{dialog}</body></html>;
+  return <html lang="en" className={`${archivo.variable} ${geist.variable} ${geistMono.variable}`} suppressHydrationWarning><body><Script id="landing-theme" strategy="beforeInteractive">{themeBootScript}</Script><SiteChrome header={header} footer={footer} back={back}>{children}</SiteChrome>{auth}{dialog}{stage === 'local' ? null : <Analytics />}</body></html>;
 }
