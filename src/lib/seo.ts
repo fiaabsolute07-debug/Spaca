@@ -22,8 +22,9 @@ export async function getSitemapEntries(): Promise<{ url: string; lastModified: 
       where u.status='ACTIVE' and not u.is_test and exists (select 1 from app.services s where s.creator_id=u.id and s.status='PUBLISHED') order by p.handle limit 45000`,
     sql<Row[]>`select r.id,r.updated_at as modified from app.requests r join app.users u on u.id=r.buyer_id
       where r.status='OPEN' and r.application_deadline > now() and not u.is_test order by r.id limit 45000`,
-    sql<Row[]>`select a.id,a.updated_at as modified from app.auctions a join app.users u on u.id=a.seller_id
-      where a.status in ('SCHEDULED','LIVE') and a.ends_at > now() and u.status='ACTIVE' and not u.is_test order by a.id limit 45000`,
+    // Web3 item auctions that are open (drizzle/0033); listings still waiting for collateral are not public.
+    sql<Row[]>`select l.id,l.updated_at as modified from app.item_listings l join app.users u on u.id=l.seller_id
+      where l.status='OPEN' and l.ends_at > now() and u.status='ACTIVE' and not u.is_test order by l.id limit 45000`,
   ]);
   const date = (value: unknown) => (value instanceof Date ? value : new Date(String(value)));
   return [

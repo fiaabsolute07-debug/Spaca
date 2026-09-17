@@ -13,8 +13,9 @@ import { publishCommands } from '@/modules/publish/commands';
 import { requestCommands } from '@/modules/requests/commands';
 import { rewardCommands } from '@/modules/rewards/commands';
 import { disconnectX } from '@/modules/x/service';
+import { itemCommands } from '@/modules/items/commands';
 
-const modules = [catalogCommands, orderCommands, amendmentCommands, requestCommands, auctionCommands, rewardCommands, cryptoCommands, poolCommands, publishCommands, moderationCommands, digitalCommands, adminCommands, { disconnect_x: disconnectX }];
+const modules = [catalogCommands, orderCommands, amendmentCommands, requestCommands, auctionCommands, rewardCommands, cryptoCommands, poolCommands, publishCommands, moderationCommands, digitalCommands, adminCommands, itemCommands, { disconnect_x: disconnectX }];
 
 export const commandHandlers: Readonly<Record<string, CommandHandler>> = (() => {
   const merged: Record<string, CommandHandler> = {};

@@ -120,7 +120,7 @@ export default async function DashboardPage({
           </Link>
           <Link className="panel" href="/auctions">
             <h3>Browse auctions</h3>
-            <p>Bid on time-bound slots when a creator offers one.</p>
+            <p>Bid on WL spots, GTD mints and pre-market allocations, with the seller’s collateral locked.</p>
           </Link>
         </div>}
       </section>

@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { chooseOption, createPublishedService, dateTimeLocal, login, submit, uniqueSuffix, visit } from './helpers';
+import { dateTimeLocal, login, submit, uniqueSuffix, visit, waitForHydration } from './helpers';
 
 /**
  * A `datetime-local` field shows a wall clock with no zone attached to it. Read as UTC it would move an auction or a
@@ -13,23 +13,32 @@ const shownUtc = (iso: string) =>
 test.describe('times are read on the clock the person is looking at', () => {
   test.use({ timezoneId: 'Asia/Bangkok' });
 
-  test('AUC-13b: an auction scheduled at a Bangkok wall clock starts at that Bangkok moment', async ({ page }) => {
-    const service = await createPublishedService(page, 'auction-zone');
-    // 09:00 tomorrow in Bangkok, written as the wall clock the creator sees and types.
+  test('AUC-13b: an item auction scheduled at a Bangkok wall clock opens at that Bangkok moment', async ({ page }) => {
+    await login(page, 'creator_c');
+    // 09:00 tomorrow in Bangkok, written as the wall clock the seller sees and types.
     const tomorrow = new Date(Date.now() + 86_400_000);
     const day = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Bangkok', year: 'numeric', month: '2-digit', day: '2-digit' }).format(tomorrow);
-    const startsWall = `${day}T09:00`;
-    const endsWall = `${day}T21:00`;
+    const later = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Bangkok', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(Date.now() + 4 * 86_400_000));
 
-    await visit(page, '/creator/auctions/new');
-    await chooseOption(page, page, 'Published service', `${service.title} · $100.00`);
+    await visit(page, '/auctions/new');
+    const create = page.getByRole('button', { name: 'Create listing' });
+    await waitForHydration(create);
+    await page.getByLabel('Item type', { exact: true }).fill('WL spot');
+    await page.getByLabel('Title', { exact: true }).fill(`Zone WL spot ${uniqueSuffix()}`);
+    await page.getByLabel('Project', { exact: true }).fill('Zone');
+    await page.getByLabel('Network', { exact: true }).fill('Base');
+    await page.getByLabel('Quantity', { exact: true }).fill('1 spot');
+    await page.getByLabel('Description', { exact: true }).fill('One whitelist spot, listed from Bangkok for a time zone check.');
+    await page.getByLabel('How the winner receives it', { exact: true }).fill('The project adds the wallet to the allowlist.');
+    await page.getByLabel('What the winner must give you', { exact: true }).fill('EVM wallet address');
     await page.getByLabel('Starting price (USD)', { exact: true }).fill('100');
-    await page.getByLabel('Minimum increment (USD)', { exact: true }).fill('10');
-    await page.getByLabel('Starts at', { exact: true }).fill(startsWall);
-    await page.getByLabel('Ends at', { exact: true }).fill(endsWall);
+    await page.getByLabel('Your collateral (USD)', { exact: true }).fill('20');
+    await page.getByLabel('Bidding opens', { exact: true }).fill(`${day}T09:00`);
+    await page.getByLabel('Bidding closes', { exact: true }).fill(`${day}T21:00`);
+    await page.getByLabel('Deliver by', { exact: true }).fill(`${later}T09:00`);
     // The field says which zone it read and what that is in UTC, so the two never disagree silently.
     await expect(page.getByText(/Asia\/Bangkok \(UTC\+07:00\)/).first()).toBeVisible();
-    await submit(page, page.getByRole('button', { name: 'Schedule auction', exact: true }));
+    await Promise.all([page.waitForURL(/\/auctions\/[0-9a-f-]{36}$/), create.click()]);
 
     // The page shows every time in UTC, so 09:00 in Bangkok must read as 02:00 UTC — and never as 09:00 UTC.
     await expect(page.getByRole('main')).toContainText(shownUtc(`${day}T02:00:00.000Z`));
@@ -59,8 +68,8 @@ test.describe('times are read on the clock the person is looking at', () => {
 
 test('without a zone the wall clock is still read as UTC, and the field says so', async ({ page }) => {
   await login(page, 'creator_c');
-  await visit(page, '/creator/auctions/new');
+  await visit(page, '/auctions/new');
   // The browser here runs on UTC (playwright.config.ts), so the hint names UTC and the value is unshifted.
-  await page.getByLabel('Starts at', { exact: true }).fill(dateTimeLocal(new Date(Date.now() + 3_600_000)));
+  await page.getByLabel('Bidding opens', { exact: true }).fill(dateTimeLocal(new Date(Date.now() + 3_600_000)));
   await expect(page.getByText(/\(UTC\+00:00\)/).first()).toBeVisible();
 });

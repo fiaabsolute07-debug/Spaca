@@ -128,7 +128,7 @@ export default async function LandingPage() {
           <div className={styles.grid3}>
             <article className={styles.cardOnBg}><h3 className={styles.h3}>Book</h3><p className={styles.body}>A ready-made service with a fixed price, delivery time and revisions.</p><Link className={styles.more} href="/explore">Browse services ›</Link></article>
             <article className={styles.cardHighlight}><span className={styles.tag}>Built for launches</span><h3 className={styles.h3}>Campaign</h3><p className={styles.body}>One brief, a shared budget and several creators, each with their own order.</p><Link className={styles.more} href="/sign-up?role=buyer">Start a campaign ›</Link></article>
-            <article className={styles.cardOnBg}><h3 className={styles.h3}>Auction</h3><p className={styles.body}>Bid for an opening with an in-demand creator, on server-timed rules.</p><Link className={styles.more} href="/auctions">See auctions ›</Link></article>
+            <article className={styles.cardOnBg}><h3 className={styles.h3}>Auction</h3><p className={styles.body}>Bid on WL spots, GTD mints and pre-market allocations. The seller locks collateral first.</p><Link className={styles.more} href="/auctions">See auctions ›</Link></article>
           </div>
         </div>
       </section>

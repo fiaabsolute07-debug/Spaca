@@ -4,6 +4,7 @@ import type { Actor } from '@/lib/auth';
 const links = [
   { href: '/admin', label: 'Overview', roles: [] },
   { href: '/admin/disputes', label: 'Disputes', roles: [] },
+  { href: '/admin/item-disputes', label: 'Item disputes', roles: ['finance', 'support', 'admin'] },
   { href: '/admin/cases', label: 'Cases', roles: ['finance', 'support', 'admin'] },
   { href: '/admin/operations', label: 'Operations', roles: ['finance', 'support', 'admin'] },
   { href: '/admin/moderation', label: 'Moderation', roles: ['moderator', 'admin'] },

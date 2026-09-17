@@ -12,7 +12,7 @@ export const HEADLINE_MAX = 120;
 export const MAX_FOCUS = 3;
 export const FOCUS_OPTIONS = ['DeFi', 'Infrastructure', 'Layer 2', 'AI', 'Gaming', 'NFTs', 'Memes', 'Trading', 'Education', 'Community'] as const;
 
-const GATED = new Set(['publish_service', 'apply', 'create_request']);
+const GATED = new Set(['publish_service', 'apply', 'create_request', 'create_item_listing']);
 
 /** Whether a command puts the account in front of others and so waits for setup. */
 export const needsOnboarding = (command: string) => GATED.has(command);

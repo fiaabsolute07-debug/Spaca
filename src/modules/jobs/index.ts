@@ -35,6 +35,7 @@ import { latestDelivery, termsOf } from '@/modules/orders/lifecycle';
 import { FINALIZE_GRACE_SECONDS, type StorageBucket } from '@/modules/storage/policy';
 import { getStorageProvider } from '@/modules/storage/provider';
 import { refreshRequestedXProfiles } from '@/modules/x/service';
+import { closeDueItemListings, settleItemSales } from '@/modules/items/jobs';
 
 type Row = Record<string, unknown>;
 
@@ -558,6 +559,16 @@ export async function refreshXProfiles(options: { limit?: number } = {}): Promis
   return { job: 'refresh_x_profiles', ...(await refreshRequestedXProfiles(options)) };
 }
 
+/** Item auctions that reached their end: the highest bid wins, or the listing closes with no bids. */
+export async function closeItemAuctions(options: { limit?: number; listingId?: string } = {}): Promise<JobReport> {
+  return { job: 'close_item_auctions', ...(await closeDueItemListings(options)) };
+}
+
+/** Item sales past a deadline: unpaid wins expire, silence after delivery confirms, missed delivery refunds the buyer. */
+export async function settleItemAuctionSales(options: { limit?: number; saleId?: string } = {}): Promise<JobReport> {
+  return { job: 'settle_item_sales', ...(await settleItemSales(options)) };
+}
+
 export async function runJobsOnce(): Promise<JobReport[]> {
   return [
     await reprocessWebhookInbox(),
@@ -576,5 +587,7 @@ export async function runJobsOnce(): Promise<JobReport[]> {
     await cleanupStorage(),
     await checkWorkloadCounters(),
     await refreshXProfiles(),
+    await closeItemAuctions(),
+    await settleItemAuctionSales(),
   ];
 }

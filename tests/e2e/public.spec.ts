@@ -19,7 +19,7 @@ test('anonymous visitors browse the landing, explore, service, requests and auct
   await visit(page, '/requests');
   await expect(page.getByRole('heading', { name: 'Bring your next project to life.' })).toBeVisible();
   await visit(page, '/auctions');
-  await expect(page.getByRole('heading', { name: 'A great slot. Your best offer.' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Web3 items, bid in the open.' })).toBeVisible();
   expect(errors).toEqual([]);
 });
 

@@ -15,7 +15,9 @@ import { sql } from '@/lib/db';
 import { commandHandlers } from '@/modules/commands';
 import { PaymentFlowError, deliverPendingMockWebhooks, mockPaymentsEnabled } from '@/modules/payments/funding';
 
-const SUSPENDED_ALLOWED_COMMANDS = new Set(['start', 'deliver', 'revision', 'approve', 'dispute', 'cancel', 'request_cancellation', 'respond_cancellation', 'request_deadline_extension', 'respond_deadline_extension', 'refund', 'review', 'message', 'mark_delivery_viewed', 'submit_brief', 'pause_service', 'archive_service']);
+const SUSPENDED_ALLOWED_COMMANDS = new Set(['start', 'deliver', 'revision', 'approve', 'dispute', 'cancel', 'request_cancellation', 'respond_cancellation', 'request_deadline_extension', 'respond_deadline_extension', 'refund', 'review', 'message', 'mark_delivery_viewed', 'submit_brief', 'pause_service', 'archive_service',
+  // Item auction sales already under way: the winner pays, the seller delivers, the buyer confirms, disputes or claims a refund.
+  'pay_item_sale', 'mark_item_delivered', 'confirm_item_received', 'dispute_item_sale', 'claim_item_refund']);
 
 const safeReturnTo = (value: string | null, fallback: string) =>
   value && value.startsWith('/') && !value.startsWith('//') && value.length < 300 ? value : fallback;

@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { baseURL, bookFromExplore, chooseOption, completeSetup, createPublishedService, signUpInDialog, dateTimeLocal, expectNoHorizontalOverflow, expectOrderState, login, submit, uniqueSuffix, visit, waitForHydration, openAccountMenu } from './helpers';
+import { baseURL, bookFromExplore, chooseOption, completeSetup, createPublishedService, signUpInDialog, expectNoHorizontalOverflow, expectOrderState, login, submit, uniqueSuffix, visit, waitForHydration, openAccountMenu } from './helpers';
 
 test('FND-04: each account type sees only its own workspace; a legacy dual test account can use both; nobody reaches the admin console', async ({ page }) => {
   await login(page, 'buyer_a');
@@ -167,42 +167,6 @@ test('SUP-03: a creator edits a live service; a buyer who agreed to the old vers
     await expect(buyer.getByRole('main')).toContainText('$180.00');
   } finally {
     await buyerContext.close();
-  }
-});
-
-test('AUC-13: after the connection drops and returns, the auction page shows the server truth without a reload', async ({ page, browser }) => {
-  const service = await createPublishedService(page, 'auction-offline');
-  await visit(page, '/creator/auctions/new');
-  await chooseOption(page, page, 'Published service', `${service.title} · $100.00`);
-  await page.getByLabel('Starting price (USD)', { exact: true }).fill('100');
-  await page.getByLabel('Minimum increment (USD)', { exact: true }).fill('10');
-  await page.getByLabel('Starts at', { exact: true }).fill(dateTimeLocal(new Date(Date.now() - 60_000)));
-  await page.getByLabel('Ends at', { exact: true }).fill(dateTimeLocal(new Date(Date.now() + 2 * 3600_000)));
-  await submit(page, page.getByRole('button', { name: 'Schedule auction', exact: true }));
-  const auctionPath = new URL(page.url()).pathname;
-
-  await login(page, 'buyer_a');
-  await visit(page, auctionPath);
-  await expect(page.getByRole('listitem').filter({ hasText: 'Minimum next bid' })).toContainText('$100.00');
-  await page.context().setOffline(true);
-
-  const other = await browser.newContext({ baseURL });
-  try {
-    const bidder = await other.newPage();
-    await login(bidder, 'buyer_b');
-    await visit(bidder, auctionPath);
-    await bidder.getByLabel('Bid amount (USD, at least $100.00)', { exact: true }).fill('150');
-    await submit(bidder, bidder.getByRole('button', { name: 'Place binding bid', exact: true }));
-    await expect(bidder.getByText(/You are the highest bidder/)).toBeVisible();
-
-    // While offline the page cannot learn about the bid; when the connection returns it refetches at once.
-    await page.waitForTimeout(6_000);
-    await expect(page.getByRole('listitem').filter({ hasText: 'Minimum next bid' })).toContainText('$100.00');
-    await page.context().setOffline(false);
-    await page.evaluate(() => window.dispatchEvent(new Event('online')));
-    await expect(page.getByRole('listitem').filter({ hasText: 'Minimum next bid' })).toContainText('$160.00', { timeout: 4_000 });
-  } finally {
-    await other.close();
   }
 });
 
