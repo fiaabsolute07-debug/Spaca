@@ -39,6 +39,12 @@ export class PayoutRejectedError extends Error {
  */
 export interface ChainPayoutAdapter {
   executeRelease(signed: import('./authorization').SignedRelease): Promise<{ txHash: Hex }>;
+  /**
+   * Several releases in one transaction (master §11.7): a few dollars each would otherwise pay network fees per
+   * payout. Every release keeps its own authorization, nonce and payout reference, so the contract still refuses
+   * a repeat and each one reconciles on its own. Optional: an adapter without it falls back to one at a time.
+   */
+  executeReleaseBatch?(signed: readonly import('./authorization').SignedRelease[]): Promise<{ txHash: Hex }>;
   executeRefund(signed: import('./authorization').SignedRefund): Promise<{ txHash: Hex }>;
   executeFreeze(signed: import('./authorization').SignedFreeze): Promise<{ txHash: Hex }>;
   /** The transaction that paid `payoutRef`, or null when the contract has not paid it. */
@@ -73,6 +79,26 @@ export class LocalDevChain implements ChainReader, ChainPayoutAdapter {
 
   private guard() {
     if (this.offline) throw new ChainUnavailableError();
+  }
+
+  /** Enough of the simulator's state to undo a half-applied batch, the way a reverted transaction would. */
+  private snapshot() {
+    return {
+      nonces: new Set(this.usedNonces),
+      released: new Map(this.releasedPayouts),
+      buckets: new Map([...this.buckets].map(([key, bucket]) => [key, { ...bucket }])),
+      transfers: this.transfers.length,
+    };
+  }
+
+  private restore(state: ReturnType<LocalDevChain['snapshot']>) {
+    this.usedNonces.clear();
+    for (const nonce of state.nonces) this.usedNonces.add(nonce);
+    this.releasedPayouts.clear();
+    for (const [key, value] of state.released) this.releasedPayouts.set(key, value);
+    this.buckets.clear();
+    for (const [key, bucket] of state.buckets) this.buckets.set(key, bucket);
+    this.transfers.length = state.transfers;
   }
 
   setOffline(offline: boolean) {
@@ -190,6 +216,23 @@ export class LocalDevChain implements ChainReader, ChainPayoutAdapter {
 
   executeRelease(signed: import('./authorization').SignedRelease) {
     return this.payout('RELEASE', signed);
+  }
+
+  /**
+   * Mirrors the contract's `releaseBatch`: all of them or none. The simulator applies each release in turn and
+   * undoes the lot if any one is refused, so a rejected batch leaves no half-paid state behind, exactly as a
+   * reverted transaction would. Every release keeps its own reference, and they share the batch's hash.
+   */
+  async executeReleaseBatch(signed: readonly import('./authorization').SignedRelease[]): Promise<{ txHash: Hex }> {
+    const before = this.snapshot();
+    const hashes: Hex[] = [];
+    try {
+      for (const one of signed) hashes.push((await this.payout('RELEASE', one)).txHash);
+    } catch (error) {
+      this.restore(before);
+      throw error;
+    }
+    return { txHash: hashes[hashes.length - 1]! };
   }
 
   executeRefund(signed: import('./authorization').SignedRefund) {

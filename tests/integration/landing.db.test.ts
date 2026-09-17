@@ -25,6 +25,14 @@ const SECRET = 'landing_suite_signing_secret_001';
 const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, ...new TextEncoder().encode('IHDR fixture pixels for the landing suite')]);
 let root = '';
 
+/**
+ * The test database keeps every row earlier runs made — over 13,000 creators with a published service when this
+ * was written — so these tests ask for far more than the page a real visitor gets. A fixed page size would sort
+ * the fixture off the end as the database grows and fail for a reason that has nothing to do with the code. If a
+ * lookup below ever misses, raise this rather than assuming the query broke.
+ */
+const LOTS = 50_000;
+
 const command = (actor: TestUser, fields: Record<string, string>) => callRoute(commands.POST, '/api/commands', actor, fields);
 const params = <T extends Record<string, string>>(value: T) => ({ params: Promise.resolve(value) });
 const tokenOf = (url: string) => url.split('/').pop()!;
@@ -76,12 +84,12 @@ describe.skipIf(!RUN_DB)('the landing page reads only real stock', () => {
     const { serviceId, sampleId } = await serviceWithPicture('approved', '250');
 
     // Pending moderation: the work is not public yet, so the landing must not show it.
-    const before = await getLandingShowcase({ services: 50 });
+    const before = await getLandingShowcase({ services: LOTS });
     expect(before.services.map((service) => String(service.id))).not.toContain(serviceId);
 
     expect((await command(mod, { command: 'admin_moderate_sample', idempotency_key: key('mod'), sample_id: sampleId, decision: 'APPROVED', reason: 'Portfolio frame meets the content policy.' })).status).toBe(200);
 
-    const after = await getLandingShowcase({ services: 50 });
+    const after = await getLandingShowcase({ services: LOTS });
     const listed = after.services.find((service) => String(service.id) === serviceId);
     expect(listed, 'an approved public image should put the service on the landing').toBeTruthy();
     expect(Number(listed!.price_minor)).toBe(25000);
@@ -93,7 +101,7 @@ describe.skipIf(!RUN_DB)('the landing page reads only real stock', () => {
     const creator = await createUser('landing-linkonly', ['creator']);
     const { serviceId } = await createPublishedService(command, creator, { price: '300' });
     await sql`update app.samples set moderation_status='APPROVED', visibility='PUBLIC' where creator_id=${creator.id}`;
-    const showcase = await getLandingShowcase({ services: 50 });
+    const showcase = await getLandingShowcase({ services: LOTS });
     expect(showcase.services.map((service) => String(service.id))).not.toContain(serviceId);
   });
 
@@ -107,13 +115,13 @@ describe.skipIf(!RUN_DB)('the landing page reads only real stock', () => {
     await createPublishedService(command, creator, { price: '400' });
     await createPublishedService(command, creator, { price: '120' });
 
-    const listed = (await getLandingShowcase({ creators: 200 })).creators.find((row) => String(row.id) === creator.id);
-    expect(listed, 'a creator with published services belongs on the landing').toBeTruthy();
+    const listed = (await getLandingShowcase({ creators: LOTS })).creators.find((row) => String(row.id) === creator.id);
+    expect(listed, `a creator with published services belongs on the landing (raise LOTS past ${LOTS} if the test database has outgrown it)`).toBeTruthy();
     expect(Number(listed!.from_price_minor)).toBe(12000);
     expect(listed!.availability_status).toBe('ACCEPTING');
 
     expect((await command(creator, { command: 'set_accepting_orders', idempotency_key: key('pause'), accepting: 'false' })).status).toBe(200);
-    const paused = (await getLandingShowcase({ creators: 200 })).creators.find((row) => String(row.id) === creator.id);
+    const paused = (await getLandingShowcase({ creators: LOTS })).creators.find((row) => String(row.id) === creator.id);
     expect(paused!.availability_status).toBe('PAUSED');
   });
 });
@@ -143,7 +151,7 @@ describe.skipIf(!RUN_DB)('the landing auctions strip, in both of its states', ()
     const seller = await createUser('landing-seller', ['creator']);
     const id = await openListing(seller);
 
-    const live = await getLandingShowcase({ auctions: 50 });
+    const live = await getLandingShowcase({ auctions: LOTS });
     const listing = live.auctions.find((row) => String(row.id) === id);
     expect(listing, 'an open listing belongs on the landing').toBeTruthy();
     expect(Number(listing!.starting_price_minor)).toBe(10000);
@@ -154,7 +162,7 @@ describe.skipIf(!RUN_DB)('the landing auctions strip, in both of its states', ()
     expect(Number.isNaN(Date.parse(live.server_now))).toBe(false);
 
     expect((await command(seller, { command: 'cancel_item_listing', idempotency_key: key('cancel'), listing_id: id, reason: 'The allowlist spot was withdrawn by the project.' })).status).toBe(200);
-    const after = await getLandingShowcase({ auctions: 50 });
+    const after = await getLandingShowcase({ auctions: LOTS });
     expect(after.auctions.map((row) => String(row.id))).not.toContain(id);
   });
 
@@ -162,7 +170,7 @@ describe.skipIf(!RUN_DB)('the landing auctions strip, in both of its states', ()
     const seller = await createUser('landing-seller-ended', ['creator']);
     const id = await openListing(seller);
     await sql`update app.item_listings set starts_at=now() - interval '3 hours', ends_at=now() - interval '1 hour' where id=${id}`;
-    const showcase = await getLandingShowcase({ auctions: 50 });
+    const showcase = await getLandingShowcase({ auctions: LOTS });
     expect(showcase.auctions.map((row) => String(row.id))).not.toContain(id);
   });
 });

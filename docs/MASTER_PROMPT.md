@@ -1073,9 +1073,12 @@ Quyết định của chủ sản phẩm: **nạp tiền và xử lý thanh toá
   - Release/refund đơn crypto và pool qua outbox; freeze khi tranh chấp.
   - Thanh toán bằng ví trình duyệt.
   - Script kiểm tra và đăng ký Arc testnet.
+  - **Worker gom lô `releaseBatch`** (2026-09-17): release nhỏ (≤ 50 USDC) gom tối đa 10 khoản mỗi giao dịch theo
+    từng chain và token; mỗi release giữ authorization và reference riêng, lô bị từ chối thì không ai được trả và
+    tất cả quay về RETRY để gửi lẻ. Job `dispatch_release_batches`. Bằng chứng: `docs/evidence/claude-RELEASE-BATCH.md`.
 - **Chưa có:**
   - Deploy Arc testnet (chờ faucet).
-  - Worker gom lô `releaseBatch` (contract đã hỗ trợ).
+  - Gom lô theo chu kỳ (cần scheduler thật); hiện gom khi có từ 2 khoản đến hạn.
   - Rút về ngân hàng/off-ramp, KYC, custody KMS/multisig.
 - Chi tiết: ADR 002, `docs/ARC_TESTNET.md`, evidence `claude-W9-ARC.md`.
 

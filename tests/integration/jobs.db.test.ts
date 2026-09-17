@@ -381,7 +381,7 @@ describe.skipIf(!RUN_DB)('local jobs route', () => {
     expect(ok.status).toBe(200);
     const body = (await ok.json()) as { reports: { job: string }[] };
     expect(body.reports.map((r) => r.job)).toEqual([
-      'reprocess_webhook_inbox', 'chain_indexer', 'reconcile_provider_operations', 'expire_checkout_holds', 'expire_hire_offers', 'close_due_auctions', 'auto_accept_deliveries', 'measure_performance_posts', 'settle_performance_bonuses', 'release_ready_settlements', 'dispatch_chain_payouts', 'order_reminders', 'dispatch_notification_outbox', 'cleanup_storage', 'check_workload_counters', 'refresh_x_profiles', 'close_item_auctions', 'settle_item_sales',
+      'reprocess_webhook_inbox', 'chain_indexer', 'reconcile_provider_operations', 'expire_checkout_holds', 'expire_hire_offers', 'close_due_auctions', 'auto_accept_deliveries', 'measure_performance_posts', 'settle_performance_bonuses', 'release_ready_settlements', 'dispatch_release_batches', 'dispatch_chain_payouts', 'order_reminders', 'dispatch_notification_outbox', 'cleanup_storage', 'check_workload_counters', 'refresh_x_profiles', 'close_item_auctions', 'settle_item_sales',
     ]);
     const blocked = await jobsRoute.POST(new Request(`${ORIGIN}/api/dev/jobs`, { method: 'POST', headers: { origin: 'https://attacker.test' } }));
     expect(blocked.status).toBe(403);

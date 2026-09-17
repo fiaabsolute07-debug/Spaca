@@ -15,6 +15,14 @@ import { ChainUnavailableError, PayoutRejectedError, getPayoutAdapter } from './
 export type PayoutKind = 'ALLOCATION' | 'POOL_REFUND' | 'ORDER_RELEASE' | 'ORDER_REFUND' | 'FREEZE' | 'UNFREEZE';
 export const AUTHORIZATION_TTL_SECONDS = 15 * 60;
 const MAX_ATTEMPTS = 8;
+/** Only releases batch: a refund picks its recipient from the bucket and a freeze moves no money. */
+const BATCHABLE_KINDS = ['ALLOCATION', 'ORDER_RELEASE'] as const;
+/** Micro budgets are what batching is for (master §11.7); a large release is worth its own transaction. */
+export const BATCH_MAX_AMOUNT_ATOMIC = 50_000_000n;
+/** Gas grows with the batch, and one revert costs the whole transaction, so keep batches small. */
+export const BATCH_MAX_SIZE = 10;
+/** Below this a batch saves little, so a lone payout waits briefly for company before going alone. */
+export const BATCH_MIN_SIZE = 2;
 /** Contract states that clear up on their own or through an operator; the payout waits instead of failing. */
 const WAITING_CODES = new Set(['EnforcedPause', 'BucketFrozen', 'RPC_UNAVAILABLE']);
 
@@ -178,6 +186,109 @@ export async function dispatchChainPayout(payoutId: string): Promise<string> {
     const code = error instanceof ChainUnavailableError ? error.message : error instanceof Error ? error.name : 'PAYOUT_ERROR';
     return finish(payoutId, { state: 'UNKNOWN', code });
   }
+}
+
+
+/**
+ * Signs one authorization per payout and sends them as a single `releaseBatch` (master §11.7). Each release keeps
+ * its own reference and nonce, so the contract still pays each at most once and each row reconciles on its own.
+ *
+ * `releaseBatch` is all-or-nothing: one bad member reverts the transaction and the contract does not say which.
+ * A rejected batch therefore never marks anyone FAILED — every member goes back to RETRY and the ordinary
+ * one-at-a-time worker picks them up, where a real refusal can be attributed to the payout that caused it.
+ */
+export async function dispatchChainPayoutBatch(payoutIds: string[]): Promise<Record<string, string>> {
+  if (payoutIds.length === 0) return {};
+  if (payoutIds.length === 1) return { [payoutIds[0]!]: await dispatchChainPayout(payoutIds[0]!) };
+
+  const prepared = await sql.begin(async (tx) => {
+    const rows = await tx<Row[]>`select * from app.chain_payouts where id = any(${payoutIds}::uuid[])
+      and state in ('QUEUED','RETRY') and kind = any(${[...BATCHABLE_KINDS]}) order by created_at asc for update skip locked`;
+    if (rows.length < BATCH_MIN_SIZE) return null;
+    const [network] = await tx<Row[]>`select * from app.chain_networks where chain_id=${String(rows[0]!.chain_id)}`;
+    if (!network?.enabled) return null;
+    // One transaction reaches one contract on one chain.
+    if (rows.some((row) => String(row.chain_id) !== String(rows[0]!.chain_id))) return null;
+    return { rows, network };
+  });
+  if (!prepared) return {};
+  const { rows, network } = prepared;
+  const ids = rows.map((row) => String(row.id));
+
+  let adapter;
+  try {
+    adapter = await getPayoutAdapter(network);
+  } catch (error) {
+    return retryAll(ids, error instanceof Error ? `NO_ADAPTER:${error.message}` : 'NO_ADAPTER');
+  }
+  if (!adapter.executeReleaseBatch) {
+    // An adapter that cannot batch is not an error: send them one at a time instead.
+    const results: Record<string, string> = {};
+    for (const id of ids) results[id] = await dispatchChainPayout(id);
+    return results;
+  }
+
+  const authorizations = await sql.begin(async (tx) => {
+    const signed = [];
+    for (const id of ids) {
+      const [payout] = await tx<Row[]>`select * from app.chain_payouts where id=${id} and state in ('QUEUED','RETRY') for update`;
+      if (!payout) return null;
+      const one = await sign(payout, network);
+      await tx`update app.chain_payouts set state='SUBMITTING',attempts=attempts+1 where id=${id}`;
+      await tx`insert into app.release_authorizations (nonce,payout_kind,payout_id,chain_id,verifying_contract,recipient,token,amount_atomic,expires_at,signature,chain_payout_id)
+        values (${one.nonce},${String(payout.kind)},${String(payout.subject_id)},${Number(network.chain_id)},${String(network.settlement_address)},
+          ${payout.recipient ?? null},${payout.token ?? null},${String(payout.amount_atomic)},to_timestamp(${Number(one.expiry)}),${one.signed.signature},${id})`;
+      if (one.kind !== 'release') return null;
+      signed.push(one.signed);
+    }
+    return signed;
+  });
+  if (!authorizations) return retryAll(ids, 'BATCH_NOT_PREPARED');
+
+  const results: Record<string, string> = {};
+  try {
+    const { txHash } = await adapter.executeReleaseBatch(authorizations);
+    for (const id of ids) results[id] = await finish(id, { state: 'CONFIRMED', txHash });
+    return results;
+  } catch (error) {
+    // Rejected before it reached the chain: nothing was paid, so each member simply waits its turn alone.
+    if (error instanceof PayoutRejectedError) return retryAll(ids, `BATCH_REJECTED:${error.code}`);
+    // Submitted without a receipt: the outcome is unknown, and findPayout reconciles each reference before
+    // anything is signed again.
+    const code = error instanceof ChainUnavailableError ? error.message : error instanceof Error ? error.name : 'BATCH_ERROR';
+    for (const id of ids) results[id] = await finish(id, { state: 'UNKNOWN', code });
+    return results;
+  }
+}
+
+async function retryAll(ids: string[], code: string): Promise<Record<string, string>> {
+  const results: Record<string, string> = {};
+  for (const id of ids) results[id] = await finish(id, { state: 'RETRY', code });
+  return results;
+}
+
+/**
+ * Groups the due releases small enough to be worth batching, by chain and token. Anything larger, any other kind
+ * and any payout needing reconciliation first (UNKNOWN, stuck SUBMITTING) is left to `dueChainPayouts`.
+ */
+export async function dueReleaseBatches(options: { limit?: number } = {}): Promise<string[][]> {
+  const rows = await sql<Row[]>`select id,chain_id,token from app.chain_payouts
+    where state in ('QUEUED','RETRY') and next_attempt_at <= now()
+      and kind = any(${[...BATCHABLE_KINDS]}) and amount_atomic::numeric <= ${String(BATCH_MAX_AMOUNT_ATOMIC)}::numeric
+    order by created_at asc limit ${options.limit ?? 100}`;
+  const groups = new Map<string, string[]>();
+  for (const row of rows) {
+    const key = `${String(row.chain_id)}:${String(row.token ?? '')}`;
+    groups.set(key, [...(groups.get(key) ?? []), String(row.id)]);
+  }
+  const batches: string[][] = [];
+  for (const ids of groups.values()) {
+    for (let index = 0; index < ids.length; index += BATCH_MAX_SIZE) {
+      const slice = ids.slice(index, index + BATCH_MAX_SIZE);
+      if (slice.length >= BATCH_MIN_SIZE) batches.push(slice);
+    }
+  }
+  return batches;
 }
 
 /** Worker body for `dispatch_chain_payouts`: due payouts oldest first; each runs independently. */

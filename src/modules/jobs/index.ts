@@ -30,7 +30,7 @@ import { enqueueNotification } from '@/modules/notifications/enqueue';
 import { approveOrder } from '@/modules/orders/commands';
 import { closeAuction } from '@/modules/auctions/commands';
 import { recheckPendingDeposits, scanChainDeposits } from '@/modules/crypto/deposits';
-import { dispatchChainPayout, dueChainPayouts } from '@/modules/crypto/payouts';
+import { dispatchChainPayout, dispatchChainPayoutBatch, dueChainPayouts, dueReleaseBatches } from '@/modules/crypto/payouts';
 import { latestDelivery, termsOf } from '@/modules/orders/lifecycle';
 import { FINALIZE_GRACE_SECONDS, type StorageBucket } from '@/modules/storage/policy';
 import { getStorageProvider } from '@/modules/storage/provider';
@@ -284,6 +284,24 @@ export async function releaseReadySettlements(options: JobScope = {}): Promise<J
     }
   }
   if (mockPaymentsEnabled()) await deliverPendingMockWebhooks();
+  return result;
+}
+
+/**
+ * Sends small releases together (master §11.7). A few dollars each would otherwise pay a network fee per payout,
+ * so releases under the batch ceiling go out in one `releaseBatch` per chain and token, each keeping its own
+ * authorization. Runs before the one-at-a-time worker; anything it leaves behind that worker picks up.
+ */
+export async function dispatchReleaseBatches(options: { limit?: number } = {}): Promise<JobReport> {
+  const { result, tally } = report('dispatch_release_batches');
+  for (const batch of await dueReleaseBatches(options)) {
+    try {
+      for (const outcome of Object.values(await dispatchChainPayoutBatch(batch))) tally(outcome);
+    } catch (error) {
+      logError('dispatch_release_batches failed', error, { payout_ids: batch.join(',') });
+      tally('ERROR');
+    }
+  }
   return result;
 }
 
@@ -582,6 +600,7 @@ export async function runJobsOnce(): Promise<JobReport[]> {
     await measurePerformancePosts(),
     await settlePerformanceBonuses(),
     await releaseReadySettlements(),
+    await dispatchReleaseBatches(),
     await dispatchChainPayouts(),
     await sendOrderReminders(),
     await dispatchNotificationOutbox(),

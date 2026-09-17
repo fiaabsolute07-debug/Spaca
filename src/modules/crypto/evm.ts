@@ -32,7 +32,7 @@ export function createEvmPayoutAdapter(input: { chainId: number; rpcUrl: string;
     }
   }
 
-  async function send(functionName: 'release' | 'refund' | 'setFrozen', args: readonly unknown[], payoutRef: Hex | null): Promise<{ txHash: Hex }> {
+  async function send(functionName: 'release' | 'releaseBatch' | 'refund' | 'setFrozen', args: readonly unknown[], payoutRef: Hex | null): Promise<{ txHash: Hex }> {
     let hash: Hex;
     try {
       // Simulate first so contract rejections surface as named errors without spending gas.
@@ -63,6 +63,10 @@ export function createEvmPayoutAdapter(input: { chainId: number; rpcUrl: string;
 
   return {
     executeRelease: (signed: SignedRelease) => send('release', [signed.message, signed.signature], signed.message.payoutRef),
+    // One transaction, one authorization per release. A revert fails the whole batch and names no payout, so the
+    // caller retries the members separately rather than guessing which one the contract refused.
+    executeReleaseBatch: (signed: readonly SignedRelease[]) =>
+      send('releaseBatch', [signed.map((one) => one.message), signed.map((one) => one.signature)], null),
     executeRefund: (signed: SignedRefund) => send('refund', [signed.message, signed.signature], signed.message.payoutRef),
     executeFreeze: (signed: SignedFreeze) => send('setFrozen', [signed.message.escrowRef, signed.message.frozen, signed.message.nonce, signed.message.expiry, signed.signature], null),
     findPayout,
