@@ -1,0 +1,11 @@
+# Build output, local data and other apps: Vercel builds from the source it needs.
+.next
+.next-scan
+.next-launch
+.local
+coverage
+test-results
+playwright-report
+contracts
+waitlist
+docs
