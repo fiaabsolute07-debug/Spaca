@@ -7,10 +7,19 @@ if (process.env.NODE_ENV === 'production' && !process.env.DATABASE_URL) {
 }
 
 type Sql = ReturnType<typeof postgres>;
-const createPool = (): Sql => postgres(process.env.DATABASE_URL ?? localUrl, {
-  max: 10,
+const databaseUrl = process.env.DATABASE_URL ?? localUrl;
+const host = new URL(databaseUrl);
+const local = ['127.0.0.1', 'localhost', '::1'].includes(host.hostname);
+// Supabase's transaction pooler (Supavisor, port 6543) hands each transaction a different server connection, so it keeps
+// no prepared statements; serverless functions also should not hold many connections each.
+const transactionPooler = /pooler\.supabase\.com$/.test(host.hostname) && host.port === '6543';
+const createPool = (): Sql => postgres(databaseUrl, {
+  max: transactionPooler ? 3 : 10,
   idle_timeout: 20,
   connect_timeout: 10,
+  prepare: !transactionPooler,
+  // Hosted databases take TLS only; the local embedded server has none.
+  ssl: local ? false : 'require',
 });
 
 /**
