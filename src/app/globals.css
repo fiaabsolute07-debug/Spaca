@@ -393,8 +393,11 @@ textarea { resize: vertical; min-height: 110px; }
 
 .services-heading { margin-bottom: 14px; flex-wrap: wrap; }
 .service-search { display: flex; align-items: center; gap: 8px; margin-left: auto; }
-.service-search label { font-family: var(--mono); font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+.service-search label { font-family: var(--mono); font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); white-space: nowrap; }
 .service-search input { height: 32px; padding: 0 10px; border: 1px solid var(--line-strong); border-radius: var(--radius); background: var(--soft); color: var(--ink); font-size: 13px; min-width: 180px; }
+.service-search .button { height: 32px; }
+/* A count inside a filter chip ("Published 30") keeps its distance from the word. */
+.chip-link > .muted { margin-left: 6px; font-family: var(--mono); font-size: 11px; }
 .service-board-count { font-family: var(--mono); font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; margin: 0 0 10px; }
 .work-more { margin: 8px 0 0; font-size: 13px; }
 .service-board { gap: 10px; }
@@ -409,7 +412,16 @@ textarea { resize: vertical; min-height: 110px; }
 @media (max-width: 640px) {
   .work-item { grid-template-columns: minmax(0, 1fr); gap: 6px; }
   .work-item-due { white-space: normal; }
+  /* On a phone the search takes the whole row; its placeholder already says what it searches. */
+  .service-search { width: 100%; margin-left: 0; }
+  .service-search label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); }
+  .service-search input { flex: 1; min-width: 0; }
 }
+/* An explanation above a form keeps a gap before the first field label. */
+.panel > .muted + .command-form { margin-top: 18px; }
+.service-row-actions { margin-top: 12px; border-top: 1px solid var(--line); padding-top: 12px; }
+.service-row-actions .command-form { margin: 0; }
+.service-row-actions .command-form .button { margin-top: 0; }
 
 .service-edit { margin: 12px 0 4px; border-top: 1px solid var(--line); padding-top: 10px; }
 .service-edit summary { cursor: pointer; color: var(--ink); font-size: 14px; font-weight: 600; list-style: none; }

@@ -78,6 +78,10 @@ export default async function CreatorServicesPage({
   } = await requireActorOrLoginPrompt(route, query, 'creator');
   if (!actor) return prompt;
   const notices = <Notices query={query} />;
+  const releaseForm = (serviceId: string, label: string) => <CommandForm command="add_digital_release" label={label} variant="secondary" values={{ service_id: serviceId }} returnTo={route}>
+    <FileUploadField purpose="DIGITAL" label="Product file" maxFiles={1} help="One file per version: zip up to 100 MB, PDF/DOCX 25 MB, images 10 MB, video 250 MB. Private until purchased." />
+    <Field name="notes" label="What changed (optional)" />
+  </CommandForm>;
   const d = row(await getDashboardData(actor));
   const workload = row(d.workload);
   const status = availabilityLabel(workload.availability_status);
@@ -201,7 +205,7 @@ export default async function CreatorServicesPage({
       </form>
       <nav className="chip-row" aria-label="Filter services">
         {SERVICE_FILTERS.map((option) => (counts[option.value] || !option.value) ? <Link key={option.label} className="chip-link" href={chipHref(option.value)}
-          aria-current={chosen === option.value ? 'page' : undefined}>{option.label} <span className="muted">{counts[option.value]}</span></Link> : null)}
+          aria-current={chosen === option.value ? 'page' : undefined}>{option.label}<span className="muted">{counts[option.value]}</span></Link> : null)}
       </nav>
     </div>}
 
@@ -228,8 +232,8 @@ export default async function CreatorServicesPage({
               </div>
               <p className="service-row-facts">
                 <strong>{money(s.price_minor)}</strong>
-                <span>{num(s.turnaround_hours)} hours</span>
-                <span>{str(s.taxonomy)}</span>
+                <span>{num(s.turnaround_hours)} {num(s.turnaround_hours) === 1 ? 'hour' : 'hours'}</span>
+                <span>{humanize(str(s.taxonomy))}</span>
                 <span>{samples.length} {samples.length === 1 ? 'sample' : 'samples'}</span>
                 {live.length > 0
                   ? <Link className="service-row-live" href="/buyer/orders">{live.length} active {live.length === 1 ? 'order' : 'orders'}{mine > 0 ? ` · ${mine} need${mine === 1 ? 's' : ''} you` : ''}</Link>
@@ -245,10 +249,13 @@ export default async function CreatorServicesPage({
                 {rows(s.releases).length
                   ? <ul className="release-list">{rows(s.releases).map((release) => <li key={str(release.version)}>Version {num(release.version)} · {str(release.filename)}</li>)}</ul>
                   : <p className="notice">Upload the product file before publishing.</p>}
-                {str(s.status) !== 'ARCHIVED' && <CommandForm command="add_digital_release" label={rows(s.releases).length ? 'Add new version' : 'Add product file'} variant="secondary" values={{ service_id: str(s.id) }} returnTo={route}>
-                  <FileUploadField purpose="DIGITAL" label="Product file" maxFiles={1} help="One file per version: zip up to 100 MB, PDF/DOCX 25 MB, images 10 MB, video 250 MB. Private until purchased." />
-                  <Field name="notes" label="What changed (optional)" />
-                </CommandForm>}
+                {str(s.status) !== 'ARCHIVED' && (rows(s.releases).length
+                  // Once a file is out, a new version is an occasional task: keep its form folded so the list stays a list.
+                  ? <details className="service-edit">
+                    <summary>Upload a new version</summary>
+                    {releaseForm(str(s.id), 'Add new version')}
+                  </details>
+                  : releaseForm(str(s.id), 'Add product file'))}
               </div>}
 
               <details className="service-edit">
@@ -272,7 +279,7 @@ export default async function CreatorServicesPage({
                 </CommandForm>
               </details>}
 
-              <div className="inline-actions">
+              <div className="inline-actions service-row-actions">
                 <Link className="text-link" href={`/services/${str(s.id)}`}>Open public page ›</Link>
                 {['DRAFT', 'PAUSED'].includes(str(s.status)) && <CommandForm
                   command="publish_service"
@@ -282,7 +289,6 @@ export default async function CreatorServicesPage({
                   }}
                   returnTo={route}
                 />}
-                {" "}
                 {str(s.status) === 'PUBLISHED' && <CommandForm
                   command="pause_service"
                   label="Pause"
