@@ -13,17 +13,20 @@ Updated 2026-09-17 at commit `6d0a2d9` (migrations through `0037`). Nothing is d
 | `RUN_DB_INTEGRATION=1 vitest run` | 442 passed, 3 skipped (anvil) |
 | Playwright | 78 tests: everything passes except `publish.spec.ts`, which is blocked on development data — see §5 |
 
-## 2. Launch blockers engineering must build (no owner credentials needed to start)
+## 2. Engineering blockers and their state
 
-| # | Blocker | Why it blocks | Depends on decision |
+The owner answered D1–D3 and D5 on 2026-09-17: **Vercel + Supabase, first-party sessions, no money at launch, every section open.** E1–E3 and E6 are built and tested locally against those answers; each still needs its first run on the real services in staging (E7).
+
+| # | Item | State | What is left |
 |---|---|---|---|
-| E1 | **Production sign-in.** Sign-up is X only and sign-in adds Google, but both run on local sessions; deployed config requires `AUTH_MODE=supabase`, which has no X/Google path. | Nobody could sign up in production. | D2 |
-| E2 | **Production file storage.** Only `LocalStorageProvider` exists; deployed config requires `STORAGE_PROVIDER=supabase`, not implemented. | Setup requires a photo/logo; samples, briefs, deliveries and item pictures all upload. | D1 |
-| E3 | **Scheduled jobs.** Jobs run only through `POST /api/dev/jobs` locally. | Auto-accept, hold expiry, auction/item closing, X refreshes and payouts would never run. | D1 |
-| E4 | **Real payment rail.** Only the mock provider (and Arc on local devnet/anvil). | Any paid order, escrow or payout. | D3 |
-| E5 | **Transactional email.** Notifications go to an in-app timeline and a local email sink. | Password email, verification, order and payout notices outside the app. | D4 |
-| E6 | **Launch-mode copy and flags.** Sandbox banner, "Local sandbox" policy pages, test-account buttons and feature flags must follow the chosen launch scope. | Public pages must not say "sandbox" or offer features that are off. | D3, D5 |
-| E7 | **Deploy pipeline.** CI is authored but has not run on a host; no staging, smoke, restore or rollback rehearsal off this machine. | G5 gate. | D1 |
+| E1 | Production sign-in | **Built** (`6d0a2d9`): `AUTH_MODE=app` runs first-party sessions in a production build; fixture sign-in never does; failed password sign-ins throttled per email (drizzle/0037); accounts made with live X in production are real, not test data. | Live X and Google apps (D6, D7); first sign-up on staging. |
+| E2 | Production file storage | **Built** (`6d0a2d9`): `SupabaseStorageProvider` (signed upload/download, private buckets), `pnpm storage:setup` creates buckets with type and size limits. Unit-tested with the API stubbed. | A Supabase project; the first real upload on staging. Supabase Free caps any upload at 50 MB — videos (250 MB) and zips (100 MB) need the Pro limit raised. |
+| E3 | Scheduled jobs | **Built** (`6d0a2d9`): `/api/cron/jobs` behind `CRON_SECRET`, every job isolated; `vercel.json` schedules it every 5 minutes. | Vercel Pro for that schedule (Hobby runs crons at most daily). |
+| E4 | Real payment rail | Not needed at launch (D3: no money). `PAYMENT_MODE=off` refuses every money step. | Choose a rail before payments open. |
+| E5 | Transactional email | Open (D4). Email stays in the in-app timeline; password recovery says to continue with X or Google. | Sender domain and provider. |
+| E6 | Launch-mode copy and flags | **Built**: banner and footer by environment (local sandbox / staging / early access), policy pages without sandbox text in production, test accounts hidden, money flags fail closed; today also a **Payments open later** note in place of booking, collateral, bidding, paying into escrow, hiring offers and reward pools, and sandbox wording on auctions and checkout limited to local and staging. | Real policy text (D8). |
+| E7 | Deploy pipeline | Open: needs the owner's Vercel and Supabase projects and a go-ahead per deploy. Runbook: `docs/runbooks/11-deploy-vercel-supabase.md`. | Staging project, smoke, restore and rollback rehearsal. |
+| E8 | Hardening added today | Security headers on every response (nosniff, referrer policy, permissions policy; in production also no framing and HSTS) and `/api/health` for uptime checks. | Monitoring service pointed at `/api/health` (D9). |
 
 ## 3. Decisions and accounts only the owner can provide
 

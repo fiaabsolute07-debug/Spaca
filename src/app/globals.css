@@ -478,6 +478,10 @@ textarea { resize: vertical; min-height: 110px; }
 .auth-x .auth-option-x { width: 100%; border-color: var(--ink); background: var(--ink); color: var(--bg); }
 .auth-x .auth-option-x:hover:not(:disabled) { background: var(--ink-2); }
 .auth-sandbox-note { margin: 0; font-size: 12px; color: var(--faint); text-align: center; }
+/* Where a payment step would be while payments are not open (PAYMENT_MODE=off). */
+.payments-closed { display: grid; gap: 4px; margin: 12px 0; padding: 12px 14px; border: 1px dashed var(--line-strong); border-radius: var(--radius); background: var(--soft-2); }
+.payments-closed strong { font-size: 14px; color: var(--ink); }
+.payments-closed p { margin: 0; font-size: 13px; color: var(--muted); }
 /* Settings: the ways into an account. */
 .sign-in-methods { list-style: none; margin: 4px 0 0; padding: 0; display: grid; gap: 8px; }
 .sign-in-methods li { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 12px; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--radius); }

@@ -10,7 +10,23 @@ const config: NextConfig = {
   serverExternalPackages: ['postgres'],
   experimental: { serverActions: { bodySizeLimit: '2mb' } },
   async headers() {
-    return PRIVATE_SOURCES.map((source) => ({ source, headers: [{ key: 'X-Robots-Tag', value: 'noindex, nofollow' }] }));
+    // Every response: no MIME sniffing, no referrer path to other sites, no camera/microphone/location/payment APIs.
+    // A production build also refuses framing and asks browsers to keep to HTTPS.
+    const production = process.env.NODE_ENV === 'production';
+    const security = [
+      { key: 'X-Content-Type-Options', value: 'nosniff' },
+      { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
+      { key: 'Permissions-Policy', value: 'camera=(), microphone=(), geolocation=(), payment=()' },
+      ...(production ? [
+        { key: 'X-Frame-Options', value: 'DENY' },
+        { key: 'Content-Security-Policy', value: "frame-ancestors 'none'" },
+        { key: 'Strict-Transport-Security', value: 'max-age=31536000; includeSubDomains' },
+      ] : []),
+    ];
+    return [
+      { source: '/:path*', headers: security },
+      ...PRIVATE_SOURCES.map((source) => ({ source, headers: [{ key: 'X-Robots-Tag', value: 'noindex, nofollow' }] })),
+    ];
   },
 };
 export default config;

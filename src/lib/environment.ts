@@ -9,4 +9,10 @@ export const appStage = (): AppStage => (process.env.NODE_ENV !== 'production' ?
 
 export const paymentsOpen = () => process.env.PAYMENT_MODE !== 'off';
 
+/** The line under item auctions about where the money is: sandbox wording off production, early access while closed. */
+export function auctionMoneyNote(): string | null {
+  if (appStage() !== 'production') return 'Sandbox: collateral and escrow are recorded by spaca and no funds move.';
+  return paymentsOpen() ? null : 'Payments are not open yet: collateral, bids and escrow start when they do.';
+}
+
 export const PAYMENTS_CLOSED_MESSAGE = 'Payments are not open yet on spaca. Everything before paying works; paying, bidding and collateral open later.';

@@ -8,6 +8,8 @@ import { ReportForm } from '@/components/report-form';
 import { Avatar } from '@/components/avatar';
 import { SampleGallery } from '@/components/samples/sample-gallery';
 import type { PageProps } from '@/components/page-props';
+import { PaymentsClosed } from '@/components/payments-closed';
+import { appStage, paymentsOpen } from '@/lib/environment';
 
 export const dynamic = 'force-dynamic';
 
@@ -139,7 +141,8 @@ export default async function ServicePage({
           </ul>
           {actor && !actor.roles.includes('buyer') ? <Empty title={actor.id === str(s.creator_id) ? 'This is your service' : 'Booking needs a buyer account'}>
               {actor.id === str(s.creator_id) ? <Link className="text-link" href="/creator/services">Manage it in My services ›</Link> : 'You are signed in with a creator account. Buyers book services from a buyer account.'}
-            </Empty> : actor ? !salesOpen ? <Empty title="Purchases are paused">This product cannot be bought right now.</Empty> : availability.accepting ? <CommandForm
+            </Empty> : actor ? !paymentsOpen() ? <PaymentsClosed>{isDigital ? 'Buying files' : 'Booking'} opens when payments open on spaca. The scope, price and samples are here to compare now.</PaymentsClosed>
+            : !salesOpen ? <Empty title="Purchases are paused">This product cannot be bought right now.</Empty> : availability.accepting ? <CommandForm
             command="book"
             label={isAccess ? 'Reserve a session' : isDigital ? 'Buy license' : 'Reserve this service'}
             values={{
@@ -183,10 +186,10 @@ export default async function ServicePage({
               Log in to book
             </Link>
           )}
-          <div className="fee-note">
-            Local sandbox: checkout uses simulated funds. Your reservation is time limited.
+          {paymentsOpen() && <div className="fee-note">
+            {appStage() === 'local' ? 'Local sandbox: checkout uses simulated funds. ' : ''}Your reservation is time limited.
             Delivery begins after funding and a complete brief.
-          </div>
+          </div>}
           {actor && actor.id !== str(s.creator_id) && <ReportForm targetType="SERVICE" targetId={str(s.id)} returnTo={`/services/${str(s.id)}`} label="Report this service" />}
         </div>
       </aside>

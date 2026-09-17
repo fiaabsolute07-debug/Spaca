@@ -16,6 +16,8 @@ import { randomUUID } from 'node:crypto';
 import { CommandForm, Empty, date } from '@/components/ui';
 import { Notices } from '@/components/notices';
 import type { PageProps } from '@/components/page-props';
+import { PaymentsClosed } from '@/components/payments-closed';
+import { appStage, auctionMoneyNote, paymentsOpen } from '@/lib/environment';
 
 export const dynamic = 'force-dynamic';
 
@@ -30,7 +32,9 @@ function ActionPanel({ detail, route, signedIn }: { detail: ItemListingDetail; r
     return <>
       <h2>Lock the collateral</h2>
       <p>Bidding opens once your <strong className="item-money">{usd(listing.collateral)}</strong> collateral is locked. You get it back when the buyer confirms delivery, or if nobody bids.</p>
-      <CommandForm command="post_item_collateral" label={`Lock ${usd(listing.collateral)} (sandbox)`} values={values} returnTo={route} />
+      {paymentsOpen()
+        ? <CommandForm command="post_item_collateral" label={`Lock ${usd(listing.collateral)}${appStage() === 'production' ? '' : ' (sandbox)'}`} values={values} returnTo={route} />
+        : <PaymentsClosed>Locking collateral opens when payments open on spaca, and bidding starts after that. Your listing and its pictures are saved.</PaymentsClosed>}
       <CommandForm command="cancel_item_listing" label="Cancel listing" variant="secondary" values={values} returnTo={route} />
     </>;
   }
@@ -51,6 +55,7 @@ function ActionPanel({ detail, route, signedIn }: { detail: ItemListingDetail; r
         <p className="muted">This is your listing. Bidding closes on its own at {date(listing.endsAt)}.</p>
         {listing.bidCount === 0 && <CommandForm command="cancel_item_listing" label="Cancel and unlock collateral" variant="secondary" values={values} returnTo={route} />}
       </> : !signedIn ? <Link className="button button-dark item-action" href={`/sign-in?return_to=${encodeURIComponent(route)}`}>Log in to bid</Link>
+        : !paymentsOpen() ? <PaymentsClosed>Bidding opens when payments open on spaca, because a winning bid is paid into escrow.</PaymentsClosed>
         : listing.live ? <>
           <BidForm listingId={listing.id} nextMinimum={listing.nextMinimum} idempotencyKey={randomUUID()} route={route} />
           {listing.buyNowAvailable && <CommandForm command="buy_item_now" label={`Buy now for ${usd(listing.buyNowPrice!)}`} variant="secondary" values={values} returnTo={route} />}
@@ -73,13 +78,13 @@ function ActionPanel({ detail, route, signedIn }: { detail: ItemListingDetail; r
       {outcome}
       {sale.status === 'AWAITING_PAYMENT' && (sale.paymentOverdue ? <p className="muted">The payment window closed.</p> : <>
         <p>You won. Pay into escrow within <Countdown to={sale.paymentDueAt} serverNow={listing.serverNow} />; the seller cannot touch it until you confirm delivery.</p>
-        <CommandForm command="pay_item_sale" label={`Pay ${usd(sale.price)} into escrow (sandbox)`} values={saleValues} returnTo={route}>
+        {!paymentsOpen() ? <PaymentsClosed>Paying into escrow opens when payments open on spaca.</PaymentsClosed> : <CommandForm command="pay_item_sale" label={`Pay ${usd(sale.price)} into escrow${appStage() === 'production' ? '' : ' (sandbox)'}`} values={saleValues} returnTo={route}>
           <div className="field">
             <label htmlFor="item-buyer-details">Your {listing.buyerProvides}</label>
             <input id="item-buyer-details" name="buyer_details" required minLength={3} maxLength={300} autoCapitalize="none" spellCheck={false} />
             <small>Only the seller sees this, to deliver the item.</small>
           </div>
-        </CommandForm>
+        </CommandForm>}
       </>)}
       {sale.status === 'AWAITING_DELIVERY' && <>
         <p>Your payment is held. The seller must deliver by <strong>{date(listing.deliveryDueAt)}</strong>.</p>
@@ -221,7 +226,7 @@ export default async function ItemListingPage({ params, searchParams }: PageProp
       </div>
       <aside className="panel item-action-panel" aria-label="Price and actions">
         <ActionPanel detail={detail} route={route} signedIn={Boolean(actor)} />
-        <p className="items-sandbox">Sandbox: collateral and escrow are recorded by spaca and no funds move.</p>
+        {auctionMoneyNote() && <p className="items-sandbox">{auctionMoneyNote()}</p>}
       </aside>
     </div>
   </main>;

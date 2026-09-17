@@ -10,6 +10,8 @@ import { isFlagEnabled } from '@/modules/admin/policy';
 import { getPoolData, listPoolNetworks, type PoolNetwork } from '@/modules/pools/service';
 import { PoolPanel } from '@/components/pools/pool-panel';
 import { Badge, CommandForm, Empty, Field, date, money, num, row, rows, str, type Row } from '@/components/ui';
+import { PaymentsClosed } from '@/components/payments-closed';
+import { paymentsOpen } from '@/lib/environment';
 import { Notices } from '@/components/notices';
 import { PageHeading } from '@/components/page-heading';
 import { CampaignBy } from '@/components/campaign/campaign-by';
@@ -57,14 +59,16 @@ function ApplicationCard({ application: a, owner, route }: { application: Row; o
     </ul>
     <Samples items={rows(a.samples_snapshot)} />
     {a.offer_order_id && offerStatus === 'ACCEPTED' ? <Link className="text-link" href={`/orders/${str(a.offer_order_id)}`}>Open the order ›</Link> : null}
-    {owner && str(a.status) === 'SUBMITTED' && <CommandForm
+    {owner && str(a.status) === 'SUBMITTED' && !paymentsOpen() && <PaymentsClosed>Hiring opens when payments open on spaca: an offer becomes an order the buyer funds. Applications stay here until then.</PaymentsClosed>}
+    {owner && str(a.status) === 'SUBMITTED' && paymentsOpen() && <CommandForm
       command="select_application"
       label={`Offer ${money(a.quote_minor)} to this creator`}
       values={{ application_id: str(a.id), application_version: str(a.version) }}
       returnTo={route}
     />}
     {owner && liveOffer && <CommandForm command="withdraw_offer" label="Withdraw offer" values={{ offer_id: str(a.offer_id) }} returnTo={route} />}
-    {!owner && liveOffer && <>
+    {!owner && liveOffer && !paymentsOpen() && <PaymentsClosed>Accepting offers opens when payments open on spaca.</PaymentsClosed>}
+    {!owner && liveOffer && paymentsOpen() && <>
       <CommandForm command="accept_offer" label="Accept offer" values={{ offer_id: str(a.offer_id) }} returnTo={route}>
         <p className="muted">Accepting creates the order. The buyer funds it before work starts.</p>
       </CommandForm>

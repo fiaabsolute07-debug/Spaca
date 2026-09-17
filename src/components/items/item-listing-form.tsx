@@ -11,9 +11,11 @@ const cents = (value: string) => (/^\d+(\.\d{1,2})?$/.test(value.trim()) ? Math.
  * The listing form. It posts `create_item_listing` as JSON so a refusal keeps everything typed; without JavaScript it
  * is a plain form post and the server answers the same way.
  */
-export function ItemListingForm({ idempotencyKey, canSellAsProject, defaults }: {
+export function ItemListingForm({ idempotencyKey, canSellAsProject, defaults, moneyNote = null }: {
   idempotencyKey: string;
   canSellAsProject: boolean;
+  /** Where the money is in this environment (sandbox, or payments not open yet); read on the server. */
+  moneyNote?: string | null;
   /** Starting values as ISO instants: opens now, closes in 3 days, delivered within 7. */
   defaults: { startsAt: string; endsAt: string; deliveryDueAt: string };
 }) {
@@ -154,7 +156,7 @@ export function ItemListingForm({ idempotencyKey, canSellAsProject, defaults }: 
         <TimeField name="starts_at" label="Bidding opens" required value={defaults.startsAt} />
         <TimeField name="ends_at" label="Bidding closes" required value={defaults.endsAt} help="Up to 14 days after it opens." />
       </div>
-      <p className="items-form-terms">The winner pays into escrow within {ITEM_PAYMENT_HOURS} hours. After you mark the item delivered, the buyer has {ITEM_CONFIRM_HOURS} hours to confirm or dispute; silence counts as confirmed. Sandbox: no funds move.</p>
+      <p className="items-form-terms">The winner pays into escrow within {ITEM_PAYMENT_HOURS} hours. After you mark the item delivered, the buyer has {ITEM_CONFIRM_HOURS} hours to confirm or dispute; silence counts as confirmed.{moneyNote ? ` ${moneyNote}` : ''}</p>
     </section>
 
     <div className="items-form-actions">

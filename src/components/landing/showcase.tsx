@@ -3,6 +3,7 @@ import { Avatar } from '@/components/avatar';
 import { Countdown } from '@/components/items/countdown';
 import { availabilityLabel, money, num, str } from '@/components/ui';
 import { ITEM_CONFIRM_HOURS, ITEM_PAYMENT_HOURS, ORIGIN_LABEL, usd, type ItemOrigin } from '@/lib/items';
+import { auctionMoneyNote } from '@/lib/environment';
 import styles from './landing.module.css';
 
 type Row = Record<string, unknown>;
@@ -134,7 +135,7 @@ export function AuctionsStrip({ auctions, serverNow }: { auctions: Row[]; server
           <li><strong>The winner pays into escrow</strong><span>{ITEM_PAYMENT_HOURS} hours to pay; the seller cannot touch it yet.</span></li>
           <li><strong>Delivery is confirmed</strong><span>{ITEM_CONFIRM_HOURS} hours to confirm. Nothing delivered means your money back with the collateral.</span></li>
         </ol>}
-      <p className={styles.auctionNote}>Sandbox: collateral and escrow are recorded by spaca and no funds move.</p>
+      {auctionMoneyNote() && <p className={styles.auctionNote}>{auctionMoneyNote()}</p>}
     </div>
   </section>;
 }

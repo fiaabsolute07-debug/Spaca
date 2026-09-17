@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { getActor } from '@/lib/auth';
 import { ORIGIN_LABEL, SALE_STATUS_LABEL, usd } from '@/lib/items';
 import { sql } from '@/lib/db';
+import { auctionMoneyNote } from '@/lib/environment';
 import { getItemAuctionBoard, getMyItemActivity } from '@/modules/items/queries';
 import { ItemCard } from '@/components/items/item-card';
 import { Empty, date } from '@/components/ui';
@@ -51,7 +52,7 @@ export default async function AuctionsPage({ searchParams }: PageProps) {
       <li><strong>Win and pay into escrow</strong><span>You have 24 hours; the seller cannot touch it yet.</span></li>
       <li><strong>Confirm delivery</strong><span>The seller is paid. Miss the deadline and you get your money plus the collateral.</span></li>
     </ol>
-    <p className="items-sandbox">Sandbox: collateral and escrow are recorded by spaca and no funds move.</p>
+    {auctionMoneyNote() && <p className="items-sandbox">{auctionMoneyNote()}</p>}
 
     <div className="items-filters">
       <nav aria-label="Item types" className="chip-row">

@@ -1,4 +1,6 @@
 import { CommandForm, Field, Badge, Empty, date, num, row, rows, str, type Row } from '../ui';
+import { PaymentsClosed } from '@/components/payments-closed';
+import { paymentsOpen } from '@/lib/environment';
 import { PoolTemplateBuilder } from './pool-template-builder';
 import type { PoolNetwork } from '@/modules/pools/service';
 
@@ -58,7 +60,9 @@ export function PoolPanel({ data, owner, route, requestId, networks, cryptoEnabl
         ? <CommandForm command="create_campaign_pool" label="Create the pool" values={{ request_id: requestId }} returnTo={route}>
             <PoolTemplateBuilder networks={networks} tokenRewards={tokenRewards} nftRewards={nftRewards} />
           </CommandForm>
-        : <p className="notice">Crypto checkout is switched off in this environment, so a pool cannot be created right now.</p>}
+        : paymentsOpen()
+          ? <p className="notice">Crypto checkout is switched off in this environment, so a pool cannot be created right now.</p>
+          : <PaymentsClosed>Reward pools open when payments open on spaca. The campaign runs without one until then.</PaymentsClosed>}
     </section>;
   }
 
