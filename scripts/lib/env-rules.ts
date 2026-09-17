@@ -105,6 +105,14 @@ export function checkEnvironment(env: Environment, target: EnvironmentTarget): E
   add('ARC_CHAIN_ID', arc, (value) => /^\d+$/.test(value) && BigInt(value) > 0n);
   add('ARC_RPC_URL', arc, webUrl(deployed), true);
   for (const name of ['ARC_USDC_ASSET_CONFIG', 'ARC_SETTLEMENT_CONTRACT_ADDRESS', 'ARC_CONTRACT_VERSION']) add(name, arc);
+  // Connect X (drizzle/0032): the sandbox stand-in is local-only; live needs the OAuth client, and refreshes the bearer token.
+  add('X_PROVIDER', false, deployed ? oneOf('live', 'off') : oneOf('mock', 'live', 'off'));
+  const liveX = env.X_PROVIDER === 'live';
+  add('X_CLIENT_ID', liveX);
+  add('X_CLIENT_SECRET');
+  add('X_BEARER_TOKEN', liveX);
+  add('X_REFRESH_AFTER_DAYS', false, (value) => /^\d+$/.test(value) && Number(value) >= 1 && Number(value) <= 365);
+  add('X_READS_MONTHLY_CAP', false, (value) => /^\d+$/.test(value) && Number(value) >= 1 && Number(value) <= 3_000_000);
   add('SENTRY_DSN', false, (value) => !!parseUrl(value)?.hostname, true);
   return { ok: rows.every((row) => row.status === 'OK'), rows };
 }

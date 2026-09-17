@@ -5,6 +5,8 @@ import { nextPath, onboardingPath } from '@/lib/onboarding';
 import { getAccountSummary } from '@/lib/read-model';
 import { listEnabledNetworks } from '@/modules/crypto/registry';
 import { listVerifiedWallets } from '@/modules/crypto/wallets';
+import { getXProfileViews, xConnectAvailable } from '@/modules/x/service';
+import { xMode } from '@/modules/x/provider';
 import { OnboardingForm } from '@/components/onboarding/onboarding-form';
 import { Notices } from '@/components/notices';
 import { requireActorOrLoginPrompt } from '@/components/require-actor';
@@ -28,7 +30,9 @@ export default async function WelcomePage({ searchParams }: PageProps) {
   if (!type) redirect('/dashboard');
   const account = await getAccountSummary(actor);
   if (account.onboarded) redirect(next);
-  const [wallets, networks] = await Promise.all([listVerifiedWallets(actor.id), listEnabledNetworks()]);
+  const [wallets, networks, xProfiles] = await Promise.all([listVerifiedWallets(actor.id), listEnabledNetworks(), getXProfileViews([actor.id])]);
+  const x = type === 'creator' ? xProfiles.get(actor.id) ?? null : null;
+  const handleFromX = x && /^[a-z0-9][a-z0-9_-]{2,31}$/.test(x.username.toLowerCase()) ? x.username.toLowerCase() : '';
 
   return <main className="container onboard-page">
     <Notices query={query} />
@@ -37,14 +41,16 @@ export default async function WelcomePage({ searchParams }: PageProps) {
       next={next}
       idempotencyKey={randomUUID()}
       initial={{
-        name: PLACEHOLDER_NAMES.has(account.name) ? '' : account.name,
-        handle: account.handle ?? '',
+        // A connected X account fills in what is still empty; the creator can change any of it.
+        name: PLACEHOLDER_NAMES.has(account.name) ? x?.name ?? '' : account.name,
+        handle: account.handle ?? handleFromX,
         avatarAssetId: account.avatarAssetId,
         headline: account.headline,
-        bio: account.bio,
+        bio: account.bio || (x && x.description.length >= 40 ? x.description : ''),
         focus: account.focus ? account.focus.split(',').map((item) => item.trim()) : [],
-        link: account.link,
+        link: account.link || (x ? `https://x.com/${x.username}` : ''),
       }}
+      x={type === 'creator' ? { profile: x, available: xConnectAvailable(), sandbox: xMode() === 'mock' } : null}
       wallets={wallets.map((wallet) => ({ id: String(wallet.id), address: String(wallet.address), network: String(wallet.network_name) }))}
       networks={networks}
     />

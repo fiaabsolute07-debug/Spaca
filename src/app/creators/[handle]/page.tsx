@@ -6,6 +6,7 @@ import { Badge, Empty, ServiceCard, num, row, rows, str } from '@/components/ui'
 import { Notices } from '@/components/notices';
 import { PageHeading } from '@/components/page-heading';
 import { SampleGallery } from '@/components/samples/sample-gallery';
+import { XProfileCard } from '@/components/x/x-profile-card';
 import type { PageProps } from '@/components/page-props';
 
 export const dynamic = 'force-dynamic';
@@ -45,6 +46,7 @@ export default async function CreatorPage({
         </div>
       </div>
       {c.bio ? <p className="prewrap creator-bio">{str(c.bio)}</p> : null}
+      {result.x ? <div className="creator-x"><XProfileCard x={result.x} /></div> : null}
       {rows(d.social_accounts).length > 0 && <ul className="social-links">
         {rows(d.social_accounts).map(account => <li key={str(account.id)}>
           <a className="text-link" href={str(account.url)} target="_blank" rel="noreferrer nofollow">

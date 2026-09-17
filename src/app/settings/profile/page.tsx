@@ -7,6 +7,10 @@ import { Badge, CommandForm, Field, date, row, rows, str } from '@/components/ui
 import { WalletLink } from '@/components/crypto/wallet-link';
 import { listEnabledNetworks } from '@/modules/crypto/registry';
 import { listVerifiedWallets } from '@/modules/crypto/wallets';
+import { getXProfileViews, hoursUntilOwnRefresh, xConnectAvailable } from '@/modules/x/service';
+import { xMode } from '@/modules/x/provider';
+import { XProfileCard } from '@/components/x/x-profile-card';
+import { XLogo } from '@/components/x/x-logo';
 import { Notices } from '@/components/notices';
 import { PageHeading } from '@/components/page-heading';
 import { requireActorOrLoginPrompt } from '@/components/require-actor';
@@ -29,6 +33,8 @@ export default async function ProfilePage({
   const profile = row(d.profile);
   const [wallets, networks] = await Promise.all([listVerifiedWallets(actor.id), listEnabledNetworks()]);
   const isCreator = actor.roles.includes('creator');
+  const [xProfiles, refreshWait] = isCreator ? await Promise.all([getXProfileViews([actor.id]), hoursUntilOwnRefresh(actor.id)]) : [new Map(), 0];
+  const x = xProfiles.get(actor.id) ?? null;
   const checks = [
     { label: 'Profile photo', done: Boolean(profile.avatar_asset_id) },
     { label: 'Name and handle', done: Boolean(profile.handle) },
@@ -80,6 +86,27 @@ export default async function ProfilePage({
           </CommandForm>
         </section>
         {isCreator && <>
+        <section className="panel x-settings" id="x" aria-labelledby="x-heading">
+          <h2 id="x-heading"><XLogo size={18} /> X account</h2>
+          {x ? <>
+            <p className="muted">Buyers see this in Explore and on your profile. spaca keeps a saved copy and refreshes it every week or so when people view it; it never posts for you.</p>
+            <XProfileCard x={x} />
+            <div className="inline-actions x-settings-actions">
+              <form method="post" action="/api/x/refresh">
+                <button className="button button-outline" type="submit" disabled={refreshWait > 0}>Refresh from X</button>
+              </form>
+              <CommandForm command="disconnect_x" label="Disconnect X" variant="danger" returnTo={route} />
+            </div>
+            {refreshWait > 0 && <p className="muted">Updated in the last day. You can refresh again in {refreshWait} {refreshWait === 1 ? 'hour' : 'hours'}.</p>}
+          </> : xConnectAvailable() ? <>
+            <p className="muted">Connect your X account so buyers see your X photo, followers and bio in Explore, marked as connected rather than self-reported. spaca reads your public profile once and never posts, follows or messages for you.</p>
+            <form method="post" action="/api/x/connect" className="x-connect-form">
+              <input type="hidden" name="return_to" value={route} />
+              <button className="button button-dark" type="submit"><XLogo size={14} /> Connect X</button>
+            </form>
+            {xMode() === 'mock' && <p className="muted x-sandbox-note">Local sandbox: this opens a stand-in for X. No real X account is used and the numbers are generated.</p>}
+          </> : <p className="muted">Connecting X is not available in this environment.</p>}
+        </section>
         <section className="panel" aria-labelledby="linked-accounts-heading">
       <h2 id="linked-accounts-heading">Linked accounts</h2>
       <p className="muted">Accounts you post on. They show on your profile as self-reported; spaca does not connect to these platforms. PUBLISH services post on one of them.</p>

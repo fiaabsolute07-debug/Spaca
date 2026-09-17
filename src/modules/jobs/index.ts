@@ -34,6 +34,7 @@ import { dispatchChainPayout, dueChainPayouts } from '@/modules/crypto/payouts';
 import { latestDelivery, termsOf } from '@/modules/orders/lifecycle';
 import { FINALIZE_GRACE_SECONDS, type StorageBucket } from '@/modules/storage/policy';
 import { getStorageProvider } from '@/modules/storage/provider';
+import { refreshRequestedXProfiles } from '@/modules/x/service';
 
 type Row = Record<string, unknown>;
 
@@ -552,6 +553,11 @@ export async function checkWorkloadCounters(): Promise<JobReport> {
   return result;
 }
 
+/** Saved X profiles that someone viewed after they became old: one batched X lookup within the monthly ceiling. */
+export async function refreshXProfiles(options: { limit?: number } = {}): Promise<JobReport> {
+  return { job: 'refresh_x_profiles', ...(await refreshRequestedXProfiles(options)) };
+}
+
 export async function runJobsOnce(): Promise<JobReport[]> {
   return [
     await reprocessWebhookInbox(),
@@ -569,5 +575,6 @@ export async function runJobsOnce(): Promise<JobReport[]> {
     await dispatchNotificationOutbox(),
     await cleanupStorage(),
     await checkWorkloadCounters(),
+    await refreshXProfiles(),
   ];
 }

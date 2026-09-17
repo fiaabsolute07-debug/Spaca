@@ -8,6 +8,9 @@ import { FOCUS_OPTIONS, HEADLINE_MAX, INTRO_MAX, INTRO_MIN, MAX_FOCUS, handleFro
 import { ACCEPTED_IMAGES } from '../files/file-upload-field';
 import { uploadFile } from '../files/upload';
 import { WalletLink } from '../crypto/wallet-link';
+import { XLogo } from '../x/x-logo';
+import { XProfileCard } from '../x/x-profile-card';
+import type { XProfileView } from '@/lib/x-profile';
 
 type Initial = { name: string; handle: string; avatarAssetId: string | null; headline: string; bio: string; focus: string[]; link: string };
 type Photo = { state: 'empty' | 'uploading' | 'ready' | 'failed'; id: string | null; preview: string | null; message?: string };
@@ -58,13 +61,15 @@ const hostOf = (value: string) => {
  * link, with a live preview of how others will see it. Sends `complete_onboarding`; without JavaScript it is a plain
  * form post and the server gives the same answers.
  */
-export function OnboardingForm({ type, next, idempotencyKey, initial, wallets, networks }: {
+export function OnboardingForm({ type, next, idempotencyKey, initial, wallets, networks, x = null }: {
   type: AccountType;
   next: string;
   idempotencyKey: string;
   initial: Initial;
   wallets: { id: string; address: string; network: string }[];
   networks: { chain_id: number; name: string; mode: string }[];
+  /** Creators only: their connected X account, if any, and whether connecting is possible here. */
+  x?: { profile: XProfileView | null; available: boolean; sandbox: boolean } | null;
 }) {
   const creator = type === 'creator';
   const copy = COPY[type];
@@ -160,6 +165,19 @@ export function OnboardingForm({ type, next, idempotencyKey, initial, wallets, n
 
     <div className="onboard-layout">
       <div className="onboard-main">
+        {x && (x.profile || x.available) ? <section className="onboard-step onboard-x" aria-labelledby={`${formId}-x`}>
+          <h2 id={`${formId}-x`}><XLogo size={16} /> Start from X <span className="onboard-optional">(optional)</span></h2>
+          {x.profile ? <>
+            <p className="onboard-note">Connected. Your name, handle, bio and link were filled in from X where they were empty; change anything below.</p>
+            <XProfileCard x={x.profile} variant="compact" />
+          </> : <>
+            <p className="onboard-note">Connect X to prove the account is yours and fill in your name, handle and bio. Buyers then see your X photo and followers in Explore.{x.sandbox ? ' Local sandbox: a stand-in for X opens; no real X account is used.' : ''}</p>
+            <form method="post" action="/api/x/connect">
+              <input type="hidden" name="return_to" value={onboardingPath(next)} />
+              <button className="button button-outline" type="submit"><XLogo size={14} /> Connect X</button>
+            </form>
+          </>}
+        </section> : null}
         <form id={formId} className="onboard-form" method="post" action="/api/commands" onSubmit={submit}>
           <input type="hidden" name="command" value="complete_onboarding" />
           <input type="hidden" name="idempotency_key" value={idempotencyKey} />

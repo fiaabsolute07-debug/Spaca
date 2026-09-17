@@ -1,11 +1,15 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { X } from 'lucide-react';
 import { Avatar } from '../avatar';
 import { availabilityLabel, money, num, rows, str, type Row } from '../ui';
 import { SampleGallery } from '../samples/sample-gallery';
+import { XFollowerChip, XProfileCard } from '../x/x-profile-card';
+import type { XProfileView } from '@/lib/x-profile';
+
+const xOf = (s: Row) => (s.x ? s.x as unknown as XProfileView : null);
 
 const CATEGORY: Record<string, string> = { CREATE: 'Create', PUBLISH: 'Publish', ACCESS: 'Access', DIGITAL: 'Digital' };
 const FORMAT: Record<string, string> = { POST: 'post', THREAD: 'thread', QUOTE_POST: 'quote post', VIDEO: 'video', NEWSLETTER_ISSUE: 'newsletter issue', ARTICLE: 'article' };
@@ -37,6 +41,7 @@ function Included({ s }: { s: Row }) {
 
 function Detail({ s, onClose }: { s: Row; onClose: () => void }) {
   const availability = availabilityLabel(s.availability_status);
+  const x = xOf(s);
   return <article className="explore-detail" aria-label={`Details: ${str(s.title)}`}>
     <header className="explore-detail-head">
       <button type="button" className="detail-close" onClick={onClose} aria-label="Close details"><X size={18} aria-hidden /></button>
@@ -49,6 +54,7 @@ function Detail({ s, onClose }: { s: Row; onClose: () => void }) {
           <small>{[str(s.headline) || str(s.niche), s.rating ? `★ ${str(s.rating)} (${num(s.review_count)})` : '', num(s.completed_jobs) ? `${num(s.completed_jobs)} completed` : 'New creator'].filter(Boolean).join(' · ')}</small>
         </span>
       </Link>
+      {x ? <XProfileCard x={x} /> : null}
       <div className="chip-row">
         <span className="chip chip-strong">{money(s.price_minor)}</span>
         <span className="chip">{str(s.taxonomy) === 'DIGITAL' ? 'Instant download' : `Delivery in ${delivery(s.turnaround_hours)}`}</span>
@@ -97,6 +103,15 @@ export function ExploreBrowser({ items, initialSelected, sidebar, toolbar, pager
     return () => media.removeEventListener('change', update);
   }, []);
   const current = items.find((i) => str(i.id) === selected);
+  // Opening a creator whose saved X profile is old queues one background refresh (never an X read from this page).
+  const queued = useRef(new Set<string>());
+  useEffect(() => {
+    const x = current ? xOf(current) : null;
+    const creatorId = str(current?.creator_id);
+    if (!x?.refreshDue || !creatorId || queued.current.has(creatorId)) return;
+    queued.current.add(creatorId);
+    void fetch('/api/x/seen', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ creator_id: creatorId }) }).catch(() => undefined);
+  }, [current]);
 
   const setUrl = (id: string) => {
     const url = new URL(window.location.href);
@@ -142,6 +157,7 @@ export function ExploreBrowser({ items, initialSelected, sidebar, toolbar, pager
                   <span className="chip">{CATEGORY[str(s.taxonomy)] ?? str(s.taxonomy)}</span>
                   <span className="chip">{str(s.taxonomy) === 'DIGITAL' ? 'Instant' : delivery(s.turnaround_hours)}</span>
                   {s.rating ? <span className="chip">★ {str(s.rating)}</span> : null}
+                  {xOf(s) && !xOf(s)!.unavailable ? <XFollowerChip x={xOf(s)!} /> : null}
                 </span>
                 <span className="explore-card-foot">
                   <span className="muted explore-card-summary">{str(s.summary)}</span>

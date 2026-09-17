@@ -7,6 +7,7 @@ import { isFlagEnabled } from '@/modules/admin/policy';
 import { CommandError } from './commands';
 import { parseServiceSearch, toPrefixQuery } from '@/modules/discovery/params';
 import { searchServices } from '@/modules/discovery/search';
+import { getXProfileViews, requestXRefresh } from '@/modules/x/service';
 
 export type ReadRow = Record<string, unknown>;
 const asRows = (value: unknown): ReadRow[] => Array.isArray(value) ? value as ReadRow[] : [];
@@ -294,7 +295,10 @@ export async function getCreatorData(handle: string) {
     // XPL-01: every link is shown with its verification status; manual links read "Self-reported".
     sql`select id,platform,handle,canonical_url as url,verification_status from app.social_accounts where creator_id=${String(creator.id)} and removed_at is null order by created_at`,
   ]);
-  return { creator, services, samples: asRows(samples), social_accounts: asRows(socialAccounts) };
+  const x = (await getXProfileViews([String(creator.id)])).get(String(creator.id)) ?? null;
+  // Opening the creator's page counts as looking at their X profile: an old copy joins the next background refresh.
+  if (x?.refreshDue) await requestXRefresh([String(creator.id)]).catch(() => 0);
+  return { creator, services, samples: asRows(samples), social_accounts: asRows(socialAccounts), x };
 }
 
 export async function getRequestData(actor: Actor | null, id: string) {
@@ -466,7 +470,7 @@ export async function getExploreData(query: QueryInput) {
   }
   const ids = result.items.map((item) => String(item.id));
   const creatorIds = [...new Set(result.items.map((item) => String(item.creator_id)))];
-  const [details, samples, stats, niches] = await Promise.all([
+  const [details, samples, stats, niches, xProfiles] = await Promise.all([
     ids.length ? sql`select s.id,v.description,v.publish_platform,v.publish_handle,v.publish_format,v.min_live_hours,v.disclosure_text,v.access_session_minutes,
         v.digital_license,v.digital_updates,v.digital_download_limit,p.headline
       from app.services s join app.service_versions v on v.id=s.published_version_id left join app.profiles p on p.user_id=s.creator_id where s.id = any(${ids}::uuid[])` : [],
@@ -482,6 +486,7 @@ export async function getExploreData(query: QueryInput) {
       from app.users u where u.id = any(${creatorIds}::uuid[])` : [],
     sql`select distinct p.niche from app.services s join app.profiles p on p.user_id=s.creator_id join app.users u on u.id=s.creator_id
       where s.status='PUBLISHED' and u.status='ACTIVE' and p.niche <> '' and p.niche <> 'Independent creator' order by p.niche limit 40`,
+    getXProfileViews(creatorIds),
   ]);
   const detailOf = new Map(asRows(details).map((d) => [String(d.id), d]));
   const statOf = new Map(asRows(stats).map((s) => [String(s.id), s]));
@@ -495,7 +500,12 @@ export async function getExploreData(query: QueryInput) {
       // Ratings are shown only with at least three reviews (DSC rule, same as creator discovery).
       rating: Number(stat?.review_count ?? 0) >= 3 ? stat?.rating ?? null : null,
       review_count: Number(stat?.review_count ?? 0),
+      // The creator's connected X account from the saved copy; reading it costs no X API call.
+      x: xProfiles.get(String(item.creator_id)) ?? null,
     } as ReadRow;
   });
+  // A link that opens a creator directly counts as looking at their X profile.
+  const opened = items.find((item) => String(item.id) === filters.selected);
+  if (opened?.x && (opened.x as { refreshDue?: boolean }).refreshDue) await requestXRefresh([String(opened.creator_id)]).catch(() => 0);
   return { items, matched: result.matched, next_cursor: result.next_cursor, filters, niches: asRows(niches).map((n) => String(n.niche)), error };
 }

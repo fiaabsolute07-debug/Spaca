@@ -18,7 +18,7 @@ export const accountTypeOf = (actor: WithRoles): AccountType | null => (isCreato
 
 const CREATOR_COMMANDS = [
   'add_sample', 'create_service', 'update_service', 'publish_service', 'pause_service', 'archive_service', 'set_accepting_orders',
-  'add_digital_release', 'add_social_account', 'remove_social_account', 'create_auction', 'cancel_auction',
+  'add_digital_release', 'add_social_account', 'remove_social_account', 'disconnect_x', 'create_auction', 'cancel_auction',
   'apply', 'withdraw_application', 'accept_offer', 'decline_offer', 'start', 'deliver',
 ];
 const BUYER_COMMANDS = [
