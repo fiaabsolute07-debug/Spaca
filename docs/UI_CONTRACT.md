@@ -592,6 +592,46 @@ six commits per `docs/BRAND_ROLLOUT_PROMPT.md`. It replaces the neutral Apple-li
 
 
 
+## 2026-09-17 additions: the landing keeps the hero, the goals and three strips of real stock
+
+- **The page is now:** hero (video, search tablist, popular-campaign chips) → the seven campaign goal tiles →
+  **Services** → **Creators available** → **Auctions** → Questions → the closing call → footer. The four-fact bar,
+  the 3D "How a campaign moves" block and the moving reward-pool diagram are gone, and with them the sections that
+  only surrounded them: Why spaca, Three ways to hire, the Reward pools tile, For creators, Clear rules for
+  sponsored content and AI and SaaS. `launch-stack.tsx` and `pool-flow.tsx` are deleted; the dead CSS went with
+  them. The light/dark switch stays and the page is still dark by default.
+- **Services** (region "Popular services" / "New services"): a grid of published services that have an approved,
+  `PUBLIC` image sample — the picture (through `/api/samples/<id>`), the creator's photo and name, the title and
+  **From $X**. A service with only a link sample, or a sample still in moderation, is not on the landing.
+  Following DSC-04 the heading claims **Popular services** only when at least three listed services clear the
+  `trending-v1` bar (≥3 completed orders in 30 days and ≥20 eligible views in 7 days); otherwise it reads **New
+  services** and says "Not enough completed orders yet to rank them by demand."
+- **Creators available**: photo, name, `@handle`, field, **From $X** (the lowest price that creator publishes) and
+  the buyer-facing availability from `availabilityLabel` — green only when orders can actually be placed. The card
+  links to `/creators/<handle>`, or to the Explore detail panel when a creator has no handle yet.
+- **Auctions** (region "A third way to buy."): up to three **item auctions** (drizzle/0033) that are `OPEN` and
+  have not ended, soonest to close first — item type, title, project and seller, **Current bid** or **Starting
+  at**, **Ends in** / **Opens in** counted from the server's clock, and "Bid in steps of $X · collateral $Y".
+  With nothing open the strip shows three lines of the mechanism instead of an invented listing: the seller locks
+  collateral before the listing opens; the winner pays into escrow within 24 hours (`ITEM_PAYMENT_HOURS`);
+  delivery is confirmed within 72 hours (`ITEM_CONFIRM_HOURS`) or the money returns with the collateral. Both
+  states carry the link **See open auctions ›** and the line "Sandbox: collateral and escrow are recorded by spaca
+  and no funds move."
+- **Empty means absent.** Each of the three strips renders nothing at all when it has no rows; none of them has a
+  placeholder card. `getLandingShowcase()` (`src/lib/read-model.ts`) catches a database failure and returns empty
+  strips, so the landing still opens when the database does not.
+- **FAQ.** "Do creators connect their X account?" no longer says no — Connect X shipped in `0039070`, so the
+  answer now says it is optional, reads the public profile once, revokes the token immediately and never posts.
+  A new entry, "What is an auction for?", carries the item-auction mechanism that the removed "Three ways to hire"
+  card used to explain.
+- **Anchors.** The landing nav is Services / Creators / Auctions / FAQ, matching the section ids; the footer's old
+  `#how`, `#pools` and `#ai` links now point at `#services`, `/auctions` and `#faq`. `landing.spec.ts` checks that
+  every in-page `#anchor` in the header and footer resolves to a section that exists.
+- **Tests.** `tests/unit/landing-strips.test.tsx` renders every strip in both states with `react-dom/server`
+  (`vitest.config.ts` now also includes `tests/**/*.test.tsx`); `tests/integration/landing.db.test.ts` covers the
+  queries; `tests/e2e/landing.spec.ts` covers the rendered page. Evidence:
+  `docs/evidence/claude-LANDING-SIMPLIFY.md`.
+
 ## 2026-09-16 additions: a time is the time on the reader's clock
 
 - Every `datetime-local` field is a **`TimeField`** (`src/components/time-field.tsx`): the auction's **Starts at** and **Ends at**, the campaign's **Applications close (optional)** and **Delivery deadline**, the PUBLISH delivery's **When it went live** and the order's **New deadline**. The last two no longer say "(UTC)" in their label.

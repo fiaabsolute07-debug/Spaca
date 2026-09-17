@@ -7,7 +7,7 @@ const testDatabaseUrl = process.env.TEST_DATABASE_URL ?? 'postgres://app_server:
 export default defineConfig({
   resolve: { alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) } },
   test: {
-    include: ['tests/**/*.test.ts'],
+    include: ['tests/**/*.test.ts', 'tests/**/*.test.tsx'],
     fileParallelism: false,
     testTimeout: 30000,
     hookTimeout: 30000,

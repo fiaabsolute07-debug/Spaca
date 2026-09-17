@@ -6,7 +6,8 @@ import { digitalAvailability, downloadableReleases } from '@/modules/digital';
 import { isFlagEnabled } from '@/modules/admin/policy';
 import { CommandError } from './commands';
 import { parseServiceSearch, toPrefixQuery } from '@/modules/discovery/params';
-import { searchServices } from '@/modules/discovery/search';
+import { includeTestData, searchServices } from '@/modules/discovery/search';
+import { TRENDING_FORMULA } from '@/modules/discovery/trending';
 import { getXProfileViews, requestXRefresh } from '@/modules/x/service';
 
 export type ReadRow = Record<string, unknown>;
@@ -89,6 +90,103 @@ export async function getPublicData(options: { q?: string; category?: string; go
   for (const request of openRequests) if (request.campaign_goal) goalCounts[String(request.campaign_goal)] = (goalCounts[String(request.campaign_goal)] ?? 0) + 1;
   const requests = options.goal ? openRequests.filter((request) => request.campaign_goal === options.goal) : openRequests;
   return { services, requests, request_total: openRequests.length, goal_counts: goalCounts, auctions: asRows(auctions) };
+}
+
+/**
+ * The landing's three live strips: services that have a picture to show, the creators behind them, and open item
+ * auctions (drizzle/0033). Every row is real — an empty array means the strip is not drawn at all, never a sample
+ * card. Following DSC-04, the services strip is only called "popular" on the same demand evidence trending needs
+ * (`trending-v1`); short of that it says the services are new, because newest is what the order actually is.
+ */
+export async function getLandingShowcase(limits: { services?: number; creators?: number; auctions?: number } = {}) {
+  try {
+    return await landingShowcase(limits);
+  } catch {
+    // The landing is the front door: it still opens when the database does not.
+    return { services: [], services_label: 'NEW' as const, creators: [], auctions: [], server_now: new Date().toISOString() };
+  }
+}
+
+async function landingShowcase(limits: { services?: number; creators?: number; auctions?: number }) {
+  const serviceLimit = limits.services ?? 8;
+  const creatorLimit = limits.creators ?? 6;
+  const auctionLimit = limits.auctions ?? 3;
+  const test = includeTestData();
+  const [serviceRowsWithArt, creatorRows, auctionRows, clock] = await Promise.all([
+    // A tile without a picture is not worth a tile, so a service joins the strip only through an approved, public
+    // image sample. `lateral` picks that creator's newest one instead of fanning the service out over every sample.
+    sql`with completed as (
+        select o.service_id,count(*)::int as completed_30d from app.orders o
+          join app.users b on b.id=o.buyer_id and (${test} or not b.is_test)
+        where o.status='COMPLETED' and o.completed_at>now()-interval '30 days' and o.service_id is not null group by o.service_id
+      ), seen as (
+        select service_id,count(*)::int as views_7d from app.service_views where view_date>current_date-7 group by service_id
+      )
+      select s.id,v.title,v.taxonomy,v.price_minor,v.currency,u.display_name as creator_name,p.handle,p.avatar_asset_id,
+        coalesce(c.completed_30d,0) as completed_30d,coalesce(w.views_7d,0) as views_7d,art.asset_id as sample_asset_id,art.sample_title
+      from app.services s
+        join app.service_versions v on v.id=s.published_version_id
+        join app.users u on u.id=s.creator_id and u.status='ACTIVE' and (${test} or not u.is_test)
+        left join app.profiles p on p.user_id=s.creator_id
+        left join completed c on c.service_id=s.id
+        left join seen w on w.service_id=s.id
+        join lateral (
+          select a.id as asset_id,m.title as sample_title from app.service_samples ss
+            join app.samples m on m.id=ss.sample_id
+            join app.storage_assets a on a.id=m.storage_asset_id and a.lifecycle_state='READY'
+          where ss.service_id=s.id and m.visibility='PUBLIC' and m.moderation_status='APPROVED' and a.mime like 'image/%'
+          order by m.created_at desc limit 1
+        ) art on true
+      where s.status='PUBLISHED'
+      order by coalesce(c.completed_30d,0) desc,coalesce(w.views_7d,0) desc,v.created_at desc,s.id
+      limit ${serviceLimit}`,
+    // Creators who finished their profile lead, because a card with no photo and no handle says nothing to a buyer.
+    sql`select u.id,u.display_name as creator_name,p.handle,p.niche,p.avatar_asset_id,
+        min(v.price_minor)::bigint as from_price_minor,min(v.currency) as currency,count(*)::int as service_count
+      from app.services s
+        join app.service_versions v on v.id=s.published_version_id
+        join app.users u on u.id=s.creator_id and u.status='ACTIVE' and (${test} or not u.is_test)
+        left join app.profiles p on p.user_id=u.id
+      where s.status='PUBLISHED'
+      group by u.id,u.display_name,p.handle,p.niche,p.avatar_asset_id
+      order by (p.avatar_asset_id is not null and p.handle is not null) desc,count(*) desc,min(v.price_minor),u.display_name
+      limit ${creatorLimit}`,
+    // Open item auctions, the ones about to close first; `starts_at` in the future means it has not opened yet.
+    sql`select l.id,l.title,l.item_type,l.project_name,l.origin,l.starting_price_minor,l.min_increment_minor,
+        l.collateral_minor,l.bid_count,l.starts_at,l.ends_at,(now()<l.starts_at) as upcoming,
+        u.display_name as seller_name,b.amount_minor as current_bid_minor
+      from app.item_listings l
+        join app.users u on u.id=l.seller_id and u.status='ACTIVE' and (${test} or not u.is_test)
+        left join app.item_bids b on b.id=l.current_bid_id
+      where l.status='OPEN' and l.ends_at>now()
+      order by (now()<l.starts_at),l.ends_at
+      limit ${auctionLimit}`,
+    // One clock for the countdowns, so the first paint matches the server that closes the auctions.
+    sql`select now() as now`,
+  ]);
+  const services = asRows(serviceRowsWithArt);
+  const creators = await withCreatorAvailability(asRows(creatorRows));
+  // The same bar trending clears: real completed orders and real views, on enough services to be a ranking at all.
+  const proven = services.filter((service) => Number(service.completed_30d) >= TRENDING_FORMULA.eligibility.completed_orders_30d_min
+    && Number(service.views_7d) >= TRENDING_FORMULA.eligibility.eligible_views_7d_min).length;
+  return {
+    services,
+    services_label: (proven >= TRENDING_FORMULA.min_items_for_trending_label ? 'POPULAR' : 'NEW') as 'POPULAR' | 'NEW',
+    creators,
+    // `<time datetime>` and `new Date()` in the browser both want ISO 8601, not Postgres' own spelling of an instant.
+    auctions: asRows(auctionRows).map((listing): ReadRow => ({
+      ...listing,
+      starts_at: new Date(String(listing.starts_at)).toISOString(),
+      ends_at: new Date(String(listing.ends_at)).toISOString(),
+    })),
+    server_now: new Date(String(asRows(clock)[0]?.now ?? new Date())).toISOString(),
+  };
+}
+
+/** Buyers see a creator's status, never their counts (§6.1 rule 10), so the strip carries the same label as Explore. */
+async function withCreatorAvailability(rows: ReadRow[]): Promise<ReadRow[]> {
+  const workloads = await workloadsFor(sql, rows.map((row) => String(row.id)));
+  return rows.map((row) => ({ ...row, availability_status: availabilityOf(workloads.get(String(row.id))) }));
 }
 
 /**
