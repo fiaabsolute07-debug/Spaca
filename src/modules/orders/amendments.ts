@@ -4,7 +4,7 @@
  * refuses any change to a delivery deadline that is not backed by an amendment accepted in the same transaction, and
  * expires open proposals when the order's status changes.
  */
-import { CommandError, instant, orderEvent, text, uuid, type CommandHandler, type Row, type Tx } from '@/lib/commands';
+import { CommandError, instantField, orderEvent, text, uuid, type CommandHandler, type Row, type Tx } from '@/lib/commands';
 import { enqueueNotification } from '@/modules/notifications/enqueue';
 import { digitalTermsOf } from '@/modules/digital';
 import { orderFor } from './commands';
@@ -33,7 +33,7 @@ const requestDeadlineExtension: CommandHandler = async ({ tx, actor, form }) => 
   if (digitalTermsOf(order.terms)) throw new CommandError('Digital purchases have no deadline to extend', 'DOMAIN_RULE');
   const current = currentDeadline(order);
   if (!current) throw new CommandError('This order has no open deadline to extend', 'ORDER_STATE_CONFLICT');
-  const newDue = instant(text(form, 'new_due_at'), 'new_due_at');
+  const newDue = instantField(form, 'new_due_at');
   if (newDue.getTime() <= current.dueAt.getTime()) throw new CommandError('Propose a date after the current deadline');
   if (newDue.getTime() <= Date.now() + 3_600_000) throw new CommandError('Propose a date at least one hour from now');
   if (newDue.getTime() - current.dueAt.getTime() > MAX_EXTENSION_DAYS * DAY_MS) throw new CommandError(`An extension can add at most ${MAX_EXTENSION_DAYS} days at a time`);

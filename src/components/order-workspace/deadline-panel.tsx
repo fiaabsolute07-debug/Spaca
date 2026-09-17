@@ -1,4 +1,5 @@
 import { Badge, CommandForm, Field, date, str, type Row } from '../ui';
+import { TimeField } from '../time-field';
 
 const STATUS_LABEL: Record<string, string> = {
   REQUESTED: 'Waiting for an answer',
@@ -7,9 +8,6 @@ const STATUS_LABEL: Record<string, string> = {
   WITHDRAWN: 'Withdrawn',
   EXPIRED: 'Expired: the order changed',
 };
-
-/** `datetime-local` value in UTC, as the command parser reads it. */
-const utcInputValue = (value: Date) => value.toISOString().slice(0, 16);
 
 /**
  * ORD-12: the deadline moves only when both sides agree. Shows the current deadline, the open proposal with the
@@ -41,7 +39,7 @@ export function OrderDeadlinePanel({ order: o, actorId, amendments, active, rout
         </div>}
     </div> : due && <CommandForm command="request_deadline_extension" label="Propose new deadline" variant="secondary" values={{ order_id: str(o.id) }} returnTo={route}>
       <p className="muted">The deadline changes only if the other party accepts. Both of you keep the record.</p>
-      <Field name="new_due_at" label="New deadline (UTC)" type="datetime-local" required value={utcInputValue(new Date(new Date(due.at).getTime() + 2 * 86_400_000))} />
+      <TimeField name="new_due_at" label="New deadline" required value={new Date(new Date(due.at).getTime() + 2 * 86_400_000).toISOString()} />
       <Field name="reason" label="Why more time is needed" type="textarea" required />
     </CommandForm>}
     {amendments.some((a) => str(a.status) !== 'REQUESTED') && <>

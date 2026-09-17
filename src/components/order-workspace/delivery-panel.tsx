@@ -1,4 +1,5 @@
 import { FileList } from '../files/file-list';
+import { TimeField } from '../time-field';
 import { FileUploadField } from '../files/file-upload-field';
 import { Badge, CommandForm, Field, date, row, str, type Row } from '../ui';
 import { ReportForm } from '../report-form';
@@ -74,7 +75,7 @@ export function OrderDeliveryPanel({
       returnTo={route}
     >
       <Field name="post_url" label={`Link to the post on ${channelName(publish)}`} required placeholder="https://x.com/yourname/status/…" />
-      <Field name="published_at" label="When it went live (UTC)" type="datetime-local" required />
+      <TimeField name="published_at" label="When it went live" required />
       <label className="field">
         <span><input type="checkbox" name="disclosure_attested" required /> The post shows “{str(publish.disclosure_text)}” and is written in my own words.</span>
       </label>

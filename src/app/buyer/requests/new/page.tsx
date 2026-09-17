@@ -1,4 +1,5 @@
 import { CommandForm, Field } from '@/components/ui';
+import { TimeField } from '@/components/time-field';
 import { Notices } from '@/components/notices';
 import { PageHeading } from '@/components/page-heading';
 import { BriefTypePicker } from '@/components/campaign/brief-type-picker';
@@ -57,8 +58,8 @@ export default async function NewRequestPage({
           <Field name="budget" label="Total budget (USD, optional if you set a cap)" type="number" placeholder="1200" />
           <Field name="per_creator_cap" label="Per creator cap (USD, optional)" type="number" placeholder="400" />
           <Field name="target_hires" label="Creators needed" type="number" value="1" required />
-          <Field name="application_deadline" label="Applications close (optional)" type="datetime-local" />
-          <Field name="deadline" label="Delivery deadline" type="datetime-local" required />
+          <TimeField name="application_deadline" label="Applications close (optional)" />
+          <TimeField name="deadline" label="Delivery deadline" required />
         </div>
       </CommandForm>
     </div>

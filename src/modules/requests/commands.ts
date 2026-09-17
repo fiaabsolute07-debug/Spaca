@@ -5,7 +5,7 @@
  * Lock order: request → offer → application → capacity pool/bucket. Budget and hire totals are also enforced by
  * CHECK constraints on counters maintained by triggers (drizzle/0007).
  */
-import { CommandError, UUID_PATTERN, expectedVersion, instant, integer, money, orderEvent, text, uuid, type CommandHandler, type Row, type Tx } from '@/lib/commands';
+import { CommandError, UUID_PATTERN, expectedVersion, instantField, integer, money, orderEvent, text, uuid, type CommandHandler, type Row, type Tx } from '@/lib/commands';
 import type { Actor } from '@/lib/auth';
 import { claimWorkload } from '@/modules/capacity';
 import { CHECKOUT_HOLD_MINUTES } from '@/modules/catalog/commands';
@@ -119,9 +119,8 @@ async function freezePerformanceTerms(tx: Tx, request: Row, application: Row, ac
 }
 
 function deadlines(form: FormData, existing?: Row) {
-  const deadline = text(form, 'deadline', !existing) ? instant(text(form, 'deadline'), 'deadline') : new Date(existing!.deadline);
-  const applicationValue = text(form, 'application_deadline', false);
-  const applicationDeadline = applicationValue ? instant(applicationValue, 'application_deadline') : existing ? new Date(existing.application_deadline) : deadline;
+  const deadline = text(form, 'deadline', !existing) ? instantField(form, 'deadline') : new Date(existing!.deadline);
+  const applicationDeadline = text(form, 'application_deadline', false) ? instantField(form, 'application_deadline') : existing ? new Date(existing.application_deadline) : deadline;
   if (applicationDeadline > deadline) throw new CommandError('Applications must close on or before the delivery deadline');
   return { deadline, applicationDeadline };
 }

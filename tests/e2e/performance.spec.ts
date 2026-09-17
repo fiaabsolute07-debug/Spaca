@@ -105,7 +105,7 @@ test('a performance campaign pays a fixed fee plus a measured bonus, and returns
     await visit(page, order);
     await submit(page, page.getByRole('button', { name: 'Start work', exact: true }));
     await page.getByLabel(/^Link to the post on/).fill(quietPostUrl(handle));
-    await page.getByLabel('When it went live (UTC)', { exact: true }).fill(dateTimeLocal(new Date()));
+    await page.getByLabel('When it went live', { exact: true }).fill(dateTimeLocal(new Date()));
     await page.getByRole('checkbox', { name: /written in my own words/ }).check();
     await submit(page, page.getByRole('button', { name: 'Submit the published post', exact: true }));
 

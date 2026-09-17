@@ -5,6 +5,7 @@ import { Notices } from '@/components/notices';
 import { PageHeading } from '@/components/page-heading';
 import { requireActorOrLoginPrompt } from '@/components/require-actor';
 import { FileUploadField } from '@/components/files/file-upload-field';
+import { SelectField } from '@/components/select';
 import { SampleGallery } from '@/components/samples/sample-gallery';
 import type { PageProps } from '@/components/page-props';
 
@@ -49,6 +50,22 @@ export default async function CreatorServicesPage({
           : <CommandForm command="set_accepting_orders" label="Pause new orders" variant="secondary" values={{ accepting: 'false' }} returnTo={route} />}
       </div>
     </section>
+    {rows(d.services).some((s) => str(s.status) !== 'ARCHIVED') && <section className="panel" aria-labelledby="add-sample-heading">
+      <h2 id="add-sample-heading">Work samples</h2>
+      <p className="muted">
+        Show the work itself: an uploaded picture or video plays on the service page, where a link would only point away
+        from it. A sample added here waits for moderation before buyers see it, and appears under the service you pick.
+      </p>
+      {/* One upload field for the page, not one per service: a busy creator's list would otherwise carry hundreds. */}
+      <CommandForm command="add_sample" label="Add work sample" variant="secondary" returnTo={route}>
+        <FileUploadField purpose="SAMPLE" name="asset_id" label="Sample file" maxFiles={1} help="One image, video or PDF. Leave this empty if the work only lives online." />
+        <Field name="title" label="What this work is" required />
+        <Field name="url" label="Link to it online (needed when there is no file)" />
+        <Field name="description" label="A line about it (optional)" />
+        <SelectField name="service_id" label="Show it on" placeholder="Keep it in my portfolio only"
+          options={rows(d.services).filter((s) => str(s.status) !== 'ARCHIVED').map((s) => ({ value: str(s.id), label: str(s.title) }))} />
+      </CommandForm>
+    </section>}
     {rows(d.services).length ? <div className="cards">
       {rows(d.services).map(s => <div className="panel" key={str(s.id)}>
         <div className="inline-actions">
@@ -91,13 +108,6 @@ export default async function CreatorServicesPage({
           {rows(s.samples).length > 0
             ? <SampleGallery samples={rows(s.samples)} label={`Work samples for ${str(s.title)}`} />
             : <p className="muted">This service has no samples yet, and it cannot be published without one.</p>}
-          {str(s.status) !== 'ARCHIVED' && <CommandForm command="add_sample" label="Add work sample" variant="secondary" values={{ service_id: str(s.id) }} returnTo={route}>
-            <p className="muted">Show the work itself: an uploaded picture or video plays on the service page. A sample added here waits for moderation before buyers see it.</p>
-            <FileUploadField purpose="SAMPLE" name="asset_id" label="Sample file" maxFiles={1} help="One image, video or PDF. Leave this empty if the work only lives online." />
-            <Field name="title" label="What this work is" required />
-            <Field name="url" label="Link to it online (needed when there is no file)" />
-            <Field name="description" label="A line about it (optional)" />
-          </CommandForm>}
         </details>
         {str(s.status) !== 'ARCHIVED' && <details className="service-edit">
           <summary>Edit service</summary>

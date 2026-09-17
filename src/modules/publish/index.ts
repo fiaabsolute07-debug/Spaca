@@ -4,7 +4,7 @@
  * the time it went live and the creator's disclosure attestation. The link is checked against the channel (host,
  * and the handle where the platform puts it in the URL); the post content itself is never fetched or verified.
  */
-import { CommandError, type Row, type Tx } from '@/lib/commands';
+import { CommandError, instant, zoneOffset, type Row, type Tx } from '@/lib/commands';
 
 export const SOCIAL_PLATFORMS = ['X', 'INSTAGRAM', 'TIKTOK', 'YOUTUBE', 'NEWSLETTER', 'WEBSITE'] as const;
 export type SocialPlatform = (typeof SOCIAL_PLATFORMS)[number];
@@ -163,7 +163,11 @@ export function checkPublicationProof(publish: PublishTerms, form: FormData, wor
   const link = checkPostLink(publish, postValue);
   const publishedValue = String(form.get('published_at') ?? '').trim();
   if (!publishedValue) throw new CommandError('Enter when the post went live');
-  const publishedAt = new Date(/[zZ]|[+-]\d\d:?\d\d$/.test(publishedValue) ? publishedValue : `${publishedValue}Z`);
+  // A wall clock the creator typed is read in the zone their browser reported; a value that already names its own
+  // offset (or ends in Z) is taken as written.
+  const stamped = /[zZ]|[+-]\d\d:?\d\d$/.test(publishedValue);
+  const offsetMinutes = stamped ? null : zoneOffset(form, 'published_at_offset');
+  const publishedAt = stamped ? new Date(publishedValue) : instant(publishedValue, 'published_at', offsetMinutes);
   if (Number.isNaN(publishedAt.getTime())) throw new CommandError('The publication time is not a valid date');
   if (publishedAt.getTime() > now.getTime() + FUTURE_TOLERANCE_MS) throw new CommandError('The publication time cannot be in the future');
   if (workStartAt && publishedAt.getTime() < workStartAt.getTime() - FUTURE_TOLERANCE_MS) {

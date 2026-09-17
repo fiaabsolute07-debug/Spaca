@@ -7,44 +7,38 @@ import { TINY_PNG, chooseOption, createPublishedService, login, submit, uniqueSu
  * this file is the only one that spends them.
  */
 test('an uploaded work sample is shown as the picture itself, once moderation has seen it', async ({ page, request }) => {
+  // The creator's services page carries every service this dev database has collected, so give the walk some room.
+  test.setTimeout(240_000);
   const service = await createPublishedService(page, 'sample-media');
   const title = `Uploaded sample ${uniqueSuffix()}`;
 
-  // The creator adds the file to the live service.
+  // The creator adds the file from the one Work samples form at the top of their services page.
   await visit(page, '/creator/services');
-  const card = page.locator('div.panel').filter({ has: page.getByRole('heading', { name: service.title, exact: true }) });
-  // Opening the panel changes the `open` attribute, so React has to hydrate first or it re-renders the upload field
-  // out from under the file that was just chosen.
-  const upload = card.getByLabel('Sample file');
+  const form = page.locator('section.panel').filter({ has: page.getByRole('heading', { name: 'Work samples', exact: true }) });
+  const upload = form.getByLabel('Sample file');
   await waitForHydration(upload);
-  await card.locator('summary').filter({ hasText: 'Work samples' }).click();
   await upload.setInputFiles({ name: 'launch-frame.png', mimeType: 'image/png', buffer: TINY_PNG });
-  await expect(card.getByText('Ready', { exact: true })).toBeVisible();
-  await card.getByLabel('What this work is').fill(title);
-  await submit(page, card.getByRole('button', { name: 'Add work sample', exact: true }));
+  await expect(form.getByText('Ready', { exact: true })).toBeVisible();
+  await form.getByLabel('What this work is').fill(title);
+  await chooseOption(page, form, 'Show it on', service.title);
+  await submit(page, form.getByRole('button', { name: 'Add work sample', exact: true }));
   await expect(page.getByRole('main').getByRole('status')).toContainText('waiting for moderation');
 
-  // The creator sees their own file as a picture, served through the sample route rather than linked away from.
-  await visit(page, '/creator/services');
-  const owned = page.locator('div.panel').filter({ has: page.getByRole('heading', { name: service.title, exact: true }) });
-  await waitForHydration(owned.getByLabel('Sample file'));
-  await owned.locator('summary').filter({ hasText: 'Work samples' }).click();
-  const picture = owned.getByRole('img', { name: title });
-  await expect(picture).toBeVisible();
-  const src = (await picture.getAttribute('src'))!;
-  expect(src).toMatch(/^\/api\/samples\/[0-9a-f-]{36}$/);
-
-  // Nobody else can reach the file while the sample is still pending, and the buyer's page does not list it.
-  expect((await request.get(src)).status()).toBe(404);
+  // A pending sample is nobody else's business yet: the buyer's page does not list it.
   await login(page, 'buyer_a');
   await visit(page, service.path);
   await expect(page.getByText(title, { exact: true })).toHaveCount(0);
 
-  // The moderator decides by looking at the file, which the queue now shows.
+  // The moderator decides by looking at the file, which the queue shows instead of only its id.
   await login(page, 'moderator');
   await visit(page, '/admin/moderation');
   const queued = page.locator('section.panel').filter({ has: page.getByRole('heading', { name: title, exact: true }) });
-  await expect(queued.getByRole('img', { name: title })).toBeVisible();
+  const picture = queued.getByRole('img', { name: title });
+  await expect(picture).toBeVisible();
+  const src = (await picture.getAttribute('src'))!;
+  expect(src).toMatch(/^\/api\/samples\/[0-9a-f-]{36}$/);
+  // While it is pending, that same address is 404 to anyone without a session that may see it.
+  expect((await request.get(src)).status()).toBe(404);
   await chooseOption(page, queued, 'Decision', 'APPROVED');
   await queued.getByLabel(/^Reason for the audit log/).fill(`Approved in an end-to-end test ${uniqueSuffix()}`);
   await submit(page, queued.getByRole('button', { name: 'Save moderation decision', exact: true }));

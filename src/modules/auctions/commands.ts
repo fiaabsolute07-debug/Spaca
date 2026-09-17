@@ -4,7 +4,7 @@
  * WINNER after close (24 h to pay) or BUY_NOW before the first valid bid (checkout TTL). Funding settles and an
  * unpaid cancellation defaults the auction through the order trigger in drizzle/0008; nothing relists silently.
  */
-import { CommandError, instant, money, orderEvent, text, uuid, type CommandHandler, type Row, type Tx } from '@/lib/commands';
+import { CommandError, instantField, money, orderEvent, text, uuid, type CommandHandler, type Row, type Tx } from '@/lib/commands';
 import { claimWorkload, releaseAuctionClaim } from '@/modules/capacity';
 import { CHECKOUT_HOLD_MINUTES, ownedService } from '@/modules/catalog/commands';
 import { assertFlags } from '@/modules/admin/policy';
@@ -113,8 +113,8 @@ const createAuction: CommandHandler = async ({ tx, actor, form }) => {
   const buy = buyValue ? money(buyValue, 'buy_now_price') : null;
   if (buy !== null && buy <= starting) throw new CommandError('Buy Now must be above the starting price');
   const now = await dbNow(tx);
-  const starts = instant(text(form, 'starts_at'), 'starts_at');
-  const ends = instant(text(form, 'ends_at'), 'ends_at');
+  const starts = instantField(form, 'starts_at');
+  const ends = instantField(form, 'ends_at');
   if (starts.getTime() < now.getTime() - BACKDATE_TOLERANCE_MS) throw new CommandError('The auction cannot start in the past');
   if (ends <= starts || ends <= now) throw new CommandError('The auction must end after it starts and in the future');
   if (ends.getTime() - starts.getTime() > MAX_AUCTION_DAYS * 86_400_000) throw new CommandError(`Auctions can run for at most ${MAX_AUCTION_DAYS} days`);

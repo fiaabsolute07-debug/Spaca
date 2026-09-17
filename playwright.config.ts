@@ -11,6 +11,9 @@ export default defineConfig({
   use: {
     baseURL: process.env.E2E_BASE_URL ?? 'http://127.0.0.1:3100',
     channel: 'chrome',
+    // `dateTimeLocal` builds its wall clock in this process, so the browser must read it on the same clock. Tests that
+    // care about zones set their own with `test.use({ timezoneId })`.
+    timezoneId: 'UTC',
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
   },

@@ -51,7 +51,7 @@ test('a PUBLISH order is delivered with the post link on the sold X channel and 
   await submit(page, page.getByRole('button', { name: 'Start work', exact: true }));
   await expectOrderState(page, 'IN_PROGRESS');
   await page.getByLabel(`Link to the post on @${handle} on X`).fill(`https://x.com/${handle}/status/1834567890123`);
-  await page.getByLabel('When it went live (UTC)').fill(new Date().toISOString().slice(0, 16));
+  await page.getByLabel('When it went live').fill(new Date().toISOString().slice(0, 16));
   await page.getByRole('checkbox', { name: /The post shows “#ad”/ }).check();
   await submit(page, page.getByRole('button', { name: 'Submit the published post', exact: true }));
   await expectOrderState(page, 'DELIVERED');

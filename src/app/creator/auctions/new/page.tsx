@@ -1,6 +1,7 @@
 import { getDashboardData } from '@/lib/read-model';
 import { SelectField } from '@/components/select';
 import { CommandForm, Field, money, row, rows, str } from '@/components/ui';
+import { TimeField } from '@/components/time-field';
 import { Notices } from '@/components/notices';
 import { PageHeading } from '@/components/page-heading';
 import { requireActorOrLoginPrompt } from '@/components/require-actor';
@@ -36,8 +37,8 @@ export default async function NewAuctionPage({
           <Field name="starting_price" label="Starting price (USD)" type="number" required />
           <Field name="minimum_increment" label="Minimum increment (USD)" type="number" value="25" required />
           <Field name="buy_now_price" label="Buy now price (optional)" type="number" />
-          <Field name="starts_at" label="Starts at" type="datetime-local" required />
-          <Field name="ends_at" label="Ends at" type="datetime-local" required />
+          <TimeField name="starts_at" label="Starts at" required />
+          <TimeField name="ends_at" label="Ends at" required />
         </div>
       </CommandForm>
     </div>

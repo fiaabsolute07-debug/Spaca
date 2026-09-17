@@ -105,11 +105,35 @@ export function money(value: string, name: string): bigint {
   return minor;
 }
 
-/** `datetime-local` value interpreted as UTC (the UI submits UTC wall-clock values). */
-export function instant(value: string, name: string): Date {
+/** The furthest any real zone sits from UTC, so a forged offset cannot move an instant somewhere it could never be. */
+const MAX_ZONE_OFFSET_MINUTES = 18 * 60;
+
+/**
+ * Minutes east of UTC that the person's browser was on at the moment they picked, sent alongside a `datetime-local`
+ * field as `<name>_offset`. Nothing sent — a page without JavaScript — means the wall clock is read as UTC.
+ */
+export function zoneOffset(form: FormData, name: string): number | null {
+  const raw = String(form.get(name) ?? '').trim();
+  if (!raw) return null;
+  if (!/^-?\d{1,4}$/.test(raw)) throw new CommandError(`${name} is invalid`);
+  const minutes = Number(raw);
+  if (!Number.isInteger(minutes) || Math.abs(minutes) > MAX_ZONE_OFFSET_MINUTES) throw new CommandError(`${name} is invalid`);
+  return minutes;
+}
+
+/**
+ * A `datetime-local` value. The wall clock carries no zone of its own, so the offset the browser reported for that
+ * moment turns it into an instant; without one it is read as UTC, which is what the field's hint then says.
+ */
+export function instant(value: string, name: string, offsetMinutes: number | null = null): Date {
   const date = new Date(`${value}Z`);
   if (!value || Number.isNaN(date.getTime())) throw new CommandError(`${name} must be a valid date`);
-  return date;
+  return offsetMinutes === null ? date : new Date(date.getTime() - offsetMinutes * 60_000);
+}
+
+/** The pair a `TimeField` submits: the wall clock in `name` and the zone it was read in. */
+export function instantField(form: FormData, name: string, required = true): Date {
+  return instant(text(form, name, required), name, zoneOffset(form, `${name}_offset`));
 }
 
 export function httpUrl(value: string, name: string): string {
