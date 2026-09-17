@@ -14,7 +14,7 @@ Owner decisions (2026-09-17): Vercel for the app, Supabase for Postgres and Stor
 3. From a trusted machine with those two values in the shell environment only:
    - `pnpm db:migrate` (with `DATABASE_MIGRATION_URL` set) — applies `drizzle/0001…0036` and records them in `public.schema_migrations`.
    - **Do not** run `pnpm db:seed`: fixtures are local test data.
-4. Storage: with `NEXT_PUBLIC_SUPABASE_URL` and `SUPABASE_SERVER_SECRET_KEY` in the shell environment, run `pnpm storage:setup` to create the nine private buckets with their size and type limits (it prints bucket names and results only).
+4. Storage: with `NEXT_PUBLIC_SUPABASE_URL` and `SUPABASE_SERVER_SECRET_KEY` in the shell environment, run `pnpm storage:setup` to create the nine private buckets with their size and type limits (it prints bucket names and results only; `--dry-run` lists them without calling Supabase). Supabase Free caps every upload at 50 MB; raise the global limit on Pro before videos (250 MB) and zips (100 MB) are uploaded.
 5. Keep *Data API* exposure off for the `app` schema; the app talks to Postgres directly.
 
 ## 2. External sign-in apps
@@ -63,6 +63,9 @@ Cron: `vercel.json` schedules `/api/cron/jobs`. Vercel Hobby runs crons at most 
 - Create a service, post a campaign, apply, list an auction item: each works until a payment step, which says payments open later.
 - `/admin/flags` shows checkout, bidding, collateral and payouts off.
 - `GET /api/cron/jobs` without the secret answers 401; the Vercel cron log shows a successful run.
+- `GET /api/health` answers `{"ok":true}`; point the uptime monitor at it.
+- Response headers include `Strict-Transport-Security`, `X-Frame-Options: DENY` and `X-Content-Type-Options: nosniff`.
+- Booking a service, locking collateral, bidding and accepting an offer show **Payments open later** instead of a button.
 
 ## 6. Rollback
 
