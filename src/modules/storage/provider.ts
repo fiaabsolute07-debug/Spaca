@@ -51,7 +51,8 @@ export class LocalStorageProvider implements StorageProvider {
   private readonly now: () => number;
 
   constructor(options: { root?: string; secret?: string; now?: () => number } = {}) {
-    this.root = resolve(options.root ?? process.env.LOCAL_STORAGE_DIR ?? '.local/storage');
+    // Resolved from the working directory at run time; the ignore comment keeps the bundler from tracing the whole project.
+    this.root = resolve(/* turbopackIgnore: true */ process.cwd(), options.root ?? process.env.LOCAL_STORAGE_DIR ?? '.local/storage');
     const secret = options.secret ?? process.env.STORAGE_SIGNING_SECRET ?? (process.env.NODE_ENV === 'production' ? '' : LOCAL_SIGNING_FALLBACK);
     if (secret.length < 16) throw new Error('STORAGE_SIGNING_SECRET is required for the storage adapter');
     this.secret = secret;

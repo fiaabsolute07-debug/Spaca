@@ -187,7 +187,8 @@ describe.skipIf(!RUN_DB)('XPL-05 — exclusive license, stock 1', () => {
     expect(winners).toHaveLength(1);
     expect(results.filter((r) => r.status === 409).every((r) => /exclusive license/.test(String(r.body.error)))).toBe(true);
     expect(results.filter((r) => r.status === 409)).toHaveLength(4);
-    const listed = await servicesRoute.GET(new Request(`${ORIGIN}/api/discovery/services?taxonomy=DIGITAL&q=${encodeURIComponent('xpl05')}`));
+    // Every run adds a "Launch kit xpl05"; newest first keeps this run's among the first results.
+    const listed = await servicesRoute.GET(new Request(`${ORIGIN}/api/discovery/services?taxonomy=DIGITAL&q=${encodeURIComponent('xpl05')}&sort=newest`));
     const item = ((await listed.json()) as { items: Array<{ id: string; availability_status: string }> }).items.find((i) => i.id === serviceId);
     expect(item?.availability_status).toBe('SOLD_OUT');
 
