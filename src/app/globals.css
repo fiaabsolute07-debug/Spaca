@@ -841,12 +841,13 @@ td small { display: block; color: var(--faint); margin-top: 3px; font-size: 12px
   .header-search { display: none; }
 }
 @media (max-width: 860px) {
+  /* Logo and account buttons on the first row, the section menus on their own row below (the bell, Fund and Account no longer fit beside them). */
+  .header { height: auto; min-height: 56px; flex-wrap: wrap; gap: 8px 16px; padding-block: 8px; }
+  .header nav { order: 3; width: 100%; margin: 0 -10px; overflow-x: auto; scrollbar-width: none; }
   .auth-layout { grid-template-columns: minmax(0, 1fr); gap: 24px; margin-top: 32px; }
   .admin-queue-grid, .admin-card-grid { grid-template-columns: minmax(0, 1fr); }
 }
 @media (max-width: 640px) {
-  .header { height: auto; min-height: 56px; flex-wrap: wrap; gap: 8px 16px; padding-block: 8px; }
-  .header nav { order: 3; width: 100%; margin: 0 -10px; overflow-x: auto; scrollbar-width: none; }
   .container { padding: 24px var(--gutter) 64px; }
   .service-grid, .form-grid { grid-template-columns: minmax(0, 1fr); }
   .filters { flex-wrap: wrap; border-radius: var(--radius); }

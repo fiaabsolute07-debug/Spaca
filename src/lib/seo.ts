@@ -12,7 +12,7 @@ export function canonicalUrl(path: string): string {
 }
 
 /** Private surfaces that must never be indexed; also sent as X-Robots-Tag by next.config.ts. */
-export const PRIVATE_PATH_PREFIXES = ['/orders', '/dashboard', '/admin', '/buyer', '/creator', '/settings', '/api', '/sign-in', '/sign-up', '/reset-password'] as const;
+export const PRIVATE_PATH_PREFIXES = ['/orders', '/dashboard', '/admin', '/buyer', '/creator', '/settings', '/notifications', '/api', '/sign-in', '/sign-up', '/reset-password'] as const;
 
 export async function getSitemapEntries(): Promise<{ url: string; lastModified: Date }[]> {
   const [services, creators, requests, auctions] = await Promise.all([

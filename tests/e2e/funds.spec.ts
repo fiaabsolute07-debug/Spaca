@@ -7,8 +7,10 @@ test('the Fund button beside Account shows money at a glance and leads to the Fu
   const actions = page.locator('.header-actions');
   const fund = actions.getByRole('button', { name: 'Fund', exact: true });
   const account = actions.getByRole('button', { name: 'Account', exact: true });
-  // Fund sits immediately before Account.
-  await expect(actions.locator('button').first()).toHaveText(/Fund/);
+  // The notification bell, then Fund, then Account.
+  const order = await actions.locator(':scope > * button[aria-expanded]').evaluateAll((buttons) => buttons.map((button) => button.getAttribute('aria-label') ?? button.textContent?.trim() ?? ''));
+  // The Account button starts with the account's initial.
+  expect(order).toEqual([expect.stringMatching(/^Notifications/), 'Fund', expect.stringMatching(/Account$/)]);
   await expect(account).toBeVisible();
   await waitForHydration(fund);
 

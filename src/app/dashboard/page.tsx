@@ -1,128 +1,144 @@
-import { listInAppNotifications } from '@/modules/notifications/store';
-import { isCreator } from '@/lib/account';
 import Link from 'next/link';
-import { getAccountSummary, getDashboardData } from '@/lib/read-model';
-import { Badge, Empty, OrderList, date, money, num, row, rows } from '@/components/ui';
+import { ArrowRight, Briefcase, ClipboardList, Gavel, Handshake, Megaphone, Package, Search, type LucideIcon } from 'lucide-react';
+import { getAccountSummary } from '@/lib/read-model';
+import { getOverview, type ActionItem } from '@/modules/workspace/overview';
+import { Badge, date, humanize, money, toneOf } from '@/components/ui';
 import { Notices } from '@/components/notices';
 import { PageHeading } from '@/components/page-heading';
 import { requireActorOrLoginPrompt } from '@/components/require-actor';
 import type { PageProps } from '@/components/page-props';
+import styles from './overview.module.css';
 
 export const dynamic = 'force-dynamic';
 
-export default async function DashboardPage({
-  searchParams
-}: PageProps) {
+const KIND: Record<ActionItem['kind'], { label: string; icon: LucideIcon }> = {
+  order: { label: 'Order', icon: Package },
+  offer: { label: 'Offer', icon: Handshake },
+  campaign: { label: 'Campaign', icon: Megaphone },
+  auction: { label: 'Auction', icon: Gavel },
+};
+
+/** "due in 3 d", "due in 5 h", "overdue by 2 h", for the action list. */
+function dueLabel(iso: string | null, now: number): string | null {
+  if (!iso) return null;
+  const minutes = Math.round((new Date(iso).getTime() - now) / 60_000);
+  const span = (value: number) => (value >= 2 * 24 * 60 ? `${Math.floor(value / (24 * 60))} d` : value >= 60 ? `${Math.floor(value / 60)} h` : `${Math.max(1, value)} min`);
+  return minutes >= 0 ? `due in ${span(minutes)}` : `overdue by ${span(-minutes)}`;
+}
+
+/**
+ * The workspace overview. One question per band: what needs me now (the action list, most urgent first), how things
+ * stand (four numbers), what happened lately (recent orders), and where to go next (shortcuts). Notifications live in
+ * the header bell.
+ */
+export default async function DashboardPage({ searchParams }: PageProps) {
   const query = await searchParams;
-  const route = "/dashboard";
-  const {
-    actor,
-    prompt
-  } = await requireActorOrLoginPrompt(route, query);
+  const { actor, prompt } = await requireActorOrLoginPrompt('/dashboard', query);
   if (!actor) return prompt;
-  const notices = <Notices query={query} />;
-  const d = row(await getDashboardData(actor));
-  const [notifications, account] = await Promise.all([listInAppNotifications(actor.id, 8), getAccountSummary(actor)]);
-  const stats = row(d.stats);
-  const workload = row(d.workload);
-  const orders = rows(d.orders);
-  const creatorAccount = isCreator(actor);
-  return <main className="container">
-      <section>
-        {notices}
-        {!account.onboarded && <Link className="onboard-nudge" href="/welcome">
-          <span className="onboard-nudge-text">
-            <strong>Finish setting up your {creatorAccount ? 'creator profile' : 'project'}</strong>
-            <span>{creatorAccount
-              ? 'Add a photo, your creator name and a short introduction. Publishing services and applying to campaigns wait until then.'
-              : 'Add your logo, the project name and a short introduction. Posting a campaign waits until then.'}</span>
-          </span>
-          <span className="button button-dark compact">Finish setup</span>
-        </Link>}
-        <PageHeading
-          eyebrow="Your workspace"
-          title="Keep good work moving."
-          description={creatorAccount ? 'Manage your services, deliver orders and find new campaigns.' : 'Hire creators, follow your orders and run campaigns from one place.'}
-        />
-        <div className="stats">
-          <div className="stat">
-            <span>Completed orders</span>
-            <strong>
-              {num(stats.completed_orders)}
-            </strong>
-          </div>
-          <div className="stat">
-            <span>Active orders</span>
-            <strong>
-              {num(stats.active_orders)}
-            </strong>
-          </div>
-          <div className="stat">
-            <span>{creatorAccount ? 'Completed sales' : 'Funded orders'}</span>
-            <strong>
-              {money(creatorAccount ? stats.sales_minor : stats.funded_minor)}
-            </strong>
-          </div>
-          {creatorAccount && <div className="stat">
-            <span>Orders in progress</span>
-            <strong>
-              {num(workload.in_flight_units)}
-            </strong>
-          </div>}
+  const [overview, account] = await Promise.all([getOverview(actor), getAccountSummary(actor)]);
+  const { creator } = overview;
+  const now = Date.now();
+  const shortcuts: { href: string; label: string; note: string; icon: LucideIcon }[] = creator
+    ? [
+      { href: '/creator/services/new', label: 'New service', note: 'A clear scope, price and samples', icon: Briefcase },
+      { href: '/requests', label: 'Open campaigns', note: 'Apply with your approach and quote', icon: Megaphone },
+      { href: '/buyer/orders', label: 'All orders', note: 'Everything you are delivering', icon: ClipboardList },
+      { href: '/auctions/new', label: 'List an item', note: 'Auction a WL spot or allocation', icon: Gavel },
+    ]
+    : [
+      { href: '/buyer/requests/new', label: 'Post a brief', note: 'One brief, many creators', icon: Megaphone },
+      { href: '/explore', label: 'Find creators', note: 'Book a service directly', icon: Search },
+      { href: '/buyer/orders', label: 'All orders', note: 'Pay, review and approve', icon: ClipboardList },
+      { href: '/auctions', label: 'Auctions', note: 'WL spots, mints, allocations', icon: Gavel },
+    ];
+
+  return <main className={`container ${styles.overview}`}>
+    <Notices query={query} />
+    {!account.onboarded && <Link className="onboard-nudge" href="/welcome">
+      <span className="onboard-nudge-text">
+        <strong>Finish setting up your {creator ? 'creator profile' : 'project'}</strong>
+        <span>{creator
+          ? 'Add a photo, your creator name and a short introduction. Publishing services and applying to campaigns wait until then.'
+          : 'Add your logo, the project name and a short introduction. Posting a campaign waits until then.'}</span>
+      </span>
+      <span className="button button-dark compact">Finish setup</span>
+    </Link>}
+
+    <header className={styles.head}>
+      <PageHeading eyebrow={`Overview · ${creator ? 'Creator' : 'Buyer'} account`} title="Keep good work moving."
+        description={creator ? 'Deliver what is due, answer offers and find your next campaign.' : 'Pay, review and approve what is waiting, and brief your next campaign.'} />
+      <div className={styles.headActions}>
+        {creator
+          ? <><Link className="button button-dark" href="/creator/services/new">New service</Link><Link className="button button-outline" href="/requests">Find campaigns</Link></>
+          : <><Link className="button button-dark" href="/buyer/requests/new">Post a brief</Link><Link className="button button-outline" href="/explore">Find creators</Link></>}
+      </div>
+    </header>
+
+    <dl className={styles.stats} aria-label="At a glance">
+      <div className={overview.todo ? styles.statAlert : undefined}><dt>Needs your action</dt><dd>{overview.todo}</dd></div>
+      <div><dt>Active orders</dt><dd>{overview.stats.active}</dd></div>
+      <div><dt>Completed</dt><dd>{overview.stats.completed}</dd></div>
+      <div><dt>{creator ? 'Earned' : 'Funded'}</dt><dd>{money(overview.stats.moneyMinor)}</dd></div>
+    </dl>
+
+    <div className={styles.grid}>
+      <section className={styles.band} aria-labelledby="overview-actions">
+        <div className={styles.bandHead}>
+          <h2 id="overview-actions">Needs your action</h2>
+          {overview.actions.length > 8 && <span className={styles.more}>Showing the 8 most urgent of {overview.actions.length}</span>}
         </div>
-        <div className="section-heading">
-          <h2>Notifications</h2>
-        </div>
-        {notifications.length ? <div className="panel">
-          {notifications.map(n => <Link className="record" key={n.id} href={n.link_path}>
-            <strong>
-              {n.subject}
-            </strong>
-            <p>
-              {n.body}
-            </p>
-            <span className="muted">
-              {date(n.created_at)}
-            </span>
-          </Link>)}
-        </div> : <p className="muted">No notifications yet.</p>}
-        <div className="section-heading">
-          <h2>Recent orders</h2>
-          <Link className="text-link" href="/buyer/orders">View all ›</Link>
-        </div>
-        {orders.length ? <OrderList orders={orders.slice(0, 8)} /> : <Empty title="Your next collaboration starts here">
-          {creatorAccount ? <Link href="/creator/services/new" className="text-link">Publish your first service ›</Link> : <Link href="/explore" className="text-link">Find a creator ›</Link>}
-        </Empty>}
-        <div className="section-heading">
-          <h2>Shortcuts</h2>
-        </div>
-        {creatorAccount ? <div className="service-grid">
-          <Link className="panel" href="/creator/services/new">
-            <h3>Publish a service</h3>
-            <p>Set a clear scope, price and samples so buyers can book you.</p>
-          </Link>
-          <Link className="panel" href="/requests">
-            <h3>Apply to campaigns</h3>
-            <p>Send your approach and quote to open briefs from projects.</p>
-          </Link>
-          <Link className="panel" href="/settings/profile">
-            <h3>Complete your profile</h3>
-            <p>A photo, headline and linked accounts help buyers choose you.</p>
-          </Link>
-        </div> : <div className="service-grid">
-          <Link className="panel" href="/explore">
-            <h3>Find creators</h3>
-            <p>Filter by category, price and delivery time, then book directly.</p>
-          </Link>
-          <Link className="panel" href="/buyer/requests/new">
-            <h3>Post a brief</h3>
-            <p>Describe the campaign once and compare creators&apos; approaches.</p>
-          </Link>
-          <Link className="panel" href="/auctions">
-            <h3>Browse auctions</h3>
-            <p>Bid on WL spots, GTD mints and pre-market allocations, with the seller’s collateral locked.</p>
-          </Link>
-        </div>}
+        {overview.actions.length ? <ol className={styles.actions}>
+          {overview.actions.slice(0, 8).map((item) => {
+            const kind = KIND[item.kind];
+            const due = dueLabel(item.dueAt, now);
+            return <li key={item.key}>
+              <Link className={`${styles.action}${item.waiting ? ` ${styles.waiting}` : ''}`} href={item.href}>
+                <span className={styles.actionIcon} aria-hidden><kind.icon size={17} /></span>
+                <span className={styles.actionText}>
+                  <strong>{item.action}</strong>
+                  <span><span className={styles.kind}>{kind.label}</span> {item.title}</span>
+                </span>
+                {due && <span className={`${styles.due}${due.startsWith('overdue') ? ` ${styles.overdue}` : ''}`} title={date(item.dueAt)}>{due}</span>}
+                <ArrowRight size={16} className={styles.go} aria-hidden />
+              </Link>
+            </li>;
+          })}
+        </ol> : <div className={styles.clear}><strong>You’re all caught up.</strong><span>New orders, offers and deliveries that need you will show here.</span></div>}
       </section>
+
+      <nav className={styles.band} aria-labelledby="overview-shortcuts">
+        <div className={styles.bandHead}><h2 id="overview-shortcuts">Shortcuts</h2></div>
+        <ul className={styles.shortcuts}>
+          {shortcuts.map((shortcut) => <li key={shortcut.href}>
+            <Link href={shortcut.href}>
+              <span className={styles.actionIcon} aria-hidden><shortcut.icon size={16} /></span>
+              <span className={styles.actionText}><strong>{shortcut.label}</strong><span>{shortcut.note}</span></span>
+            </Link>
+          </li>)}
+        </ul>
+      </nav>
+    </div>
+
+    <section className={styles.band} aria-labelledby="overview-recent">
+      <div className={styles.bandHead}>
+        <h2 id="overview-recent">Recent orders</h2>
+        {overview.totalOrders > 0 && <Link className="text-link" href="/buyer/orders">View all ›</Link>}
+      </div>
+      {overview.recent.length ? <div className="table-wrap">
+        <table>
+          <thead><tr><th>Order</th><th>{creator ? 'Buyer' : 'Creator'}</th><th>Status</th><th>Amount</th><th>Created</th></tr></thead>
+          <tbody>
+            {overview.recent.map((order) => <tr key={order.id}>
+              <td><Link className="text-link" href={`/orders/${order.id}`}>{order.title}</Link></td>
+              <td>{order.counterpart}</td>
+              <td><Badge tone={toneOf(order.status)}>{humanize(order.status)}</Badge></td>
+              <td className="mono">{money(order.amountMinor)}</td>
+              <td>{date(order.createdAt)}</td>
+            </tr>)}
+          </tbody>
+        </table>
+      </div> : <div className={styles.clear}><strong>No orders yet.</strong>
+        <span>{creator ? <Link className="text-link" href="/creator/services/new">Publish your first service ›</Link> : <Link className="text-link" href="/explore">Find a creator ›</Link>}</span></div>}
+    </section>
   </main>;
 }
