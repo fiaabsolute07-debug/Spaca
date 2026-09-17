@@ -54,7 +54,7 @@ export function NewServiceForm({ accounts }: { accounts: Row[] }) {
     <div className="form-grid">
       <Field name="title" label="Service title" required placeholder="Launch story and landing page copy" />
       <Field name="niche" label="Niche or specialty" placeholder="Brand strategy, video, design…" />
-      <Field name="price" label="Price (USD)" type="number" required placeholder="500" />
+      <Field name="price" label="Price (USD)" type="number" required placeholder="40" />
       <Field name="turnaround_hours" label="Delivery time (hours)" type="number" value="72" required />
     </div>
     <Field name="description" label="Scope and deliverables" type="textarea" required

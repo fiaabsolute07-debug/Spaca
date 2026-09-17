@@ -342,7 +342,7 @@ Commands:
 
 - Upload purpose `AVATAR` (images only, bucket `public-avatars`). Commands `set_avatar {asset_ids}` (own READY avatar; profile must exist) and `remove_avatar`. `update_profile` also takes `headline` (≤120), `location` (≤80), `languages` (≤120).
 - `GET /api/avatars/[assetId]` → 302 to a short-lived signed URL only while an ACTIVE user's profile shows that photo; otherwise 404. Reads expose `avatar_asset_id` on service rows, search results, creator data and the dashboard profile (plus `headline`, `location`, `languages`, `public_samples`). `<Avatar name assetId size>` renders the photo or the initial.
-- `/explore` query: `q`, `category`, `price` (`under_100`, `100_500`, `500_1000`, `over_1000`), `delivery` (hours: 24, 72, 168, 336), `niche`, `available=1`, `sort` (`relevance` with q, `newest`, `price_asc`, `price_desc`, `turnaround`), `cursor`, `selected`. 20 results per page; `getExploreData()` returns items with description, terms, up to 3 samples, completed jobs and rating (only with 3+ reviews), `matched` count, `next_cursor`, niches and a fallback `error`.
+- `/explore` query: `q`, `category`, `price` (`under_25`, `25_100`, `100_500`, `over_500`), `delivery` (hours: 24, 72, 168, 336), `niche`, `available=1`, `sort` (`relevance` with q, `newest`, `price_asc`, `price_desc`, `turnaround`), `cursor`, `selected`. 20 results per page; `getExploreData()` returns items with description, terms, up to 3 samples, completed jobs and rating (only with 3+ reviews), `matched` count, `next_cursor`, niches and a fallback `error`.
 - Wide screens (≥1024px) show a sticky detail panel for the selected card (`selected` kept in the URL); narrower screens link cards straight to the service page. Filters submit on change; "Accepting orders" is a link switch; active filters show as removable chips.
 
 ## 2026-09-15 additions: separate buyer and creator accounts (drizzle/0019)
@@ -591,6 +591,20 @@ six commits per `docs/BRAND_ROLLOUT_PROMPT.md`. It replaces the neutral Apple-li
 - **Live configuration:** `X_PROVIDER=live`, `X_CLIENT_ID`, optional `X_CLIENT_SECRET` (confidential client), `X_BEARER_TOKEN` (refreshes); callback URL `<APP_BASE_URL>/api/x/callback` registered in the X developer app with pay-per-use credits.
 
 
+
+## 2026-09-17 additions: prices read like a post, not a retainer
+
+- **Explore price bands** now start where this marketplace's work actually costs: **Under $25**, **$25 – $100**,
+  **$100 – $500**, **$500+**. The old lowest band was "Under $100", which put every small job in one bucket, and
+  the "$500 – $1,000" and "$1,000+" bands described work nobody lists. `100_500` keeps its key because the filter
+  is a bookmarkable URL; a link carrying a retired key (`under_100`, `500_1000`, `over_1000`) still loads and is
+  simply read as no price filter.
+- **The examples in forms** were quietly telling people what to charge, and all of them started at three figures:
+  a new service suggested **$500**, a campaign **$1,200** with a **$400** cap per creator, and a reward pool
+  **$500**. They now read **$40**, **$150**, **$50** and **$100**. An item auction's minimum bid step starts at
+  **$5** instead of $10, so a cheap listing can still be bid up in sensible steps.
+- These are placeholders and defaults only — nothing is enforced, no price is capped, and §11.7's micro budgets
+  of a few dollars per creator stay valid.
 
 ## 2026-09-17 additions: My services leads with the work, not the catalogue
 

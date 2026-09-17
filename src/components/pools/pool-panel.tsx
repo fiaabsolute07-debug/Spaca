@@ -110,7 +110,7 @@ export function PoolPanel({ data, owner, route, requestId, networks, cryptoEnabl
                 {assets.map((asset) => <option key={str(asset.asset_id)} value={str(asset.asset_id)}>{str(asset.symbol)} · {str(asset.kind).toLowerCase()}</option>)}
               </select>
             </label>
-            <Field name="amount" label="Amount to deposit" required placeholder="500" />
+            <Field name="amount" label="Amount to deposit" required placeholder="100" />
           </div>
           <p className="muted">Send exactly the amount shown with its reference. The deposit counts once the chain confirms it; screenshots are never accepted.</p>
         </CommandForm>

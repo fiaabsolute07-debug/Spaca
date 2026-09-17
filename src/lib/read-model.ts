@@ -519,11 +519,16 @@ export async function getMyBids(actor: Actor) {
 }
 
 export const EXPLORE_PAGE_SIZE = 20;
+/**
+ * Price bands for a marketplace whose unit of work is a post or a thread, not a retainer: §11.7 asks it to serve
+ * budgets of a few dollars per creator, so the bands start where that work actually costs. `100_500` keeps its
+ * key because the filter is a bookmarkable URL.
+ */
 export const EXPLORE_PRICES: Record<string, { label: string; min: string | null; max: string | null }> = {
-  under_100: { label: 'Under $100', min: null, max: '100' },
+  under_25: { label: 'Under $25', min: null, max: '25' },
+  '25_100': { label: '$25 – $100', min: '25', max: '100' },
   '100_500': { label: '$100 – $500', min: '100', max: '500' },
-  '500_1000': { label: '$500 – $1,000', min: '500', max: '1000' },
-  over_1000: { label: '$1,000+', min: '1000', max: null },
+  over_500: { label: '$500+', min: '500', max: null },
 };
 export const EXPLORE_DELIVERY: Record<string, string> = { '24': 'Within 24 hours', '72': 'Within 3 days', '168': 'Within 7 days', '336': 'Within 14 days' };
 export const EXPLORE_SORTS: Record<string, string> = { relevance: 'Best match', newest: 'Newest', price_asc: 'Price: low to high', price_desc: 'Price: high to low', turnaround: 'Fastest delivery' };

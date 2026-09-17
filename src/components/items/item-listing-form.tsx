@@ -139,7 +139,7 @@ export function ItemListingForm({ idempotencyKey, canSellAsProject, defaults }: 
         </div>
         <div className="field">
           <label htmlFor={`${id}-increment`}>Minimum increment (USD)</label>
-          <input id={`${id}-increment`} name="min_increment" type="number" min="0.01" step="0.01" inputMode="decimal" required defaultValue="10" />
+          <input id={`${id}-increment`} name="min_increment" type="number" min="0.01" step="0.01" inputMode="decimal" required defaultValue="5" />
         </div>
         <div className="field">
           <label htmlFor={`${id}-buy-now`}>Buy now price <span className="items-optional">(optional)</span></label>

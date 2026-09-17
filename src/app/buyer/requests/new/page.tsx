@@ -55,8 +55,8 @@ export default async function NewRequestPage({
         <FileUploadField purpose="REQUEST_IMAGE" name="image_ids" label="Project images (optional)" help="Up to 6 PNG, JPG, GIF or WebP images: product screenshots, brand visuals or references creators should see." maxFiles={6} />
         <h3 className="brief-section">Budget and timing</h3>
         <div className="form-grid">
-          <Field name="budget" label="Total budget (USD, optional if you set a cap)" type="number" placeholder="1200" />
-          <Field name="per_creator_cap" label="Per creator cap (USD, optional)" type="number" placeholder="400" />
+          <Field name="budget" label="Total budget (USD, optional if you set a cap)" type="number" placeholder="150" />
+          <Field name="per_creator_cap" label="Per creator cap (USD, optional)" type="number" placeholder="50" />
           <Field name="target_hires" label="Creators needed" type="number" value="1" required />
           <TimeField name="application_deadline" label="Applications close (optional)" />
           <TimeField name="deadline" label="Delivery deadline" required />
