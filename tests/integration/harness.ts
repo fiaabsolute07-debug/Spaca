@@ -25,6 +25,45 @@ export async function createUser(label: string, roles: string[] = ['buyer', 'cre
   return { id: user!.id, email, token: await createSession(user!.id) };
 }
 
+/** The routes a sign-up with X goes through; each suite imports them after mocking `next/headers`. */
+export type XSignUpRoutes = { start: (request: Request) => Promise<Response>; callback: (request: Request) => Promise<Response> };
+
+/**
+ * "Continue with X" the way the dialogs do it (drizzle/0035): the start route with the intent (and type for sign-up), the
+ * sandbox X "authorizes" as `username`, X comes back to the callback. Returns where the callback sends the browser.
+ */
+export async function continueWithX(routes: XSignUpRoutes, input: { intent: 'signin' | 'signup'; username: string; role?: string; returnTo?: string; code?: string }) {
+  const form = new FormData();
+  form.set('intent', input.intent);
+  if (input.role !== undefined) form.set('role', input.role);
+  form.set('return_to', input.returnTo ?? '/dashboard');
+  sessionState.token = null;
+  const started = await routes.start(new Request(`${ORIGIN}/api/auth/x`, { method: 'POST', headers: { origin: ORIGIN }, body: form }));
+  const startedAt = new URL(started.headers.get('location') ?? '/', ORIGIN);
+  const state = startedAt.searchParams.get('state') ?? '';
+  const response = await routes.callback(new Request(`${ORIGIN}/api/x/callback?${new URLSearchParams({ state, code: input.code ?? `mock.${input.username}` }).toString()}`));
+  const location = new URL(response.headers.get('location') ?? '/', ORIGIN);
+  return { started, startedAt, state, response, location, error: location.searchParams.get('error'), message: location.searchParams.get('message') };
+}
+
+/** The account a sandbox X username signs in to, if any. */
+export async function accountForX(username: string) {
+  const { mockProfile } = await import('@/modules/x/provider');
+  const [user] = await sql<{ id: string; display_name: string; roles: string[]; email: string | null; is_test: boolean; onboarded_at: Date | null }[]>`select u.id,u.display_name,u.roles,u.email,u.is_test,u.onboarded_at
+    from app.user_identities i join app.users u on u.id=i.user_id where i.provider='X' and i.source='MOCK' and i.subject=${mockProfile(username).xUserId}`;
+  return user ?? null;
+}
+
+/**
+ * Sign-up with X, then a session for the new account, because the test cookie jar keeps no cookies. `user` and `actor`
+ * are null when no account was created (the redirect's `error` says why).
+ */
+export async function signUpWithX(routes: XSignUpRoutes, role: string, username = `t${randomUUID().replaceAll('-', '').slice(0, 12)}`, returnTo = '/dashboard') {
+  const result = await continueWithX(routes, { intent: 'signup', role, username, returnTo });
+  const user = await accountForX(username);
+  return { ...result, username, user, actor: user ? { id: user.id, email: user.email ?? '', token: await createSession(user.id) } satisfies TestUser : null };
+}
+
 export type JsonResult = { status: number; body: Record<string, unknown> };
 
 export async function callRoute(

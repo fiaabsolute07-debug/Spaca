@@ -1,18 +1,21 @@
 import { expect, test } from '@playwright/test';
-import { TINY_PNG, completeSetup, login, openAccountMenu, signUpInDialog, submit, uniqueSuffix, visit, waitForHydration } from './helpers';
+import { TINY_PNG, authorizeSandboxX, completeSetup, login, openAccountMenu, signUpInDialog, submit, uniqueSuffix, visit, waitForHydration } from './helpers';
 
 test('setup comes first after sign-up: it previews the profile, asks for the logo, and waits for the account until done', async ({ page }) => {
   await visit(page, '/explore');
   const start = page.getByRole('banner').getByRole('link', { name: 'Get started', exact: true });
   await waitForHydration(start);
   await start.click();
-  const email = await signUpInDialog(page, 'Buyer');
+  const username = await signUpInDialog(page, 'Buyer');
+  const xName = username[0]!.toUpperCase() + username.slice(1);
   await expect(page.getByRole('heading', { level: 1, name: 'Set up your project' })).toBeVisible();
   await expect(page.getByText('Buyer account · Set up')).toBeVisible();
+  await expect(page.getByRole('status')).toContainText(`Signed up with X as @${username}.`);
 
-  // The preview follows what is typed.
+  // Setup starts from the X account, and the preview follows what is typed.
   const preview = page.getByRole('complementary', { name: 'Preview' });
-  await expect(preview.getByText('Your project name')).toBeVisible();
+  await expect(page.getByLabel('Project name')).toHaveValue(xName);
+  await expect(preview.getByText(xName, { exact: true })).toBeVisible();
   const name = `Arcadia ${uniqueSuffix().slice(-6)}`;
   await page.getByLabel('Project name').fill(name);
   await page.getByLabel('What you are building').fill('A restaking protocol opening its public testnet');
@@ -28,7 +31,7 @@ test('setup comes first after sign-up: it previews the profile, asks for the log
   // Without a logo, setup says so and keeps everything typed.
   await page.getByRole('button', { name: 'Finish setup' }).click();
   await expect(page.getByRole('alert').filter({ hasText: 'Add your project logo.' })).toBeVisible();
-  await expect(page).toHaveURL(/\/welcome$/);
+  await expect(page).toHaveURL(/\/welcome(\?|$)/);
   await expect(page.getByLabel('Project name')).toHaveValue(name);
 
   // Leaving setup for later: the workspace keeps asking, and the Account menu marks it.
@@ -37,7 +40,7 @@ test('setup comes first after sign-up: it previews the profile, asks for the log
   await expect(nudge).toBeVisible();
   let menu = await openAccountMenu(page);
   const card = page.getByRole('region', { name: 'Signed in as' });
-  await expect(card.getByText('New project')).toBeVisible();
+  await expect(card.getByText(xName)).toBeVisible();
   await expect(card.getByText('Buyer', { exact: true })).toBeVisible();
   const panel = page.locator('.account-menu-panel');
   await expect(panel.getByRole('link', { name: 'Finish setup' })).toHaveAttribute('href', '/welcome');
@@ -50,10 +53,10 @@ test('setup comes first after sign-up: it previews the profile, asks for the log
   await waitForHydration(logIn);
   await logIn.click();
   const dialog = page.getByRole('dialog', { name: 'Sign in to your account' });
-  await dialog.getByRole('button', { name: 'Continue with email' }).click();
-  await dialog.getByLabel('Email address').fill(email);
-  await dialog.getByLabel(/^Password/).fill('a-long-test-password');
-  await Promise.all([page.waitForURL(/\/welcome/), dialog.getByRole('button', { name: 'Sign in', exact: true }).click()]);
+  const x = dialog.getByRole('button', { name: 'Continue with X' });
+  await waitForHydration(x);
+  await x.click();
+  await authorizeSandboxX(page, username, /\/welcome/);
 
   await completeSetup(page, { name, headline: 'A restaking protocol opening its public testnet', intro: 'Arcadia lets stakers restake once and secure several networks. Testnet opens in October.' });
   await expect(page.getByRole('link', { name: /Finish setting up/ })).toHaveCount(0);

@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MockPaymentProvider } from '@/modules/payments/providers';
-import { RUN_DB, callRoute, createPublishedService, createUser, key, runId, sessionState, type TestUser } from './harness';
+import { RUN_DB, accountForX, callRoute, continueWithX, createPublishedService, createUser, key, runId, sessionState, type TestUser } from './harness';
 
 vi.mock('next/headers', () => ({
   cookies: async () => {
@@ -11,15 +11,14 @@ vi.mock('next/headers', () => ({
 }));
 
 const commands = await import('@/app/api/commands/route');
-const auth = await import('@/app/api/auth/route');
+const xStart = await import('@/app/api/auth/x/route');
+const xCallback = await import('@/app/api/x/callback/route');
 const funding = await import('@/modules/payments/funding');
 const { sql } = await import('@/lib/db');
 
 const command = (actor: TestUser | null, fields: Record<string, string>) => callRoute(commands.POST, '/api/commands', actor, fields);
-const signup = (fields: Record<string, string>) => callRoute(auth.POST, '/api/auth', null, {
-  action: 'signup', email: `it-${runId}-${randomUUID().slice(0, 6)}@example.test`, password: 'local-account-password', display_name: 'Account type test', ...fields,
-});
-const rolesOf = async (email: string) => (await sql<{ roles: string[] }[]>`select roles from app.users where email=${email}`)[0]?.roles;
+const xName = () => `a${randomUUID().replaceAll('-', '').slice(0, 12)}`;
+const signup = (username: string, role: string) => continueWithX({ start: xStart.POST, callback: xCallback.GET }, { intent: 'signup', username, role });
 const brief = 'Account separation brief with the audience, the goal and three headline options.';
 
 beforeEach(() => {
@@ -34,14 +33,20 @@ afterAll(async () => {
 
 describe.skipIf(!RUN_DB)('Separate buyer and creator accounts (drizzle/0019)', () => {
   it('sign-up creates exactly one account type and never grants anything else from the form', async () => {
-    const creatorEmail = `it-${runId}-creator-${randomUUID().slice(0, 6)}@example.test`;
-    expect((await signup({ email: creatorEmail, role: 'creator' })).status).toBe(200);
-    expect(await rolesOf(creatorEmail)).toEqual(['creator']);
+    const creator = xName();
+    expect((await signup(creator, 'creator')).error).toBeNull();
+    expect((await accountForX(creator))!.roles).toEqual(['creator']);
+    const buyer = xName();
+    expect((await signup(buyer, 'buyer')).error).toBeNull();
+    expect((await accountForX(buyer))!.roles).toEqual(['buyer']);
 
-    for (const role of ['buyer', '', 'admin', 'buyer,creator']) {
-      const email = `it-${runId}-buyer-${randomUUID().slice(0, 6)}@example.test`;
-      expect((await signup({ email, role })).status).toBe(200);
-      expect(await rolesOf(email)).toEqual(['buyer']);
+    // Anything else is refused before X is even asked, and no account is made.
+    for (const role of ['', 'admin', 'buyer,creator']) {
+      const username = xName();
+      const refused = await signup(username, role);
+      expect(refused.startedAt.pathname).toBe('/sign-up');
+      expect(refused.startedAt.searchParams.get('error')).toBe('Choose Buyer or Creator first.');
+      expect(await accountForX(username)).toBeNull();
     }
   });
 

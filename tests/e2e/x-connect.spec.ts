@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { baseURL, creatorName, login, signUpInDialog, submit, visit, waitForHydration } from './helpers';
+import { baseURL, creatorName, login, signUpInDialog, submit, visit, waitForHydration, xUsername } from './helpers';
 
 // creator_c always connects the same sandbox username, so repeated runs reuse one linked X account.
 const SANDBOX_USERNAME = 'ari_makes';
@@ -83,16 +83,10 @@ test('a buyer account cannot connect X, and cancelling the sandbox consent conne
   await expect(page.getByRole('region', { name: 'X account' }).getByRole('button', { name: 'Connect X' })).toBeVisible();
 });
 
-test('a new creator can start setup from X: name, handle, bio and link come filled in, and stay editable', async ({ page }) => {
+test('a creator who signs up with X starts setup from it: name, handle, bio and link come filled in, and stay editable', async ({ page }) => {
   await visit(page, '/sign-up?role=creator');
-  await signUpInDialog(page, 'Creator');
-  const step = page.getByRole('region', { name: /Start from X/ });
-  await expect(step).toBeVisible();
-  const username = `n${Date.now().toString().slice(-12)}`;
-  await Promise.all([page.waitForURL(/\/dev\/x-authorize\?/), step.getByRole('button', { name: 'Connect X' }).click()]);
-  await page.getByLabel('Sandbox X username').fill(username);
-  await Promise.all([page.waitForURL(/\/welcome\?/), page.getByRole('button', { name: 'Authorize app' }).click()]);
-  await expect(page.getByRole('status')).toContainText(`X account @${username} connected.`);
+  const username = await signUpInDialog(page, 'Creator', xUsername().toLowerCase());
+  await expect(page.getByRole('status')).toContainText(`Signed up with X as @${username}.`);
 
   const connected = page.getByRole('region', { name: /Start from X/ });
   await expect(connected.getByText(/^Connected\./)).toBeVisible();

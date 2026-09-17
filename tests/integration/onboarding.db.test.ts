@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MockPaymentProvider } from '@/modules/payments/providers';
-import { ORIGIN, RUN_DB, callRoute, commandInstant, createPublishedService, createUser, key, runId, sessionState, type TestUser } from './harness';
+import { ORIGIN, RUN_DB, callRoute, commandInstant, continueWithX, createPublishedService, createUser, key, sessionState, signUpWithX, type TestUser } from './harness';
 
 vi.mock('next/headers', () => ({
   cookies: async () => {
@@ -14,28 +14,28 @@ vi.mock('next/headers', () => ({
 }));
 
 const commands = await import('@/app/api/commands/route');
-const auth = await import('@/app/api/auth/route');
+const xStart = await import('@/app/api/auth/x/route');
+const xCallback = await import('@/app/api/x/callback/route');
 const intents = await import('@/app/api/assets/upload-intents/route');
 const finalizeRoute = await import('@/app/api/assets/[id]/finalize/route');
 const devUpload = await import('@/app/api/dev/storage/upload/[token]/route');
 const funding = await import('@/modules/payments/funding');
 const storage = await import('@/modules/storage/provider');
-const { createSession } = await import('@/lib/auth');
 const { sql } = await import('@/lib/db');
 
-const PASSWORD = 'local-onboarding-password';
 const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, ...new TextEncoder().encode('IHDR onboarding suite logo pixels')]);
 let root = '';
 
 const command = (actor: TestUser | null, fields: Record<string, string>) => callRoute(commands.POST, '/api/commands', actor, fields);
 const params = <T extends Record<string, string>>(value: T) => ({ params: Promise.resolve(value) });
 
-/** Sign-up through the real route, then a session for the new account (the test cookie jar does not keep cookies). */
-async function signUp(role: 'buyer' | 'creator', extra: Record<string, string> = {}) {
-  const email = `it-${runId}-onboard-${role}-${randomUUID().slice(0, 6)}@example.test`;
-  const response = await callRoute(auth.POST, '/api/auth', null, { action: 'signup', email, password: PASSWORD, role, ...extra });
-  const [user] = await sql<{ id: string; display_name: string; onboarded_at: Date | null }[]>`select id,display_name,onboarded_at from app.users where email=${email}`;
-  return { response, user: user!, actor: { id: user!.id, email, token: await createSession(user!.id) } satisfies TestUser };
+const X_ROUTES = { start: xStart.POST, callback: xCallback.GET };
+
+/** Sign-up with sandbox X through the real routes, then a session for the new account. */
+async function signUp(role: 'buyer' | 'creator', returnTo?: string) {
+  const result = await signUpWithX(X_ROUTES, role, undefined, returnTo);
+  expect(result.user, result.error ?? '').not.toBeNull();
+  return { ...result, user: result.user!, actor: result.actor! };
 }
 
 async function avatar(actor: TestUser): Promise<string> {
@@ -73,20 +73,22 @@ afterAll(async () => {
 });
 
 describe.skipIf(!RUN_DB)('Account setup after sign-up (drizzle/0031)', () => {
-  it('sign-up needs no name, starts at setup, and keeps where the person was going', async () => {
+  it('sign-up with X takes the X name, starts at setup, and keeps where the person was going', async () => {
     const plain = await signUp('creator');
-    expect(plain.response.status).toBe(200);
-    expect(plain.response.body.redirect).toBe('/welcome');
+    expect(plain.response.status).toBe(303);
+    expect(plain.location.pathname).toBe('/welcome');
+    expect(plain.message).toBe(`Signed up with X as @${plain.username}.`);
     expect(plain.user.onboarded_at).toBeNull();
-    expect(plain.user.display_name).toBe('New creator');
+    expect(plain.user.display_name).toBe(plain.username[0]!.toUpperCase() + plain.username.slice(1));
 
-    const going = await signUp('buyer', { return_to: '/buyer/requests/new?goal=launch' });
-    expect(going.response.body.redirect).toBe(`/welcome?return_to=${encodeURIComponent('/buyer/requests/new?goal=launch')}`);
-    expect(going.user.display_name).toBe('New project');
+    const going = await signUp('buyer', '/buyer/requests/new?goal=launch');
+    expect(going.location.pathname).toBe('/welcome');
+    expect(going.location.searchParams.get('return_to')).toBe('/buyer/requests/new?goal=launch');
 
     // Signing in again before setup goes back to setup.
-    const login = await callRoute(auth.POST, '/api/auth', null, { action: 'login', email: going.actor.email, password: PASSWORD, return_to: '/explore' });
-    expect(login.body.redirect).toBe(`/welcome?return_to=${encodeURIComponent('/explore')}`);
+    const again = await continueWithX(X_ROUTES, { intent: 'signin', username: going.username, returnTo: '/explore' });
+    expect(again.location.pathname).toBe('/welcome');
+    expect(again.location.searchParams.get('return_to')).toBe('/explore');
     // Accounts made any other way (fixtures, operators, accounts from before setup existed) count as set up.
     const [existing] = await sql<{ onboarded_at: Date | null }[]>`select onboarded_at from app.users where id=${(await createUser('pre-setup', ['buyer'])).id}`;
     expect(existing!.onboarded_at).not.toBeNull();

@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { Mail } from 'lucide-react';
 import { getDashboardData } from '@/lib/read-model';
 import { Avatar } from '@/components/avatar';
 import { FileUploadField } from '@/components/files/file-upload-field';
@@ -7,7 +8,7 @@ import { Badge, CommandForm, Field, date, row, rows, str } from '@/components/ui
 import { WalletLink } from '@/components/crypto/wallet-link';
 import { listEnabledNetworks } from '@/modules/crypto/registry';
 import { listVerifiedWallets } from '@/modules/crypto/wallets';
-import { getXProfileViews, hoursUntilOwnRefresh, xConnectAvailable } from '@/modules/x/service';
+import { getSignInMethods, getXProfileViews, hoursUntilOwnRefresh, xConnectAvailable } from '@/modules/x/service';
 import { xMode } from '@/modules/x/provider';
 import { XProfileCard } from '@/components/x/x-profile-card';
 import { XLogo } from '@/components/x/x-logo';
@@ -31,7 +32,7 @@ export default async function ProfilePage({
   const notices = <Notices query={query} />;
   const d = row(await getDashboardData(actor));
   const profile = row(d.profile);
-  const [wallets, networks] = await Promise.all([listVerifiedWallets(actor.id), listEnabledNetworks()]);
+  const [wallets, networks, signIn] = await Promise.all([listVerifiedWallets(actor.id), listEnabledNetworks(), getSignInMethods(actor.id)]);
   const isCreator = actor.roles.includes('creator');
   const [xProfiles, refreshWait] = isCreator ? await Promise.all([getXProfileViews([actor.id]), hoursUntilOwnRefresh(actor.id)]) : [new Map(), 0];
   const x = xProfiles.get(actor.id) ?? null;
@@ -85,6 +86,33 @@ export default async function ProfilePage({
               placeholder="Your experience, the projects you have worked with and how you like to work." />
           </CommandForm>
         </section>
+        {/* Accounts are created with X; an email and password can be added here once, as a second way in. */}
+        <section className="panel sign-in-settings" id="sign-in" aria-labelledby="sign-in-heading">
+          <h2 id="sign-in-heading">Sign-in</h2>
+          <ul className="sign-in-methods">
+            <li>
+              <span className="sign-in-icon" aria-hidden><XLogo size={16} /></span>
+              <span className="sign-in-what"><strong>X</strong>
+                <small>{signIn.xSource ? `${signIn.xUsername ? `@${signIn.xUsername}` : 'Connected'}${signIn.xSource === 'MOCK' ? ' · sandbox X' : ''}` : 'Not connected'}</small></span>
+              <Badge tone={signIn.xSource ? 'good' : 'neutral'}>{signIn.xSource ? 'Signs in' : 'Off'}</Badge>
+            </li>
+            <li>
+              <span className="sign-in-icon" aria-hidden><Mail size={16} /></span>
+              <span className="sign-in-what"><strong>Email and password</strong><small>{signIn.email ?? 'Not added'}</small></span>
+              <Badge tone={signIn.email && signIn.hasPassword ? 'good' : 'neutral'}>{signIn.email && signIn.hasPassword ? 'Signs in' : 'Off'}</Badge>
+            </li>
+          </ul>
+          {!signIn.email && <form method="post" action="/api/auth" className="sign-in-email">
+            <input type="hidden" name="action" value="add_email" />
+            <p className="muted">Add an email (Gmail or any address) and a password to sign in without X{signIn.xSource ? ', and to keep a way in if you ever disconnect X' : ''}.</p>
+            <div className="form-grid">
+              <label className="field"><span>Email address</span><input name="email" type="email" required autoComplete="email" maxLength={254} /></label>
+              <label className="field"><span>Password (at least 12 characters)</span><input name="password" type="password" required minLength={12} maxLength={256} autoComplete="new-password" /></label>
+            </div>
+            <button className="button button-dark" type="submit">Add email</button>
+            {actor.is_test && <p className="muted">Local sandbox: no email is sent, so the address is not verified.</p>}
+          </form>}
+        </section>
         {isCreator && <>
         <section className="panel x-settings" id="x" aria-labelledby="x-heading">
           <h2 id="x-heading"><XLogo size={18} /> X account</h2>
@@ -97,6 +125,7 @@ export default async function ProfilePage({
               </form>
               <CommandForm command="disconnect_x" label="Disconnect X" variant="danger" returnTo={route} />
             </div>
+            {!signIn.email && <p className="muted">You sign in with this X account. Add an email under Sign-in before disconnecting it.</p>}
             {refreshWait > 0 && <p className="muted">Updated in the last day. You can refresh again in {refreshWait} {refreshWait === 1 ? 'hour' : 'hours'}.</p>}
           </> : xConnectAvailable() ? <>
             <p className="muted">Connect your X account so buyers see your X photo, followers and bio in Explore, marked as connected rather than self-reported. spaca reads your public profile once and never posts, follows or messages for you.</p>

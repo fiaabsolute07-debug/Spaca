@@ -5,7 +5,7 @@ import { createServerClient } from '@supabase/ssr';
 import { sql } from './db';
 
 export type ActorStatus = 'ACTIVE' | 'SUSPENDED';
-export type Actor = { id: string; email: string; display_name: string; roles: string[]; is_test: boolean; status: ActorStatus; timezone: string };
+export type Actor = { id: string; email: string | null; display_name: string; roles: string[]; is_test: boolean; status: ActorStatus; timezone: string };
 export const SESSION_COOKIE = 'creator_session';
 export function localAuthEnabled() {
   return process.env.NODE_ENV !== 'production' && process.env.AUTH_MODE !== 'supabase';

@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { ORIGIN, RUN_DB, callRoute, commandInstant, key, runId, sessionState, type TestUser } from './harness';
+import { ORIGIN, RUN_DB, callRoute, commandInstant, key, sessionState, signUpWithX, type TestUser } from './harness';
 
 vi.mock('next/headers', () => ({
   cookies: async () => {
@@ -13,28 +13,27 @@ vi.mock('next/headers', () => ({
 }));
 
 const commands = await import('@/app/api/commands/route');
-const auth = await import('@/app/api/auth/route');
+const xStart = await import('@/app/api/auth/x/route');
+const xCallback = await import('@/app/api/x/callback/route');
 const intents = await import('@/app/api/assets/upload-intents/route');
 const finalizeRoute = await import('@/app/api/assets/[id]/finalize/route');
 const devUpload = await import('@/app/api/dev/storage/upload/[token]/route');
 const storage = await import('@/modules/storage/provider');
 const { getPublicData, getRequestData, getGoalPageData, getDashboardData } = await import('@/lib/read-model');
 const { sql } = await import('@/lib/db');
-const { createSession } = await import('@/lib/auth');
 
 const SECRET = 'campaign_identity_signing_secret';
 const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, ...new TextEncoder().encode('IHDR fixture pixels for the campaign identity suite')]);
-const PASSWORD = 'correct horse battery staple 9';
 let root = '';
 
 const command = (actor: TestUser, fields: Record<string, string>) => callRoute(commands.POST, '/api/commands', actor, fields);
 const params = <T extends Record<string, string>>(value: T) => ({ params: Promise.resolve(value) });
 
+/** A buyer account made the way people make one: sign-up with (sandbox) X. */
 async function buyerAccount(): Promise<TestUser> {
-  const email = `it-${runId}-identity-${randomUUID().slice(0, 6)}@example.test`;
-  expect((await callRoute(auth.POST, '/api/auth', null, { action: 'signup', email, password: PASSWORD, role: 'buyer' })).status).toBe(200);
-  const [user] = await sql<{ id: string }[]>`select id from app.users where email=${email}`;
-  return { id: user!.id, email, token: await createSession(user!.id) };
+  const { actor, error } = await signUpWithX({ start: xStart.POST, callback: xCallback.GET }, 'buyer');
+  expect(actor, error ?? '').not.toBeNull();
+  return actor!;
 }
 
 /** The project logo a buyer uploads during setup. */

@@ -252,18 +252,28 @@ export const TINY_PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcS
  * Create an account in the open "Create your account" dialog: the account type first, then email and password.
  * New accounts land on account setup (/welcome).
  */
-export async function signUpInDialog(page: Page, type: 'Buyer' | 'Creator', email = `${type.toLowerCase()}-${uniqueSuffix()}@example.test`) {
+/** A sandbox X username unique to this run (X usernames are at most 15 characters). */
+export const xUsername = () => `e2e${Date.now().toString(36).slice(-7)}${randomUUID().slice(0, 4)}`;
+
+/** Authorizes on the local stand-in for X's consent screen as `username`, and waits for spaca to take over again. */
+export async function authorizeSandboxX(page: Page, username: string, destination: RegExp) {
+  await page.waitForURL(/\/dev\/x-authorize\?/);
+  await page.getByLabel('Sandbox X username').fill(username);
+  await Promise.all([page.waitForURL(destination), page.getByRole('button', { name: 'Authorize app' }).click()]);
+}
+
+/** Sign-up is X only (drizzle/0035): choose the type, Continue with X, authorize on sandbox X, land on setup. */
+export async function signUpInDialog(page: Page, type: 'Buyer' | 'Creator', username = xUsername()) {
   // The dialog over a page, or the same card on a direct visit to /sign-up.
   const dialog = page.locator('.auth-dialog').filter({ has: page.getByRole('heading', { level: 1, name: 'Create your account' }) });
   const choice = dialog.getByRole('radio', { name: new RegExp(`^${type}`) });
   await waitForHydration(choice);
   await choice.check();
-  await dialog.getByRole('button', { name: 'Continue with email' }).click();
-  await expect(dialog.getByText(`Creating a ${type.toLowerCase()} account`)).toBeVisible();
-  await dialog.getByLabel('Email address').fill(email);
-  await dialog.getByLabel(/^Password/).fill('a-long-test-password');
-  await Promise.all([page.waitForURL(/\/welcome(\?|$)/), dialog.getByRole('button', { name: 'Create account' }).click()]);
-  return email;
+  const x = dialog.getByRole('button', { name: 'Continue with X' });
+  await expect(x).toBeEnabled();
+  await x.click();
+  await authorizeSandboxX(page, username, /\/welcome(\?|$)/);
+  return username;
 }
 
 /** Finish account setup on /welcome: photo or logo, name, one line, introduction (and a handle for creators). */

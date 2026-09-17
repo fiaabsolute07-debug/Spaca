@@ -14,6 +14,7 @@ import { CommandError, UUID_PATTERN, type CommandHandler, type Row, type Tx } fr
 import { sql } from '@/lib/db';
 import { logError } from '@/lib/log';
 import type { XProfileView, XSource } from '@/lib/x-profile';
+import { onboardingPath } from '@/lib/onboarding';
 import { canonicalizeSocialAccount } from '@/modules/publish';
 import { XProviderError, codeChallengeFor, getXProvider, type XProfile, type XProvider } from './provider';
 
@@ -104,7 +105,7 @@ export async function completeXConnect(actor: Actor, input: { state: string; cod
   await recordUsage(provider.source, 'USERS_ME', 1, actor.id);
   if (profile.protected) return { returnTo, error: `@${profile.username} is a protected account. Buyers cannot see protected posts, so it cannot be connected.` };
   try {
-    const note = await sql.begin((tx) => saveConnection(tx, actor, profile, provider.source));
+    const note = await sql.begin((tx) => saveConnection(tx, { id: actor.id, creator: true }, profile, provider.source));
     return { returnTo, message: `X account @${profile.username} connected.${note}` };
   } catch (error) {
     if (error instanceof CommandError) return { returnTo, error: error.message };
@@ -118,7 +119,7 @@ async function unverifyLinkedAccount(tx: Tx, userId: string, socialAccountId: st
 }
 
 /** The linked X account for this username, verified by the sign-in; created when the creator had not listed it yet. */
-async function linkSocialAccount(tx: Tx, actor: Actor, username: string): Promise<{ id: string | null; note: string }> {
+async function linkSocialAccount(tx: Tx, actor: { id: string }, username: string): Promise<{ id: string | null; note: string }> {
   const { handle, canonicalUrl } = canonicalizeSocialAccount('X', username);
   const [live] = await tx<Row[]>`select id,creator_id,verification_status from app.social_accounts
     where platform='X' and lower(canonical_url)=lower(${canonicalUrl}) and removed_at is null for update`;
@@ -139,16 +140,24 @@ async function linkSocialAccount(tx: Tx, actor: Actor, username: string): Promis
   return { id: String(created!.id), note: '' };
 }
 
-async function saveConnection(tx: Tx, actor: Actor, profile: XProfile, source: XSource): Promise<string> {
+/**
+ * Saves the X account on a spaca account: the profile copy, the identity it signs in with, and for creators the verified
+ * linked account. One X account belongs to one spaca account.
+ */
+async function saveConnection(tx: Tx, actor: { id: string; creator: boolean }, profile: XProfile, source: XSource): Promise<string> {
   await tx`select pg_advisory_xact_lock(hashtextextended(${`x-profile:${source}:${profile.xUserId}`}, 0))`;
-  const [owner] = await tx<Row[]>`select 1 from app.x_profiles where source=${source} and x_user_id=${profile.xUserId} and user_id<>${actor.id}`;
+  const [owner] = await tx<Row[]>`select 1 from app.x_profiles where source=${source} and x_user_id=${profile.xUserId} and user_id<>${actor.id}
+    union all select 1 from app.user_identities where provider='X' and source=${source} and subject=${profile.xUserId} and user_id<>${actor.id}`;
   if (owner) throw new CommandError(`@${profile.username} is already connected to another spaca account. Contact support if it is yours.`, 'ORDER_STATE_CONFLICT');
   const [previous] = await tx<Row[]>`select x_user_id,social_account_id from app.x_profiles where user_id=${actor.id} for update`;
   // Connecting a different X account replaces the previous one, whose linked account goes back to self-reported.
   if (previous && String(previous.x_user_id) !== profile.xUserId && previous.social_account_id) {
     await unverifyLinkedAccount(tx, actor.id, String(previous.social_account_id));
   }
-  const linked = await linkSocialAccount(tx, actor, profile.username);
+  await tx`insert into app.user_identities (user_id,provider,source,subject) values (${actor.id},'X',${source},${profile.xUserId})
+    on conflict (user_id,provider) do update set source=excluded.source,subject=excluded.subject,
+      created_at=case when app.user_identities.subject=excluded.subject then app.user_identities.created_at else now() end`;
+  const linked = actor.creator ? await linkSocialAccount(tx, actor, profile.username) : { id: null, note: '' };
   await tx`insert into app.x_profiles (user_id,source,x_user_id,username,name,profile_image_url,description,location,verified,verified_type,protected,
       followers_count,following_count,tweet_count,listed_count,x_created_at,social_account_id,connected_at,fetched_at)
     values (${actor.id},${source},${profile.xUserId},${profile.username},${profile.name},${profile.profileImageUrl},${profile.description},${profile.location},
@@ -163,13 +172,151 @@ async function saveConnection(tx: Tx, actor: Actor, profile: XProfile, source: X
   return linked.note;
 }
 
-/** Disconnect: the saved copy is deleted; the linked X account stays, as self-reported, because services may post on it. */
+/**
+ * Disconnect: the saved copy and the X sign-in are deleted; the linked X account stays, as self-reported, because services
+ * may post on it. An account that signs in only with X keeps it until an email and password are added.
+ */
 export const disconnectX: CommandHandler = async ({ tx, actor }) => {
+  // An account made with X has no email until one is added (with its password) under Sign-in.
+  const [account] = await tx<Row[]>`select (email is not null or auth_user_id is not null) as other_sign_in,
+      exists(select 1 from app.x_profiles where user_id=${actor.id}) as connected from app.users where id=${actor.id} for update`;
+  if (!account?.connected) throw new CommandError('No X account is connected', 'NOT_FOUND');
+  if (!account.other_sign_in) {
+    throw new CommandError('X is how you sign in to this account. Add an email and password under Sign-in first, then disconnect X.', 'DOMAIN_RULE');
+  }
   const [removed] = await tx<Row[]>`delete from app.x_profiles where user_id=${actor.id} returning username,social_account_id`;
+  await tx`delete from app.user_identities where user_id=${actor.id} and provider='X'`;
   if (!removed) throw new CommandError('No X account is connected', 'NOT_FOUND');
   if (removed.social_account_id) await unverifyLinkedAccount(tx, actor.id, String(removed.social_account_id));
   return { path: '/settings/profile', message: `@${String(removed.username)} disconnected. The linked account shows as self-reported again.` };
 };
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Sign in and sign up with X (drizzle/0035)
+//
+// New accounts are created by signing in with X; an email and password can be added later from settings. A sign-in reads
+// the X account once (X bills that read like any other), but never waits on the monthly read ceiling: nobody is locked
+// out of their account because the budget ran out. The read is still recorded.
+
+export type XSignInIntent = 'SIGN_IN' | 'SIGN_UP';
+export type AccountTypeChoice = 'buyer' | 'creator';
+
+/** Sign-in attempts not yet tied to an account, across everyone, per 10 minutes. */
+const MAX_ANONYMOUS_STARTS = 300;
+
+const signInReturn = (value: unknown) => {
+  const path = String(value ?? '');
+  return /^\/[^/]/.test(path) && path.length < 300 && !path.startsWith('/api/') && !path.startsWith('/sign-') ? path : '/dashboard';
+};
+
+/** Starts "Continue with X" from the sign-in or sign-up dialog and returns where to send the browser. */
+export async function startXSignIn(input: { intent: XSignInIntent; accountType: AccountTypeChoice | null; returnTo: unknown }, redirectUri: string): Promise<string> {
+  const provider = requireProvider();
+  if (input.intent === 'SIGN_UP' && !input.accountType) throw new CommandError('Choose Buyer or Creator first', 'INVALID_INPUT');
+  const [recent] = await sql<{ n: number }[]>`select count(*)::int as n from app.x_oauth_states where user_id is null and created_at > now() - interval '10 minutes'`;
+  if (Number(recent?.n ?? 0) >= MAX_ANONYMOUS_STARTS) throw new CommandError('Too many people are signing in with X right now. Try again in a few minutes.', 'RATE_LIMITED');
+  const state = randomBytes(32).toString('base64url');
+  const verifier = randomBytes(48).toString('base64url');
+  await sql`insert into app.x_oauth_states (user_id,source,state_hash,code_verifier,return_to,expires_at,purpose,account_type)
+    values (null,${provider.source},${hashState(state)},${verifier},${signInReturn(input.returnTo)},now() + make_interval(mins => ${STATE_TTL_MINUTES}),
+      ${input.intent},${input.intent === 'SIGN_UP' ? input.accountType : null})`;
+  return provider.authorizeUrl({ state, codeChallenge: codeChallengeFor(verifier), redirectUri });
+}
+
+/** What an X callback's state was started for, so the callback can finish a connection or a sign-in. */
+export async function xStatePurpose(state: string): Promise<'CONNECT' | XSignInIntent | null> {
+  if (!state) return null;
+  const [row] = await sql<{ purpose: string }[]>`select purpose from app.x_oauth_states where state_hash=${hashState(state)}`;
+  return row ? row.purpose as 'CONNECT' | XSignInIntent : null;
+}
+
+/** `userId` is set when the browser should be signed in to that account; `path` is where to go next, with the notice. */
+export type XSignInOutcome = { path: string; userId?: string; message?: string; error?: string };
+
+/**
+ * Finishes "Continue with X": an X account already used by a spaca account signs in to it (from either dialog); from the
+ * sign-up dialog an unknown X account becomes a new account of the chosen type, without an email, headed to setup.
+ */
+export async function completeXSignIn(input: { state: string; code: string; error: string }, redirectUri: string): Promise<XSignInOutcome> {
+  const provider = requireProvider();
+  const claimed = input.state ? await sql.begin(async (tx) => {
+    const [row] = await tx<Row[]>`select id,source,code_verifier,return_to,purpose,account_type,used_at,expires_at < now() as expired
+      from app.x_oauth_states where state_hash=${hashState(input.state)} and purpose in ('SIGN_IN','SIGN_UP') for update`;
+    if (!row || row.used_at || row.expired || row.source !== provider.source) return null;
+    await tx`update app.x_oauth_states set used_at=now() where id=${String(row.id)}`;
+    return row;
+  }) : null;
+  if (!claimed) return { path: '/sign-in', error: 'This X sign-in expired or was already used. Try again.' };
+  const intent = claimed.purpose as XSignInIntent;
+  const accountType = claimed.account_type === 'creator' ? 'creator' : 'buyer';
+  const returnTo = signInReturn(claimed.return_to);
+  const retry = intent === 'SIGN_UP' ? `/sign-up?role=${accountType}` : '/sign-in';
+  if (input.error || !input.code) {
+    return { path: retry, error: input.error === 'access_denied' ? 'X sign-in was cancelled.' : 'X did not complete the sign-in. Try again.' };
+  }
+
+  let profile: XProfile;
+  try {
+    profile = await provider.signedInProfile({ code: input.code, codeVerifier: String(claimed.code_verifier), redirectUri });
+  } catch (error) {
+    if (error instanceof XProviderError) return { path: retry, error: error.message };
+    logError('x sign-in failed', error);
+    return { path: retry, error: 'X could not be reached. Try again later.' };
+  }
+  await recordUsage(provider.source, 'USERS_ME', 1, null);
+
+  try {
+    return await sql.begin(async (tx) => {
+      await tx`select pg_advisory_xact_lock(hashtextextended(${`x-profile:${provider.source}:${profile.xUserId}`}, 0))`;
+      const [known] = await tx<Row[]>`select u.id,u.status,u.onboarded_at is not null as onboarded from app.user_identities i join app.users u on u.id=i.user_id
+        where i.provider='X' and i.source=${provider.source} and i.subject=${profile.xUserId}`;
+      if (known) {
+        if (!['ACTIVE', 'SUSPENDED'].includes(String(known.status))) return { path: '/sign-in', error: 'This account is closed.' };
+        await tx`update app.user_identities set last_sign_in_at=now() where user_id=${String(known.id)} and provider='X'`;
+        // The sign-in already read the account, so the saved copy is brought up to date at no extra cost.
+        await tx`update app.x_profiles set username=${profile.username},name=${profile.name},profile_image_url=${profile.profileImageUrl},description=${profile.description},
+            location=${profile.location},verified=${profile.verified},verified_type=${profile.verifiedType},protected=${profile.protected},
+            followers_count=${profile.followers},following_count=${profile.following},tweet_count=${profile.posts},listed_count=${profile.listed},
+            x_created_at=${profile.createdAt},fetched_at=now(),refresh_requested_at=null,unavailable_at=null,refresh_failures=0,last_refresh_error=null,updated_at=now()
+          where user_id=${String(known.id)} and source=${provider.source} and x_user_id=${profile.xUserId}`;
+        return {
+          userId: String(known.id),
+          path: known.onboarded ? returnTo : onboardingPath(returnTo),
+          message: intent === 'SIGN_UP' ? `@${profile.username} already has a spaca account, so you are signed in to it.` : undefined,
+        };
+      }
+      if (intent === 'SIGN_IN') {
+        return { path: '/sign-up', error: `No spaca account signs in with @${profile.username} yet. Choose Buyer or Creator to create one.` };
+      }
+      if (accountType === 'creator' && profile.protected) {
+        return { path: retry, error: `@${profile.username} is a protected account. Buyers cannot see protected posts, so a creator account needs a public X account.` };
+      }
+      // Local sessions only (the route checks), so like an email sign-up here the account is local test data.
+      const [created] = await tx<Row[]>`insert into app.users (id,email,display_name,password_hash,roles,is_test,status,onboarded_at)
+        values (gen_random_uuid(),null,${profile.name.slice(0, 100)},null,${[accountType]},true,'ACTIVE',null) returning id`;
+      const userId = String(created!.id);
+      await saveConnection(tx, { id: userId, creator: accountType === 'creator' }, profile, provider.source);
+      await tx`update app.user_identities set last_sign_in_at=now() where user_id=${userId} and provider='X'`;
+      return { userId, path: onboardingPath(returnTo), message: `Signed up with X as @${profile.username}.` };
+    });
+  } catch (error) {
+    if (error instanceof CommandError) return { path: retry, error: error.message };
+    throw error;
+  }
+}
+
+/** How an account can sign in: its X account (with the saved username) and whether an email and password are set. */
+export async function getSignInMethods(userId: string): Promise<{ xUsername: string | null; xSource: XSource | null; email: string | null; hasPassword: boolean }> {
+  const [row] = await sql<Row[]>`select u.email,u.password_hash is not null as has_password,i.source,x.username
+    from app.users u left join app.user_identities i on i.user_id=u.id and i.provider='X' left join app.x_profiles x on x.user_id=u.id
+    where u.id=${userId}`;
+  return {
+    xUsername: row?.source ? String(row.username ?? '') || null : null,
+    xSource: row?.source ? row.source as XSource : null,
+    email: row?.email ? String(row.email) : null,
+    hasPassword: Boolean(row?.has_password),
+  };
+}
 
 // ---------------------------------------------------------------------------------------------------------------------
 // Refresh

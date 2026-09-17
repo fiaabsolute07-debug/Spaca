@@ -8,7 +8,7 @@ import { XLogo } from '@/components/x/x-logo';
 export const dynamic = 'force-dynamic';
 
 /**
- * Local stand-in for X's consent screen ("Connect X" in the sandbox). Nothing here touches x.com: the chosen username
+ * Local stand-in for X's consent screen ("Connect X" and "Continue with X" in the sandbox). Nothing here touches x.com: the chosen username
  * becomes a generated sandbox profile, stored and shown as sandbox data. 404 unless the X sandbox is on.
  */
 export default async function SandboxXAuthorize({ searchParams }: PageProps) {
@@ -41,7 +41,7 @@ export default async function SandboxXAuthorize({ searchParams }: PageProps) {
           <button className="button button-dark" type="submit" name="decision" value="approve">Authorize app</button>
           <button className="button button-outline" type="submit" name="decision" value="cancel" formNoValidate>Cancel</button>
         </div>
-      </form> : <p className="notice">This sign-in link is incomplete. Start again from your profile.</p>}
+      </form> : <p className="notice">This sign-in link is incomplete. Start again.</p>}
     </section>
   </main>;
 }

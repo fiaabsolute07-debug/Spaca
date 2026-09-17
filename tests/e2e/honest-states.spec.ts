@@ -31,7 +31,7 @@ test('SUP-02 / REV-03: a brand-new creator shows as new, with no invented rating
   const start = page.getByRole('banner').getByRole('link', { name: 'Get started', exact: true });
   await waitForHydration(start);
   await start.click();
-  await signUpInDialog(page, 'Creator', `fresh-${suffix}@example.test`);
+  await signUpInDialog(page, 'Creator');
   await completeSetup(page, { name: 'Fresh Creator', handle, headline: 'Launch threads for developer tools', intro: 'Writes launch threads for developer tools and L2 teams; new to spaca.' });
 
   await visit(page, '/creator/services/new');

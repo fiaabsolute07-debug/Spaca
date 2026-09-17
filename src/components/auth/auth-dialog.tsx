@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
 import { ArrowLeft, Check, Mail, Megaphone, PenTool, X } from 'lucide-react';
 import { SpacaMark } from '../brand/spaca-logo';
+import { XLogo } from '../x/x-logo';
 
 export type TestAccount = { persona: string; name: string; role: string; returnTo: string };
 
@@ -18,6 +19,8 @@ type Props = {
   initialError?: string | null;
   initialMessage?: string | null;
   testAccounts: TestAccount[];
+  /** Whether "Continue with X" works here, and whether it opens the local stand-in for X. */
+  x: { available: boolean; sandbox: boolean };
 };
 
 type AccountChoice = 'buyer' | 'creator';
@@ -36,14 +39,15 @@ const ACCOUNT_CHOICES: { value: AccountChoice; title: string; line: string; icon
 ];
 
 /**
- * Sign in / create account in one dialog. Email and password post to /api/auth as JSON so errors show in place; test
- * accounts (local sandbox only) post to /api/dev/session. Social sign-in is not offered until an identity provider is
- * configured.
+ * Sign in / create account in one dialog. New accounts sign up with X only (after choosing Buyer or Creator); an email
+ * and password can be added later from account settings, and then signs in here too. "Continue with X" is a form post
+ * to /api/auth/x; email sign-in posts to /api/auth as JSON so errors show in place; test accounts (local sandbox only)
+ * post to /api/dev/session.
  */
-export function AuthDialog({ mode: initialMode, variant, returnTo, defaultRole = null, initialError = null, initialMessage = null, testAccounts }: Props) {
+export function AuthDialog({ mode: initialMode, variant, returnTo, defaultRole = null, initialError = null, initialMessage = null, testAccounts, x }: Props) {
   const router = useRouter();
   const [mode, setMode] = useState(initialMode);
-  const [view, setView] = useState<'options' | 'email'>(initialError ? 'email' : 'options');
+  const [view, setView] = useState<'options' | 'email'>('options');
   const [error, setError] = useState<string | null>(initialError);
   const [busy, setBusy] = useState(false);
   const [role, setRole] = useState<AccountChoice | null>(defaultRole);
@@ -79,6 +83,7 @@ export function AuthDialog({ mode: initialMode, variant, returnTo, defaultRole =
 
   const switchMode = (next: 'signin' | 'signup') => {
     setMode(next);
+    setView('options');
     setError(null);
     if (variant === 'modal') window.history.replaceState(null, '', next === 'signup' ? '/sign-up' : '/sign-in');
   };
@@ -136,12 +141,30 @@ export function AuthDialog({ mode: initialMode, variant, returnTo, defaultRole =
             <span className="account-choice-text"><strong>{choice.title}</strong><span>{choice.line}</span></span>
             <span className="account-choice-tick" aria-hidden><Check size={14} strokeWidth={3} /></span>
           </label>)}
-          <p className="account-choice-note">Each account is one type. To both hire and be hired, use a second email.</p>
+          <p className="account-choice-note">Each account is one type and signs in with its own X account.</p>
         </fieldset>}
-        <button type="button" className="auth-option" disabled={signup && !role} aria-describedby={signup && !role ? `${titleId}-choose` : undefined} onClick={() => setView('email')}>
-          <Mail size={18} aria-hidden /> <span>Continue with email</span>
-        </button>
+        {error && <p className="auth-error" role="alert">{error}</p>}
+        <form action="/api/auth/x" method="post" className="auth-x">
+          <input type="hidden" name="intent" value={signup ? 'signup' : 'signin'} />
+          <input type="hidden" name="return_to" value={returnTo} />
+          {signup && <input type="hidden" name="role" value={role ?? ''} />}
+          <button type="submit" className="auth-option auth-option-x" disabled={!x.available || (signup && !role)}
+            aria-describedby={signup && !role ? `${titleId}-choose` : undefined}>
+            <XLogo size={16} /> <span>Continue with X</span>
+          </button>
+        </form>
         {signup && !role && <p className="account-choice-hint" id={`${titleId}-choose`}>Choose Buyer or Creator to continue.</p>}
+        {!x.available && <p className="account-choice-hint">Signing in with X is not available in this environment.</p>}
+        {signup
+          ? <p className="account-choice-next">You can add an email and password later in your account settings.</p>
+          : <>
+            <div className="auth-divider"><span>or</span></div>
+            <button type="button" className="auth-option" onClick={() => { setView('email'); setError(null); }}>
+              <Mail size={18} aria-hidden /> <span>Continue with email</span>
+            </button>
+            <p className="account-choice-next">Email works once you have added one to your account.</p>
+          </>}
+        {x.available && x.sandbox && <p className="auth-sandbox-note">Local sandbox: X opens a stand-in page. No real X account is used.</p>}
         {testAccounts.length > 0 && !signup && <>
           <div className="auth-divider"><span>Local test accounts</span></div>
           <ul className="auth-test-accounts">
@@ -158,21 +181,13 @@ export function AuthDialog({ mode: initialMode, variant, returnTo, defaultRole =
           </ul>
         </>}
       </div> : <form className="auth-email" onSubmit={submit} action="/api/auth" method="post">
-        <input type="hidden" name="action" value={signup ? 'signup' : 'login'} />
+        <input type="hidden" name="action" value="login" />
         <input type="hidden" name="return_to" value={returnTo} />
-        {signup && <>
-          <input type="hidden" name="role" value={role ?? 'buyer'} />
-          <p className="account-choice-chosen">
-            <span>Creating a <strong>{role === 'creator' ? 'creator' : 'buyer'} account</strong></span>
-            <button type="button" className="link-button" onClick={() => { setView('options'); setError(null); }}>Change</button>
-          </p>
-        </>}
         <label className="field"><span>Email address</span><input name="email" type="email" required autoComplete="email" autoFocus /></label>
-        <label className="field"><span>Password {signup ? '(at least 12 characters)' : ''}</span>
-          <input name="password" type="password" required minLength={12} autoComplete={signup ? 'new-password' : 'current-password'} /></label>
+        <label className="field"><span>Password</span>
+          <input name="password" type="password" required minLength={12} autoComplete="current-password" /></label>
         {error && <p className="auth-error" role="alert">{error}</p>}
-        <button className="button button-dark auth-submit" type="submit" disabled={busy}>{busy ? 'Please wait…' : signup ? 'Create account' : 'Sign in'}</button>
-        {signup && <p className="account-choice-next">Next you add a photo, your {role === 'creator' ? 'creator name' : 'project name'} and a short introduction.</p>}
+        <button className="button button-dark auth-submit" type="submit" disabled={busy}>{busy ? 'Please wait…' : 'Sign in'}</button>
       </form>}
 
       <p className="auth-legal">

@@ -24,7 +24,7 @@ test('Log in opens a dialog over the current page; errors show in place; Escape 
   await expect(page).toHaveURL(/\/explore$/);
 });
 
-test('Get started asks for the account type first, then creates a buyer account that starts at setup', async ({ page }) => {
+test('Get started asks for the account type first, then signs up a buyer account with X that starts at setup', async ({ page }) => {
   await visit(page, '/explore');
   const start = page.getByRole('banner').getByRole('link', { name: 'Get started', exact: true });
   await waitForHydration(start);
@@ -35,7 +35,9 @@ test('Get started asks for the account type first, then creates a buyer account 
   await expect(dialog.getByRole('group', { name: 'Choose your account type' })).toBeVisible();
   await expect(dialog.getByRole('radio', { name: /^Buyer/ })).not.toBeChecked();
   await expect(dialog.getByRole('radio', { name: /^Creator/ })).not.toBeChecked();
-  await expect(dialog.getByRole('button', { name: 'Continue with email' })).toBeDisabled();
+  // Sign-up is X only: its button waits until Buyer or Creator is picked, and there is no email form.
+  await expect(dialog.getByRole('button', { name: 'Continue with X' })).toBeDisabled();
+  await expect(dialog.getByRole('button', { name: 'Continue with email' })).toHaveCount(0);
   await expect(dialog.getByText('Choose Buyer or Creator to continue.')).toBeVisible();
   await expect(dialog.getByLabel('Your name')).toHaveCount(0);
   await signUpInDialog(page, 'Buyer');
@@ -106,9 +108,7 @@ test('on the landing, Early access opens the join dialog over the landing with t
   // Early access is for projects, so Buyer comes chosen; the person can still pick Creator.
   await expect(dialog.getByRole('radio', { name: /^Buyer/ })).toBeChecked();
   await dialog.getByRole('radio', { name: /^Creator/ }).check();
-  await dialog.getByRole('button', { name: 'Continue with email' }).click();
-  await expect(dialog.getByText('Creating a creator account')).toBeVisible();
-  await dialog.getByRole('button', { name: 'Change' }).click();
+  await expect(dialog.getByRole('button', { name: 'Continue with X' })).toBeEnabled();
   await expect(dialog.getByRole('radio', { name: /^Creator/ })).toBeChecked();
   await dialog.getByRole('button', { name: 'Close' }).click();
   await expect(dialog).toBeHidden();

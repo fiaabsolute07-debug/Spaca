@@ -31,7 +31,8 @@ export default async function WelcomePage({ searchParams }: PageProps) {
   const account = await getAccountSummary(actor);
   if (account.onboarded) redirect(next);
   const [wallets, networks, xProfiles] = await Promise.all([listVerifiedWallets(actor.id), listEnabledNetworks(), getXProfileViews([actor.id])]);
-  const x = type === 'creator' ? xProfiles.get(actor.id) ?? null : null;
+  // An account made with X fills in from it, buyers too; only creators get the connect-X step in the form.
+  const x = xProfiles.get(actor.id) ?? null;
   const handleFromX = x && /^[a-z0-9][a-z0-9_-]{2,31}$/.test(x.username.toLowerCase()) ? x.username.toLowerCase() : '';
 
   return <main className="container onboard-page">
