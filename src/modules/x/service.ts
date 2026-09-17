@@ -15,6 +15,7 @@ import { sql } from '@/lib/db';
 import { logError } from '@/lib/log';
 import type { XProfileView, XSource } from '@/lib/x-profile';
 import { onboardingPath } from '@/lib/onboarding';
+import { keepsAnotherSignIn } from '@/modules/google/service';
 import { canonicalizeSocialAccount } from '@/modules/publish';
 import { XProviderError, codeChallengeFor, getXProvider, type XProfile, type XProvider } from './provider';
 
@@ -177,11 +178,10 @@ async function saveConnection(tx: Tx, actor: { id: string; creator: boolean }, p
  * may post on it. An account that signs in only with X keeps it until an email and password are added.
  */
 export const disconnectX: CommandHandler = async ({ tx, actor }) => {
-  // An account made with X has no email until one is added (with its password) under Sign-in.
-  const [account] = await tx<Row[]>`select (email is not null or auth_user_id is not null) as other_sign_in,
-      exists(select 1 from app.x_profiles where user_id=${actor.id}) as connected from app.users where id=${actor.id} for update`;
+  const [account] = await tx<Row[]>`select exists(select 1 from app.x_profiles where user_id=${actor.id}) as connected from app.users where id=${actor.id} for update`;
   if (!account?.connected) throw new CommandError('No X account is connected', 'NOT_FOUND');
-  if (!account.other_sign_in) {
+  // An account made with X has no email until one is added (with its password) under Sign-in, and may have connected Google.
+  if (!(await keepsAnotherSignIn(tx, actor.id, 'X'))) {
     throw new CommandError('X is how you sign in to this account. Add an email and password under Sign-in first, then disconnect X.', 'DOMAIN_RULE');
   }
   const [removed] = await tx<Row[]>`delete from app.x_profiles where user_id=${actor.id} returning username,social_account_id`;
@@ -305,14 +305,17 @@ export async function completeXSignIn(input: { state: string; code: string; erro
   }
 }
 
-/** How an account can sign in: its X account (with the saved username) and whether an email and password are set. */
-export async function getSignInMethods(userId: string): Promise<{ xUsername: string | null; xSource: XSource | null; email: string | null; hasPassword: boolean }> {
-  const [row] = await sql<Row[]>`select u.email,u.password_hash is not null as has_password,i.source,x.username
+/** How an account can sign in: its X account (with the saved username), its Google account, and its email and password. */
+export async function getSignInMethods(userId: string): Promise<{ xUsername: string | null; xSource: XSource | null; googleEmail: string | null; googleSandbox: boolean; email: string | null; hasPassword: boolean }> {
+  const [row] = await sql<Row[]>`select u.email,u.password_hash is not null as has_password,i.source,x.username,g.email as google_email,g.source as google_source
     from app.users u left join app.user_identities i on i.user_id=u.id and i.provider='X' left join app.x_profiles x on x.user_id=u.id
+      left join app.user_identities g on g.user_id=u.id and g.provider='GOOGLE'
     where u.id=${userId}`;
   return {
     xUsername: row?.source ? String(row.username ?? '') || null : null,
     xSource: row?.source ? row.source as XSource : null,
+    googleEmail: row?.google_email ? String(row.google_email) : null,
+    googleSandbox: row?.google_source === 'MOCK',
     email: row?.email ? String(row.email) : null,
     hasPassword: Boolean(row?.has_password),
   };

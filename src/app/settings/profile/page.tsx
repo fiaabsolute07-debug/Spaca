@@ -10,6 +10,9 @@ import { listEnabledNetworks } from '@/modules/crypto/registry';
 import { listVerifiedWallets } from '@/modules/crypto/wallets';
 import { getSignInMethods, getXProfileViews, hoursUntilOwnRefresh, xConnectAvailable } from '@/modules/x/service';
 import { xMode } from '@/modules/x/provider';
+import { googleMode } from '@/modules/google/provider';
+import { googleAvailable } from '@/modules/google/service';
+import { GoogleLogo } from '@/components/brand/google-logo';
 import { XProfileCard } from '@/components/x/x-profile-card';
 import { XLogo } from '@/components/x/x-logo';
 import { Notices } from '@/components/notices';
@@ -97,6 +100,20 @@ export default async function ProfilePage({
               <Badge tone={signIn.xSource ? 'good' : 'neutral'}>{signIn.xSource ? 'Signs in' : 'Off'}</Badge>
             </li>
             <li>
+              <span className="sign-in-icon" aria-hidden><GoogleLogo size={16} /></span>
+              <span className="sign-in-what"><strong>Google</strong>
+                <small>{signIn.googleEmail ? `${signIn.googleEmail}${signIn.googleSandbox ? ' · sandbox Google' : ''}` : 'Not connected'}</small></span>
+              {signIn.googleEmail
+                ? <span className="sign-in-actions"><Badge tone="good">Signs in</Badge><CommandForm command="disconnect_google" label="Disconnect" variant="secondary" returnTo={route} /></span>
+                : googleAvailable()
+                  ? <form method="post" action="/api/auth/google" className="sign-in-actions">
+                    <input type="hidden" name="intent" value="connect" />
+                    <input type="hidden" name="return_to" value={route} />
+                    <button className="button button-outline compact" type="submit">Connect Google</button>
+                  </form>
+                  : <Badge>Off</Badge>}
+            </li>
+            <li>
               <span className="sign-in-icon" aria-hidden><Mail size={16} /></span>
               <span className="sign-in-what"><strong>Email and password</strong><small>{signIn.email ?? 'Not added'}</small></span>
               <Badge tone={signIn.email && signIn.hasPassword ? 'good' : 'neutral'}>{signIn.email && signIn.hasPassword ? 'Signs in' : 'Off'}</Badge>
@@ -106,12 +123,13 @@ export default async function ProfilePage({
             <input type="hidden" name="action" value="add_email" />
             <p className="muted">Add an email (Gmail or any address) and a password to sign in without X{signIn.xSource ? ', and to keep a way in if you ever disconnect X' : ''}.</p>
             <div className="form-grid">
-              <label className="field"><span>Email address</span><input name="email" type="email" required autoComplete="email" maxLength={254} /></label>
+              <label className="field"><span>Email address</span><input name="email" type="email" required autoComplete="email" maxLength={254} defaultValue={signIn.googleEmail ?? ''} /></label>
               <label className="field"><span>Password (at least 12 characters)</span><input name="password" type="password" required minLength={12} maxLength={256} autoComplete="new-password" /></label>
             </div>
             <button className="button button-dark" type="submit">Add email</button>
             {actor.is_test && <p className="muted">Local sandbox: no email is sent, so the address is not verified.</p>}
           </form>}
+          {!signIn.googleEmail && googleAvailable() && googleMode() === 'mock' && <p className="muted x-sandbox-note">Local sandbox: Connect Google opens a stand-in page. No real Google account is used.</p>}
         </section>
         {isCreator && <>
         <section className="panel x-settings" id="x" aria-labelledby="x-heading">

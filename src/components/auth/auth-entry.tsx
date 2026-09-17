@@ -1,6 +1,7 @@
 import { localAuthEnabled } from '@/lib/auth';
 import { verifiedNotice } from '@/lib/notices';
 import { xMode } from '@/modules/x/provider';
+import { googleMode } from '@/modules/google/provider';
 import type { Query } from '@/components/page-props';
 import { AuthDialog, type TestAccount } from './auth-dialog';
 
@@ -30,5 +31,6 @@ export function AuthEntry({ mode, variant, query }: { mode: 'signin' | 'signup';
     initialMessage={verifiedNotice(query, 'message')}
     testAccounts={showTestAccounts ? TEST_ACCOUNTS : []}
     x={{ available: localAuthEnabled() && xMode() !== 'off', sandbox: xMode() === 'mock' }}
+    google={{ available: localAuthEnabled() && googleMode() !== 'off', sandbox: googleMode() === 'mock' }}
   />;
 }

@@ -113,6 +113,11 @@ export function checkEnvironment(env: Environment, target: EnvironmentTarget): E
   add('X_BEARER_TOKEN', liveX);
   add('X_REFRESH_AFTER_DAYS', false, (value) => /^\d+$/.test(value) && Number(value) >= 1 && Number(value) <= 365);
   add('X_READS_MONTHLY_CAP', false, (value) => /^\d+$/.test(value) && Number(value) >= 1 && Number(value) <= 3_000_000);
+  // Connect Google (drizzle/0036): the sandbox stand-in is local-only; live needs a Google OAuth web client.
+  add('GOOGLE_PROVIDER', false, deployed ? oneOf('live', 'off') : oneOf('mock', 'live', 'off'));
+  const liveGoogle = env.GOOGLE_PROVIDER === 'live';
+  add('GOOGLE_CLIENT_ID', liveGoogle, (value) => /\.apps\.googleusercontent\.com$/.test(value));
+  add('GOOGLE_CLIENT_SECRET', liveGoogle);
   add('SENTRY_DSN', false, (value) => !!parseUrl(value)?.hostname, true);
   return { ok: rows.every((row) => row.status === 'OK'), rows };
 }

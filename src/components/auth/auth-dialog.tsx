@@ -6,6 +6,7 @@ import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
 import { ArrowLeft, Check, Mail, Megaphone, PenTool, X } from 'lucide-react';
 import { SpacaMark } from '../brand/spaca-logo';
 import { XLogo } from '../x/x-logo';
+import { GoogleLogo } from '../brand/google-logo';
 
 export type TestAccount = { persona: string; name: string; role: string; returnTo: string };
 
@@ -21,6 +22,8 @@ type Props = {
   testAccounts: TestAccount[];
   /** Whether "Continue with X" works here, and whether it opens the local stand-in for X. */
   x: { available: boolean; sandbox: boolean };
+  /** The same for "Continue with Google", which signs in to accounts that connected Google in settings. */
+  google: { available: boolean; sandbox: boolean };
 };
 
 type AccountChoice = 'buyer' | 'creator';
@@ -39,12 +42,12 @@ const ACCOUNT_CHOICES: { value: AccountChoice; title: string; line: string; icon
 ];
 
 /**
- * Sign in / create account in one dialog. New accounts sign up with X only (after choosing Buyer or Creator); an email
- * and password can be added later from account settings, and then signs in here too. "Continue with X" is a form post
- * to /api/auth/x; email sign-in posts to /api/auth as JSON so errors show in place; test accounts (local sandbox only)
- * post to /api/dev/session.
+ * Sign in / create account in one dialog. New accounts sign up with X only (after choosing Buyer or Creator); Google and
+ * an email and password can be connected later from account settings, and then sign in here too. "Continue with X" and
+ * "Continue with Google" are form posts to /api/auth/x and /api/auth/google; email sign-in posts to /api/auth as JSON so
+ * errors show in place; test accounts (local sandbox only) post to /api/dev/session.
  */
-export function AuthDialog({ mode: initialMode, variant, returnTo, defaultRole = null, initialError = null, initialMessage = null, testAccounts, x }: Props) {
+export function AuthDialog({ mode: initialMode, variant, returnTo, defaultRole = null, initialError = null, initialMessage = null, testAccounts, x, google }: Props) {
   const router = useRouter();
   const [mode, setMode] = useState(initialMode);
   const [view, setView] = useState<'options' | 'email'>('options');
@@ -156,15 +159,20 @@ export function AuthDialog({ mode: initialMode, variant, returnTo, defaultRole =
         {signup && !role && <p className="account-choice-hint" id={`${titleId}-choose`}>Choose Buyer or Creator to continue.</p>}
         {!x.available && <p className="account-choice-hint">Signing in with X is not available in this environment.</p>}
         {signup
-          ? <p className="account-choice-next">You can add an email and password later in your account settings.</p>
+          ? <p className="account-choice-next">After joining, you can connect Google (Gmail) or add an email in your account settings.</p>
           : <>
             <div className="auth-divider"><span>or</span></div>
+            {google.available && <form action="/api/auth/google" method="post" className="auth-x">
+              <input type="hidden" name="intent" value="signin" />
+              <input type="hidden" name="return_to" value={returnTo} />
+              <button type="submit" className="auth-option"><GoogleLogo size={18} /> <span>Continue with Google</span></button>
+            </form>}
             <button type="button" className="auth-option" onClick={() => { setView('email'); setError(null); }}>
               <Mail size={18} aria-hidden /> <span>Continue with email</span>
             </button>
-            <p className="account-choice-next">Email works once you have added one to your account.</p>
+            <p className="account-choice-next">Google and email work once you have connected them to your account.</p>
           </>}
-        {x.available && x.sandbox && <p className="auth-sandbox-note">Local sandbox: X opens a stand-in page. No real X account is used.</p>}
+        {(x.sandbox || (!signup && google.sandbox)) && <p className="auth-sandbox-note">Local sandbox: {signup || !google.sandbox ? 'X opens a stand-in page' : 'X and Google open stand-in pages'}. No real account is used.</p>}
         {testAccounts.length > 0 && !signup && <>
           <div className="auth-divider"><span>Local test accounts</span></div>
           <ul className="auth-test-accounts">
