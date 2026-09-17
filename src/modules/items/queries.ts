@@ -13,9 +13,15 @@ export type ListingCard = {
   id: string; title: string; itemType: string; origin: 'PROJECT' | 'RESALE'; projectName: string; network: string; quantity: string;
   startingPrice: number; currentBid: number | null; buyNowPrice: number | null; collateral: number; bidCount: number;
   startsAt: string; endsAt: string; upcoming: boolean; sellerName: string;
+  /** The first picture's card copy (or the original when there is none), as an /api/item-images id. */
+  coverId: string | null;
 };
 
 const iso = (value: unknown) => new Date(String(value)).toISOString();
+
+/** The cover picture for a listing row `l`: its first picture's card copy, or the original; never a quarantined one. */
+const COVER = sql`(select coalesce(t.id,o.id) from app.item_listing_images i join app.storage_assets o on o.id=i.asset_id and o.lifecycle_state='READY'
+  left join app.storage_assets t on t.id=i.thumb_asset_id and t.lifecycle_state='READY' where i.listing_id=l.id order by i.position limit 1)`;
 const num = (value: unknown) => Number(value ?? 0);
 
 function card(row: Row): ListingCard {
@@ -25,6 +31,7 @@ function card(row: Row): ListingCard {
     startingPrice: num(row.starting_price_minor), currentBid: row.current_bid_minor == null ? null : num(row.current_bid_minor),
     buyNowPrice: row.buy_now_price_minor == null ? null : num(row.buy_now_price_minor), collateral: num(row.collateral_minor),
     bidCount: num(row.bid_count), startsAt: iso(row.starts_at), endsAt: iso(row.ends_at), upcoming: Boolean(row.upcoming), sellerName: String(row.seller_name),
+    coverId: row.cover_id ? String(row.cover_id) : null,
   };
 }
 
@@ -33,7 +40,7 @@ export async function getItemAuctionBoard(filters: { type?: string; origin?: str
   const type = (filters.type ?? '').trim().slice(0, 40);
   const origin = filters.origin === 'PROJECT' || filters.origin === 'RESALE' ? filters.origin : '';
   const [listings, types, recent] = await Promise.all([
-    sql<Row[]>`select l.*,u.display_name as seller_name,b.amount_minor as current_bid_minor,(now() < l.starts_at) as upcoming
+    sql<Row[]>`select l.*,u.display_name as seller_name,b.amount_minor as current_bid_minor,(now() < l.starts_at) as upcoming,${COVER} as cover_id
       from app.item_listings l join app.users u on u.id=l.seller_id left join app.item_bids b on b.id=l.current_bid_id
       where l.status='OPEN' and l.ends_at > now() and u.status='ACTIVE'
         and (${type} = '' or lower(l.item_type) = lower(${type})) and (${origin} = '' or l.origin = ${origin})
@@ -78,7 +85,7 @@ export type ItemListingDetail = NonNullable<Awaited<ReturnType<typeof getItemLis
 
 export async function getItemListing(id: string, actor: Actor | null) {
   if (!UUID_PATTERN.test(id)) return null;
-  const [row] = await sql<Row[]>`select l.*,u.display_name as seller_name,u.roles as seller_roles,p.handle as seller_handle,p.avatar_asset_id as seller_avatar,
+  const [row] = await sql<Row[]>`select l.*,${COVER} as cover_id,u.display_name as seller_name,u.roles as seller_roles,p.handle as seller_handle,p.avatar_asset_id as seller_avatar,
       b.amount_minor as current_bid_minor,b.bidder_id as current_bidder_id,now() as db_now
     from app.item_listings l join app.users u on u.id=l.seller_id left join app.profiles p on p.user_id=l.seller_id
     left join app.item_bids b on b.id=l.current_bid_id where l.id=${id}`;
@@ -86,10 +93,12 @@ export async function getItemListing(id: string, actor: Actor | null) {
   const seller = actor?.id === String(row.seller_id);
   if (!seller && (row.status === 'AWAITING_COLLATERAL' || row.status === 'CANCELLED')) return null;
   const operator = Boolean(actor?.roles.some((role) => ['finance', 'admin', 'support'].includes(role)));
-  const [bidRows, [saleRow], xProfiles] = await Promise.all([
+  const [bidRows, [saleRow], xProfiles, imageRows] = await Promise.all([
     sql<Row[]>`select amount_minor,sequence,created_at,bidder_id from app.item_bids where listing_id=${id} order by sequence desc limit 100`,
     sql<Row[]>`select * from app.item_sales where listing_id=${id}`,
     getXProfileViews([String(row.seller_id)]),
+    sql<Row[]>`select i.asset_id,i.thumb_asset_id from app.item_listing_images i join app.storage_assets a on a.id=i.asset_id and a.lifecycle_state='READY'
+      where i.listing_id=${id} order by i.position`,
   ]);
   const order: string[] = [];
   for (const bid of [...bidRows].reverse()) if (!order.includes(String(bid.bidder_id))) order.push(String(bid.bidder_id));
@@ -100,6 +109,7 @@ export async function getItemListing(id: string, actor: Actor | null) {
   const live = row.status === 'OPEN' && now >= new Date(String(row.starts_at)) && now < new Date(String(row.ends_at));
   return {
     role: role as 'visitor' | 'seller' | 'buyer' | 'operator',
+    images: imageRows.map((image) => ({ id: String(image.asset_id), thumbId: image.thumb_asset_id ? String(image.thumb_asset_id) : null })),
     listing: {
       ...card({ ...row, upcoming: now < new Date(String(row.starts_at)) }),
       status: String(row.status),

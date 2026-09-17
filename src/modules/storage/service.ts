@@ -27,7 +27,7 @@ import {
 } from './policy';
 import { getStorageProvider } from './provider';
 
-const ORDER_UPLOAD_STATES: Readonly<Record<Exclude<AssetPurpose, 'SAMPLE' | 'DIGITAL' | 'AVATAR' | 'REQUEST_IMAGE'>, readonly string[]>> = {
+const ORDER_UPLOAD_STATES: Readonly<Record<Exclude<AssetPurpose, 'SAMPLE' | 'DIGITAL' | 'AVATAR' | 'REQUEST_IMAGE' | 'ITEM_IMAGE'>, readonly string[]>> = {
   DELIVERY: ['IN_PROGRESS', 'REVISION_REQUESTED'],
   BRIEF: ['AWAITING_PAYMENT', 'FUNDED'],
   DISPUTE: ['IN_PROGRESS', 'DELIVERED', 'REVISION_REQUESTED', 'DISPUTED'],
@@ -46,6 +46,13 @@ async function assertOrderUpload(tx: Tx, actor: Actor, purpose: AssetPurpose, or
     if (orderId) throw new CommandError('Campaign images are not tied to an order');
     if (actor.status !== 'ACTIVE') throw new CommandError('Suspended accounts cannot add campaign images', 'ACCOUNT_SUSPENDED');
     if (!actor.roles.includes('buyer')) throw new CommandError('Only buyer accounts add campaign images', 'FORBIDDEN');
+    return;
+  }
+  if (purpose === 'ITEM_IMAGE') {
+    // Anyone who can list an item (buyer or creator account) may upload its pictures.
+    if (orderId) throw new CommandError('Item pictures are not tied to an order');
+    if (actor.status !== 'ACTIVE') throw new CommandError('Suspended accounts cannot add item pictures', 'ACCOUNT_SUSPENDED');
+    if (!['buyer', 'creator'].some((role) => actor.roles.includes(role))) throw new CommandError('Only marketplace accounts list items', 'FORBIDDEN');
     return;
   }
   if (purpose === 'SAMPLE' || purpose === 'DIGITAL') {
@@ -182,6 +189,10 @@ export async function createDownloadUrl(actor: Actor | null, assetId: string) {
   } else if (purpose === 'REQUEST_IMAGE') {
     // Campaign images are as visible as their campaign (/api/request-images/[id]); the buyer can always preview.
     allowed = owner || (asset.lifecycle_state === 'READY' && !!(await sql<Row[]>`select 1 from app.request_images i join app.requests r on r.id=i.request_id where i.asset_id=${assetId} and r.status in ('OPEN','FILLED','CLOSED')`)[0]);
+  } else if (purpose === 'ITEM_IMAGE') {
+    // Item pictures are as visible as their listing (/api/item-images/[id]); the seller can always preview.
+    allowed = owner || (asset.lifecycle_state === 'READY' && !!(await sql<Row[]>`select 1 from app.item_listing_images i join app.item_listings l on l.id=i.listing_id
+      where (i.asset_id=${assetId} or i.thumb_asset_id=${assetId}) and l.status in ('OPEN','SOLD','NO_BIDS')`)[0]);
   } else if (purpose === 'DIGITAL') {
     // Buyers download product files only through their entitlement (src/modules/digital); here only the creator.
     allowed = owner;

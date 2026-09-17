@@ -3,6 +3,7 @@
 import { useId, useState, type FormEvent } from 'react';
 import { ITEM_COLLATERAL_MIN_DIVISOR, ITEM_CONFIRM_HOURS, ITEM_PAYMENT_HOURS, ITEM_TYPE_SUGGESTIONS, usd } from '@/lib/items';
 import { TimeField } from '../time-field';
+import { FileUploadField } from '../files/file-upload-field';
 
 const cents = (value: string) => (/^\d+(\.\d{1,2})?$/.test(value.trim()) ? Math.round(Number(value) * 100) : null);
 
@@ -30,7 +31,10 @@ export function ItemListingForm({ idempotencyKey, canSellAsProject, defaults }: 
   const coverage = startingCents && collateralCents ? Math.round((collateralCents / startingCents) * 100) : null;
 
   async function submit(event: FormEvent<HTMLFormElement>) {
+    // The picture field already stopped a submit that would leave an upload behind.
+    const blocked = event.nativeEvent.defaultPrevented;
     event.preventDefault();
+    if (blocked) return;
     setBusy(true);
     setError(null);
     try {
@@ -100,6 +104,8 @@ export function ItemListingForm({ idempotencyKey, canSellAsProject, defaults }: 
           <input id={`${id}-quantity`} name="quantity" required maxLength={60} placeholder="1 spot, 5,000 $ARC, 1,200 points" />
         </div>
       </div>
+      <FileUploadField purpose="ITEM_IMAGE" name="image_ids" label="Pictures (optional)" maxFiles={6}
+        help="Up to 6: the art, the project banner, a screenshot of the allowlist. The first is the cover; PNG, JPG, GIF or WebP up to 10 MB." />
       <div className="field">
         <label htmlFor={`${id}-description`}>Description</label>
         <textarea id={`${id}-description`} name="description" required minLength={20} maxLength={2000} rows={4}

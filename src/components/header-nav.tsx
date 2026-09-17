@@ -8,6 +8,7 @@ import type { AccountType } from '@/lib/account';
 import { CATEGORIES } from './category';
 import { MenuIcon, type MenuIconName } from './menu-icon';
 import { CAMPAIGN_GOALS } from '@/modules/requests/goals';
+import badge from './beta-badge.module.css';
 
 type MenuItem = { href: string; title: string; description: string; icon: ReactNode };
 type Menu = {
@@ -140,6 +141,6 @@ export function HeaderNav({ type = null }: { type?: AccountType | null }) {
         </div>
       </div>;
     })}
-    <Link href="/auctions" className={`nav-link${auctionsActive ? ' is-active' : ''}`} aria-current={auctionsActive ? 'page' : undefined}>Auctions</Link>
+    <Link href="/auctions" className={`nav-link${auctionsActive ? ' is-active' : ''}`} aria-current={auctionsActive ? 'page' : undefined}>Auctions <span className={badge.beta}>Beta</span></Link>
   </nav>;
 }

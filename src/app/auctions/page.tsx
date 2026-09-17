@@ -41,7 +41,7 @@ export default async function AuctionsPage({ searchParams }: PageProps) {
   return <main className="container items-page">
     <Notices query={query} />
     <div className="items-head">
-      <PageHeading eyebrow="Auctions" title="Web3 items, bid in the open."
+      <PageHeading eyebrow="Auctions · Beta" title="Web3 items, bid in the open."
         description="Whitelist spots, guaranteed mints, pre-market tokens and more. The seller locks collateral first, and your payment waits in escrow until you confirm delivery." />
       <Link className="button button-dark" href={actor ? '/auctions/new' : '/sign-in?return_to=%2Fauctions%2Fnew'}>List an item</Link>
     </div>

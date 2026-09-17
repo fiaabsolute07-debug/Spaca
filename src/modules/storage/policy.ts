@@ -2,12 +2,12 @@
  * Upload policy (master §4.4): MIME allowlist tied to extensions and file signatures, per-kind size limits,
  * and server-generated object keys. Markup (HTML/SVG/XML) is never accepted, whatever it claims to be.
  */
-export type AssetPurpose = 'DELIVERY' | 'BRIEF' | 'DISPUTE' | 'SAMPLE' | 'DIGITAL' | 'AVATAR' | 'REQUEST_IMAGE';
-export type StorageBucket = 'public-portfolio' | 'private-briefs' | 'private-deliverables' | 'private-disputes' | 'private-products' | 'public-avatars' | 'public-campaigns' | 'private-quarantine';
+export type AssetPurpose = 'DELIVERY' | 'BRIEF' | 'DISPUTE' | 'SAMPLE' | 'DIGITAL' | 'AVATAR' | 'REQUEST_IMAGE' | 'ITEM_IMAGE';
+export type StorageBucket = 'public-portfolio' | 'private-briefs' | 'private-deliverables' | 'private-disputes' | 'private-products' | 'public-avatars' | 'public-campaigns' | 'public-items' | 'private-quarantine';
 type AssetKind = 'image' | 'document' | 'video' | 'archive';
 type Signature = 'png' | 'jpeg' | 'gif' | 'webp' | 'pdf' | 'zip' | 'isobmff' | 'ebml' | 'markup' | 'unknown';
 
-export const ASSET_PURPOSES: readonly AssetPurpose[] = ['DELIVERY', 'BRIEF', 'DISPUTE', 'SAMPLE', 'DIGITAL', 'AVATAR', 'REQUEST_IMAGE'];
+export const ASSET_PURPOSES: readonly AssetPurpose[] = ['DELIVERY', 'BRIEF', 'DISPUTE', 'SAMPLE', 'DIGITAL', 'AVATAR', 'REQUEST_IMAGE', 'ITEM_IMAGE'];
 export const BUCKET_FOR_PURPOSE: Readonly<Record<AssetPurpose, StorageBucket>> = {
   DELIVERY: 'private-deliverables',
   BRIEF: 'private-briefs',
@@ -19,6 +19,8 @@ export const BUCKET_FOR_PURPOSE: Readonly<Record<AssetPurpose, StorageBucket>> =
   AVATAR: 'public-avatars',
   // Campaign images are shown through /api/request-images/[id] while their campaign is visible.
   REQUEST_IMAGE: 'public-campaigns',
+  // Item auction pictures are shown through /api/item-images/[id] while their listing is visible.
+  ITEM_IMAGE: 'public-items',
 };
 export const QUARANTINE_BUCKET: StorageBucket = 'private-quarantine';
 export const MAX_ASSETS_PER_DELIVERY = 10;
@@ -52,6 +54,7 @@ const PURPOSE_KINDS: Readonly<Record<AssetPurpose, readonly AssetKind[]>> = {
   DIGITAL: ['image', 'document', 'video', 'archive'],
   AVATAR: ['image'],
   REQUEST_IMAGE: ['image'],
+  ITEM_IMAGE: ['image'],
 };
 
 const MB = 1024 * 1024;

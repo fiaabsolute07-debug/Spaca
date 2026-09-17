@@ -1,8 +1,8 @@
 import { expect, test, type Page } from '@playwright/test';
-import { baseURL, login, submit, uniqueSuffix, visit, waitForHydration } from './helpers';
+import { TINY_PNG, baseURL, login, submit, uniqueSuffix, visit, waitForHydration } from './helpers';
 
 /** Fill the listing form; times keep their defaults (opens now, closes in 3 days, delivery within 7 days). */
-async function listItem(page: Page, fields: { title: string; type: string; origin?: 'project' | 'resale'; buyNow?: string; starting?: string; collateral?: string }) {
+async function listItem(page: Page, fields: { title: string; type: string; origin?: 'project' | 'resale'; buyNow?: string; starting?: string; collateral?: string; pictures?: number }) {
   await visit(page, '/auctions/new');
   const create = page.getByRole('button', { name: 'Create listing' });
   await waitForHydration(create);
@@ -10,6 +10,10 @@ async function listItem(page: Page, fields: { title: string; type: string; origi
   await page.getByRole('button', { name: fields.type, exact: true }).click();
   await expect(page.getByLabel('Item type', { exact: true })).toHaveValue(fields.type);
   await page.getByLabel('Title').fill(fields.title);
+  if (fields.pictures) {
+    await page.getByLabel('Pictures (optional)').setInputFiles(Array.from({ length: fields.pictures }, (_, index) => ({ name: `picture-${index + 1}.png`, mimeType: 'image/png', buffer: TINY_PNG })));
+    await expect(page.getByText('Ready', { exact: true })).toHaveCount(fields.pictures);
+  }
   await page.getByLabel('Project', { exact: true }).fill('Nebula Punks');
   await page.getByLabel(/^Project link/).fill('x.com/nebulapunks');
   await page.getByLabel('Network').fill('Base');
@@ -40,7 +44,14 @@ test('a resale item bought now: paid into escrow, delivered with proof, confirme
   // A creator account resells; selling as the project needs a project account.
   await visit(page, '/auctions/new');
   await expect(page.getByRole('radio', { name: /I’m the project/ })).toBeDisabled();
-  const path = await listItem(page, { title, type: 'GTD mint', buyNow: '450' });
+  const path = await listItem(page, { title, type: 'GTD mint', buyNow: '450', pictures: 2 });
+  // The pictures show on the listing, the first as the cover.
+  const gallery = page.getByRole('group', { name: 'Pictures' });
+  await expect(gallery.getByRole('button')).toHaveCount(2);
+  await expect(page.getByRole('img', { name: `${title}, picture 1 of 2` })).toHaveAttribute('src', /^\/api\/item-images\/[0-9a-f-]{36}$/);
+  await waitForHydration(gallery.getByRole('button', { name: 'Show picture 2' }));
+  await gallery.getByRole('button', { name: 'Show picture 2' }).click();
+  await expect(page.getByRole('img', { name: `${title}, picture 2 of 2` })).toBeVisible();
 
   const buyerContext = await browser.newContext({ baseURL });
   try {
@@ -49,6 +60,9 @@ test('a resale item bought now: paid into escrow, delivered with proof, confirme
     await visit(buyer, '/auctions?type=GTD%20mint');
     const card = buyer.locator('.item-card').filter({ hasText: title });
     await expect(card).toContainText('Resale');
+    const cover = card.locator('img').first();
+    await expect(cover).toHaveAttribute('src', /^\/api\/item-images\/[0-9a-f-]{36}$/);
+    expect((await buyer.request.get((await cover.getAttribute('src'))!)).status()).toBe(200);
     await expect(card).toContainText('Collateral $90.00');
     await expect(card).toContainText('Buy now $450.00');
     await visit(buyer, path);
@@ -90,16 +104,23 @@ test('a project lists its own WL spot; bids must beat the last by the increment 
   await login(page, 'buyer_b');
   const path = await listItem(page, { title, type: 'WL spot', origin: 'project', buyNow: '300' });
   await visit(page, '/auctions?origin=PROJECT');
-  await expect(page.locator('.item-card').filter({ hasText: title })).toContainText('Sold by the project');
+  const card = page.locator('.item-card').filter({ hasText: title });
+  await expect(card).toContainText('Sold by the project');
+  // Without pictures the card draws the kind of item instead: a ticket for a WL spot.
+  await expect(card.locator('[data-kind="ticket"]')).toBeVisible();
 
   const bidderContext = await browser.newContext({ baseURL });
   try {
     const bidder = await bidderContext.newPage();
     await login(bidder, 'creator_d');
     await visit(bidder, path);
+    const gavel = bidder.getByRole('button', { name: 'Place bid' });
+    await waitForHydration(gavel);
     await bidder.getByLabel(/^Your bid/).fill('100');
-    await submit(bidder, bidder.getByRole('button', { name: 'Place bid' }));
-    await expect(bidder.getByRole('status')).toContainText('Bid of $100.00 placed. You are the highest bidder.');
+    await gavel.click();
+    // The gavel strikes while the bid is sent, and the answer shows in place.
+    await expect(gavel.locator('svg g').first()).toHaveCSS('animation-name', /strike/);
+    await expect(bidder.getByRole('main').getByRole('status')).toContainText('Bid of $100.00 placed. You are the highest bidder.');
     await expect(bidder.getByRole('button', { name: /^Buy now/ })).toHaveCount(0);
 
     await login(page, 'buyer_a');
@@ -109,7 +130,9 @@ test('a project lists its own WL spot; bids must beat the last by the increment 
     await amount.fill('105');
     expect(await amount.evaluate((input: HTMLInputElement) => input.validity.rangeUnderflow)).toBe(true);
     await amount.fill('110');
-    await submit(page, page.getByRole('button', { name: 'Place bid' }));
+    await waitForHydration(page.getByRole('button', { name: 'Place bid' }));
+    await page.getByRole('button', { name: 'Place bid' }).click();
+    await expect(page.getByRole('main').getByRole('status')).toContainText('Bid of $110.00 placed.');
 
     await visit(bidder, path);
     const history = bidder.getByRole('region', { name: 'Bid history' });

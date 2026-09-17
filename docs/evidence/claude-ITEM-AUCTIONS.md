@@ -22,3 +22,12 @@ Risk noted to the user before building: trading pre-market tokens and reselling 
 - Real escrow: an on-chain contract (Arc testnet) with seller collateral, or a payment provider. Until then every money line is sandbox.
 - No anti-sniping extension near the end, no notifications for outbid / won / delivered, and item escrow does not appear on `/funds` yet.
 - Delivery proof is text; no on-chain or allowlist verification.
+
+## Pictures, gavel and Beta (same day, drizzle/0034)
+User requests: "thêm cho mình hình ảnh vào để user có thể dễ hình dung", "biến nút place bid thành một chiếc búa, mỗi lần mà user bid thì búa sẽ đập", "bên cạnh là nút beta".
+- `RUN_DB_INTEGRATION=1 vitest run tests/integration/item-images.db.test.ts tests/integration/item-auctions.db.test.ts` — 10 passed: pictures attach with the listing (positions, card copy), are served only to the seller until the collateral is locked and to anyone after, the card cover is the small copy, the gallery lists both, a shown copy cannot be deleted, replacing and clearing move the cover; someone else's picture, a non-seller, seven pictures, duplicates, an empty change, a closed listing and an operator-only upload are refused; quarantining a picture takes its copy out of view and off the card and gallery.
+- `vitest run tests/unit/storage-policy.test.ts` — ITEM_IMAGE goes to `public-items` and refuses PDFs.
+- Full Vitest: 392 passed, 3 skipped.
+- `playwright test tests/e2e/item-auctions.spec.ts --repeat-each=2` — 6 passed: listing with two pictures shows a gallery that switches, the card cover loads (200), a listing without pictures draws a ticket, the gavel's strike animation runs on Place bid and the bid answer shows in place; header, public, responsive, time-zones and workspace-nav specs pass (17).
+- Screenshots: card grid with a cover and drawings, listing gallery, gavel frames frozen at 0/170/270/330/400/520 ms (strike lands at ~270 ms), header with Beta at 1360 and 390 px (no overflow).
+

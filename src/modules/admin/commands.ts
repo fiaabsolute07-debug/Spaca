@@ -288,9 +288,11 @@ const quarantineFile: CommandHandler = async ({ tx, actor, form }) => {
   if (before.purpose === 'SAMPLE') {
     await tx`update app.samples set moderation_status='REJECTED',moderated_by=${actor.id},moderated_at=now(),moderation_reason=${reason} where storage_asset_id=${assetId}`;
   }
-  if (before.purpose === 'REQUEST_IMAGE') {
-    // A campaign image and its card copy are one picture: quarantining either takes both out of view.
-    const pairs = await tx<Row[]>`select asset_id,thumb_asset_id from app.request_images where asset_id=${assetId} or thumb_asset_id=${assetId}`;
+  if (before.purpose === 'REQUEST_IMAGE' || before.purpose === 'ITEM_IMAGE') {
+    // A picture and its card copy are one picture: quarantining either takes both out of view.
+    const pairs = before.purpose === 'REQUEST_IMAGE'
+      ? await tx<Row[]>`select asset_id,thumb_asset_id from app.request_images where asset_id=${assetId} or thumb_asset_id=${assetId}`
+      : await tx<Row[]>`select asset_id,thumb_asset_id from app.item_listing_images where asset_id=${assetId} or thumb_asset_id=${assetId}`;
     for (const pair of pairs) {
       for (const other of [pair.asset_id, pair.thumb_asset_id]) {
         if (!other || String(other) === assetId) continue;

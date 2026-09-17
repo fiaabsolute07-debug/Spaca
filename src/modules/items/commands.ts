@@ -5,7 +5,7 @@
  * accounts end at zero when a sale settles. No provider is called and no funds move.
  */
 import { isBuyer } from '@/lib/account';
-import { CommandError, httpUrl, instantField, money, text, uuid, type CommandHandler, type Row, type Tx } from '@/lib/commands';
+import { CommandError, UUID_PATTERN, httpUrl, instantField, money, text, uuid, type CommandHandler, type Row, type Tx } from '@/lib/commands';
 import { ITEM_COLLATERAL_MIN_DIVISOR, ITEM_CONFIRM_HOURS, ITEM_PAYMENT_HOURS, usd } from '@/lib/items';
 import { audit, reasonOf, requireRole } from '@/modules/admin/policy';
 import { screenContent } from '@/modules/moderation/policy';
@@ -56,6 +56,32 @@ async function lockSale(tx: Tx, id: string): Promise<{ sale: Row; listing: Row }
 }
 
 const path = (listing: Row) => `/auctions/${String(listing.id)}`;
+
+export const MAX_ITEM_IMAGES = 6;
+
+/**
+ * The listing's pictures, in order, replacing any before: the seller's own finished ITEM_IMAGE uploads, each with the
+ * small card copy the browser made (`thumb_ids`, same positions, may be empty). Returns how many pictures it shows now.
+ */
+async function replaceItemImages(tx: Tx, sellerId: string, listingId: string, imageValue: string, thumbValue: string): Promise<number> {
+  const ids = imageValue.split(',').map((id) => id.trim().toLowerCase()).filter(Boolean);
+  const thumbs = thumbValue.split(',').map((id) => id.trim().toLowerCase());
+  if (ids.some((id) => !UUID_PATTERN.test(id)) || thumbs.some((id) => id && !UUID_PATTERN.test(id))) throw new CommandError('Pictures must be finished uploads');
+  if (ids.length > MAX_ITEM_IMAGES) throw new CommandError(`A listing can show at most ${MAX_ITEM_IMAGES} pictures`);
+  if (new Set(ids).size !== ids.length) throw new CommandError('The same picture was added twice');
+  const wanted = [...new Set([...ids, ...thumbs.filter(Boolean)])];
+  if (wanted.length) {
+    const assets = await tx<Row[]>`select id,lifecycle_state from app.storage_assets where id = any(${wanted}::uuid[]) and owner_id=${sellerId} and purpose='ITEM_IMAGE' for share`;
+    if (assets.length !== wanted.length) throw new CommandError('Upload the pictures first', 'NOT_FOUND');
+    if (assets.some((asset) => asset.lifecycle_state !== 'READY')) throw new CommandError('A picture did not pass the upload checks', 'DOMAIN_RULE');
+  }
+  await tx`delete from app.item_listing_images where listing_id=${listingId}`;
+  for (const [position, id] of ids.entries()) {
+    const thumb = thumbs[position] && thumbs[position] !== id ? thumbs[position]! : null;
+    await tx`insert into app.item_listing_images (listing_id,seller_id,asset_id,thumb_asset_id,position) values (${listingId},${sellerId},${id},${thumb},${position})`;
+  }
+  return ids.length;
+}
 
 /** Collateral goes back to the seller, or to the buyer when the seller did not deliver. */
 export async function releaseCollateral(tx: Tx, listing: Row, to: unknown): Promise<void> {
@@ -145,6 +171,7 @@ const createItemListing: CommandHandler = async ({ tx, actor, form }) => {
     values (${actor.id},${origin},${itemType},${title},${projectName},${projectUrl},${network},${quantity},${description},${deliveryMethod},${buyerProvides},
       ${deliveryDue.toISOString()},${starting.toString()},${increment.toString()},${buyNow === null ? null : buyNow.toString()},${collateral.toString()},${startsAt.toISOString()},${endsAt.toISOString()})
     returning id`;
+  await replaceItemImages(tx, actor.id, String(listing!.id), text(form, 'image_ids', false, 300), text(form, 'thumb_ids', false, 300));
   return { path: `/auctions/${String(listing!.id)}`, message: `Listing created. Lock the ${usd(collateral)} collateral to open it.`, id: String(listing!.id) };
 };
 
@@ -172,6 +199,18 @@ const cancelItemListing: CommandHandler = async ({ tx, actor, form }) => {
   await tx`update app.item_listings set status='CANCELLED',cancel_reason=${reason},closed_at=now(),version=version+1,updated_at=now() where id=${String(listing.id)}`;
   if (listing.collateral_posted_at) await releaseCollateral(tx, listing, listing.seller_id);
   return { path: '/auctions', message: listing.collateral_posted_at ? 'Listing cancelled. The collateral is back with you.' : 'Listing cancelled.' };
+};
+
+/** Pictures show what is sold but are not terms, so the seller may change them until the listing closes. */
+const setItemImages: CommandHandler = async ({ tx, actor, form }) => {
+  const listing = await lockListing(tx, uuid(form, 'listing_id'));
+  if (String(listing.seller_id) !== actor.id) throw new CommandError('Listing not found', 'NOT_FOUND');
+  if (!['AWAITING_COLLATERAL', 'OPEN'].includes(String(listing.status))) throw new CommandError('Pictures cannot change after the listing closes', 'ORDER_STATE_CONFLICT');
+  const clear = text(form, 'clear', false, 10) === 'true';
+  const images = clear ? '' : text(form, 'image_ids', false, 300);
+  if (!clear && !images) throw new CommandError('Upload at least one picture, or remove the current pictures');
+  const count = await replaceItemImages(tx, actor.id, String(listing.id), images, clear ? '' : text(form, 'thumb_ids', false, 300));
+  return { path: path(listing), message: count ? 'Pictures updated.' : 'Pictures removed.' };
 };
 
 // ---------------------------------------------------------------------------------------------------------------------
@@ -292,6 +331,7 @@ export const itemCommands: Record<string, CommandHandler> = {
   create_item_listing: createItemListing,
   post_item_collateral: postItemCollateral,
   cancel_item_listing: cancelItemListing,
+  set_item_images: setItemImages,
   bid_item: bidItem,
   buy_item_now: buyItemNow,
   pay_item_sale: payItemSale,

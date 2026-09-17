@@ -7,6 +7,12 @@ import { Avatar } from '@/components/avatar';
 import { Countdown } from '@/components/items/countdown';
 import { LiveRefresh } from '@/components/items/live-refresh';
 import { XProfileCard } from '@/components/x/x-profile-card';
+import { BidForm } from '@/components/items/bid-form';
+import { ItemArt } from '@/components/items/item-art';
+import { ItemGallery } from '@/components/items/item-gallery';
+import { FileUploadField } from '@/components/files/file-upload-field';
+import media from '@/components/items/item-media.module.css';
+import { randomUUID } from 'node:crypto';
 import { CommandForm, Empty, date } from '@/components/ui';
 import { Notices } from '@/components/notices';
 import type { PageProps } from '@/components/page-props';
@@ -46,12 +52,7 @@ function ActionPanel({ detail, route, signedIn }: { detail: ItemListingDetail; r
         {listing.bidCount === 0 && <CommandForm command="cancel_item_listing" label="Cancel and unlock collateral" variant="secondary" values={values} returnTo={route} />}
       </> : !signedIn ? <Link className="button button-dark item-action" href={`/sign-in?return_to=${encodeURIComponent(route)}`}>Log in to bid</Link>
         : listing.live ? <>
-          <CommandForm command="bid_item" label="Place bid" values={values} returnTo={route} className="item-bid-form">
-            <div className="field">
-              <label htmlFor="item-bid-amount">Your bid (USD, at least {usd(listing.nextMinimum)})</label>
-              <input id="item-bid-amount" name="amount" type="number" min={(listing.nextMinimum / 100).toFixed(2)} step="0.01" inputMode="decimal" required defaultValue={(listing.nextMinimum / 100).toFixed(2)} />
-            </div>
-          </CommandForm>
+          <BidForm listingId={listing.id} nextMinimum={listing.nextMinimum} idempotencyKey={randomUUID()} route={route} />
           {listing.buyNowAvailable && <CommandForm command="buy_item_now" label={`Buy now for ${usd(listing.buyNowPrice!)}`} variant="secondary" values={values} returnTo={route} />}
         </> : <p className="muted">Bidding opens {date(listing.startsAt)}.</p>}
       <p className="item-collateral-note">Seller collateral <strong className="item-money">{usd(listing.collateral)}</strong>, {Math.round((listing.collateral / price) * 100)}% of the {listing.currentBid == null ? 'starting price' : 'current bid'}. If the item is not delivered by {date(listing.deliveryDueAt)}, the winner gets their payment back plus this collateral.</p>
@@ -169,6 +170,17 @@ export default async function ItemListingPage({ params, searchParams }: PageProp
 
     <div className="item-layout">
       <div className="item-main">
+        {detail.images.length
+          ? <ItemGallery title={listing.title} images={detail.images} />
+          : <div className={media.heroArt}><ItemArt itemType={listing.itemType} size="hero" /></div>}
+        {detail.role === 'seller' && (listing.status === 'AWAITING_COLLATERAL' || listing.status === 'OPEN') && <section className="panel" aria-labelledby="item-pictures">
+          <h2 id="item-pictures">Pictures</h2>
+          <p className="muted">{detail.images.length ? `${detail.images.length} of 6 shown; the first is the cover. Uploading replaces them all.` : 'Add the art, a project banner or an allowlist screenshot so bidders can see what they get.'}</p>
+          <CommandForm command="set_item_images" label={detail.images.length ? 'Replace pictures' : 'Save pictures'} variant="secondary" values={{ listing_id: listing.id }} returnTo={route}>
+            <FileUploadField purpose="ITEM_IMAGE" name="image_ids" label="Pictures" maxFiles={6} />
+          </CommandForm>
+          {detail.images.length > 0 && <CommandForm command="set_item_images" label="Remove all pictures" variant="danger" values={{ listing_id: listing.id, clear: 'true' }} returnTo={route} />}
+        </section>}
         <section className="panel" aria-labelledby="item-about">
           <h2 id="item-about">About this item</h2>
           <p className="prewrap">{listing.description}</p>

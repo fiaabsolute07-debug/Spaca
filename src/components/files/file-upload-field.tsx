@@ -10,7 +10,7 @@ type Item = { key: string; name: string; state: 'uploading' | 'ready' | 'failed'
 export const ACCEPTED_FILES = '.png,.jpg,.jpeg,.gif,.webp,.pdf,.docx,.mp4,.m4v,.mov,.webm';
 export const ACCEPTED_IMAGES = '.png,.jpg,.jpeg,.gif,.webp';
 /** Image-only uploads get the image picker and a local thumbnail while they upload. */
-const IMAGE_ONLY = new Set<Purpose>(['AVATAR', 'REQUEST_IMAGE']);
+const IMAGE_ONLY = new Set<Purpose>(['AVATAR', 'REQUEST_IMAGE', 'ITEM_IMAGE']);
 /** Campaign cards are a few hundred pixels wide, so a card never needs the buyer's full-size upload. */
 const THUMB_MAX_PX = 640;
 const THUMB_SKIP_BYTES = 120_000;
@@ -63,7 +63,7 @@ export function FileUploadField({ purpose, orderId, name = 'asset_ids', label, h
   const readyItems = items.filter((item) => item.state === 'ready' && item.id);
   const ready = readyItems.map((item) => item.id!);
   // Campaign cards load the small copy; everything else keeps a single file per upload.
-  const withThumbnails = purpose === 'REQUEST_IMAGE';
+  const withThumbnails = purpose === 'REQUEST_IMAGE' || purpose === 'ITEM_IMAGE';
 
   useEffect(() => {
     const form = wrapper.current?.closest('form');

@@ -1,4 +1,4 @@
-export type UploadPurpose = 'DELIVERY' | 'BRIEF' | 'DISPUTE' | 'SAMPLE' | 'DIGITAL' | 'AVATAR' | 'REQUEST_IMAGE';
+export type UploadPurpose = 'DELIVERY' | 'BRIEF' | 'DISPUTE' | 'SAMPLE' | 'DIGITAL' | 'AVATAR' | 'REQUEST_IMAGE' | 'ITEM_IMAGE';
 
 const EXTENSION_TYPES: Record<string, string> = {
   png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', pdf: 'application/pdf',
