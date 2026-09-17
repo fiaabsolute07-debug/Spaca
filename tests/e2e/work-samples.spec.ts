@@ -12,11 +12,12 @@ test('an uploaded work sample is shown as the picture itself, once moderation ha
   const service = await createPublishedService(page, 'sample-media');
   const title = `Uploaded sample ${uniqueSuffix()}`;
 
-  // The creator adds the file from the one Work samples form at the top of their services page.
+  // The creator adds the file from the one Work samples form at the top of their services page, folded until opened.
   await visit(page, '/creator/services');
   const form = page.locator('section.panel').filter({ has: page.getByRole('heading', { name: 'Work samples', exact: true }) });
   const upload = form.getByLabel('Sample file');
   await waitForHydration(upload);
+  await form.getByRole('heading', { name: 'Work samples', exact: true }).click();
   await upload.setInputFiles({ name: 'launch-frame.png', mimeType: 'image/png', buffer: TINY_PNG });
   await expect(form.getByText('Ready', { exact: true })).toBeVisible();
   await form.getByLabel('What this work is').fill(title);

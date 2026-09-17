@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { getDashboardData } from '@/lib/read-model';
-import { Badge, CommandForm, Empty, Field, availabilityLabel, date, humanize, money, num, row, rows, str, toneOf } from '@/components/ui';
+import { Badge, CommandForm, Empty, Field, availabilityLabel, humanize, money, num, row, rows, str } from '@/components/ui';
 import { Notices } from '@/components/notices';
 import { PageHeading } from '@/components/page-heading';
 import { requireActorOrLoginPrompt } from '@/components/require-actor';
@@ -14,9 +14,8 @@ export const dynamic = 'force-dynamic';
 type Row = Record<string, unknown>;
 
 /**
- * Work the creator still owes someone, grouped by whose move it is rather than by the status word. A creator
- * opening this page wants one answer first — what do I have to do today — so the states they must act on come
- * first and the ones they are only waiting on come last. Finished orders are not work and are not listed.
+ * Work the creator still owes someone, counted by whose move it is rather than by the status word: the states they
+ * must act on first, the ones they are only waiting on last. Finished orders are not work and are not counted.
  */
 const WORK_STAGES = [
   { key: 'yours', title: 'Your move', hint: 'Start the work, or send the revision that was asked for.', statuses: ['FUNDED', 'REVISION_REQUESTED'] },
@@ -37,35 +36,11 @@ const SERVICE_FILTERS = [
   { value: 'ARCHIVED', label: 'Archived' },
 ] as const;
 
-/** Drafts and paused services need a decision; archived ones are history. Live work outranks everything. */
-const STATUS_ORDER: Record<string, number> = { PUBLISHED: 0, DRAFT: 1, PAUSED: 2, ARCHIVED: 3 };
-
-const DAY = 24 * 60 * 60 * 1000;
-/** A stage lists the most urgent few; the rest are one link away. A wall of 160 orders is not a to-do list. */
-const PER_STAGE = 5;
-
-/** The instant a stage sorts on: the deadline that is actually running, oldest (most urgent) first. */
-function deadlineOf(order: Row): number {
-  const at = str(order.status) === 'DELIVERED' ? order.review_due_at : order.delivery_due_at;
-  const time = at ? new Date(String(at)).getTime() : Number.NaN;
-  return Number.isFinite(time) ? time : Number.POSITIVE_INFINITY;
-}
-
-/** When this order needs something, in the words the creator would use, plus whether it is already late. */
-function due(order: Row): { label: string; late: boolean } | null {
-  const status = str(order.status);
-  if (status === 'AWAITING_PAYMENT') return { label: 'Not funded yet', late: false };
-  const at = status === 'DELIVERED' ? order.review_due_at : order.delivery_due_at;
-  if (!at) return null;
-  const left = new Date(String(at)).getTime() - Date.now();
-  if (!Number.isFinite(left)) return null;
-  const word = status === 'DELIVERED' ? 'Buyer reviews by' : 'Due';
-  if (left <= 0) return { label: status === 'DELIVERED' ? 'Review window closed' : 'Overdue', late: status !== 'DELIVERED' };
-  const days = Math.floor(left / DAY);
-  if (days >= 1) return { label: `${word} ${date(at)}`, late: false };
-  const hours = Math.max(1, Math.round(left / (60 * 60 * 1000)));
-  return { label: `${word} ${date(at)}`, late: status !== 'DELIVERED' && hours <= 24 };
-}
+/** Archived services are history and go last. */
+const STATUS_ORDER: Record<string, number> = { DRAFT: 0, PAUSED: 0, PUBLISHED: 0, ARCHIVED: 1 };
+const changedAt = (service: Row) => new Date(String(service.updated_at ?? 0)).getTime() || 0;
+/** Cards per page: a catalogue of hundreds rendered at once was a page 150,000 px tall. */
+const PAGE_SIZE = 20;
 
 export default async function CreatorServicesPage({
   searchParams
@@ -85,7 +60,6 @@ export default async function CreatorServicesPage({
   const d = row(await getDashboardData(actor));
   const workload = row(d.workload);
   const status = availabilityLabel(workload.availability_status);
-  const inFlight = num(workload.in_flight_units);
   const services = rows(d.services);
 
   // The dashboard read carries both sides of an account's orders; here only the ones this creator has to deliver.
@@ -103,123 +77,106 @@ export default async function CreatorServicesPage({
   const needle = search.toLowerCase();
   const counts = Object.fromEntries(SERVICE_FILTERS.map((option) =>
     [option.value, option.value ? services.filter((service) => str(service.status) === option.value).length : services.length]));
-  const shown = services
+  // The service just saved, published or paused is the one the creator is looking for, so the most recently changed
+  // come first (the work strip above already counts what is in flight). Ties keep the newest-created order.
+  const matching = services
     .filter((service) => (!chosen || str(service.status) === chosen) && (!needle || str(service.title).toLowerCase().includes(needle)))
-    .sort((a, b) => (byService.get(str(b.id))?.length ?? 0) - (byService.get(str(a.id))?.length ?? 0)
-      || (STATUS_ORDER[str(a.status)] ?? 9) - (STATUS_ORDER[str(b.status)] ?? 9)
-      || str(a.title).localeCompare(str(b.title)));
-  // Filters are plain links and the search is a GET form, so both work without JavaScript and can be bookmarked.
-  const chipHref = (value: string) => {
-    const params = new URLSearchParams({ ...(value ? { status: value } : {}), ...(search ? { q: search } : {}) });
+    .sort((a, b) => (STATUS_ORDER[str(a.status)] ?? 9) - (STATUS_ORDER[str(b.status)] ?? 9) || changedAt(b) - changedAt(a));
+  const pages = Math.max(1, Math.ceil(matching.length / PAGE_SIZE));
+  const pageNumber = Math.min(pages, Math.max(1, Math.floor(Number(str(query.page)) || 1)));
+  const shown = matching.slice((pageNumber - 1) * PAGE_SIZE, pageNumber * PAGE_SIZE);
+  // Filters, search and pages are plain links and GET forms, so they work without JavaScript and can be bookmarked.
+  const listHref = (status: string, page = 1) => {
+    const params = new URLSearchParams({ ...(status ? { status } : {}), ...(search ? { q: search } : {}), ...(page > 1 ? { page: String(page) } : {}) });
     return params.size ? `${route}?${params}` : route;
   };
+  const chipHref = (value: string) => listHref(value);
 
-  return <main className="container">
+  const stages = WORK_STAGES.map((stage) => ({ ...stage, count: active.filter((order) => (stage.statuses as readonly string[]).includes(str(order.status))).length }))
+    .filter((stage) => stage.count > 0);
+  const paused = workload.accepting_orders === false;
+
+  return <main className="container my-services">
     {notices}
     <div className="section-heading">
       <PageHeading
         eyebrow="Creator workspace"
         title="My services"
-        description="What you owe today, then everything you sell."
+        description="Everything you sell, with the orders each one has in flight."
       />
       <Link className="button button-dark" href="/creator/services/new">New service</Link>
     </div>
 
-    {active.length > 0 && <section className="panel" aria-labelledby="work-heading">
-      <div className="inline-actions">
+    {/* One strip for the work and the door: counts only, so no order title repeats a service title below. The orders
+        themselves are listed on Orders, and what is due first on the overview. */}
+    <section className="panel services-strip" aria-label="Work and new orders">
+      <div className="services-strip-work">
         <h2 id="work-heading">Work in progress</h2>
+        {stages.length
+          ? <ul className="services-stages" aria-labelledby="work-heading">
+            {stages.map((stage) => <li key={stage.key}>
+              <Link href="/buyer/orders" className="services-stage" data-stage={stage.key} title={stage.hint}>
+                <span className="services-stage-count">{stage.count}</span>{stage.title}
+              </Link>
+            </li>)}
+          </ul>
+          : <p className="muted">Nothing in flight.</p>}
         <Link className="text-link" href="/buyer/orders">All orders ›</Link>
       </div>
-      <div className="work-stages">
-        {WORK_STAGES.map((stage) => {
-          const items = active.filter((order) => (stage.statuses as readonly string[]).includes(str(order.status)))
-            .sort((a, b) => deadlineOf(a) - deadlineOf(b));
-          if (!items.length) return null;
-          const listed = items.slice(0, PER_STAGE);
-          return <section key={stage.key} className="work-stage" data-stage={stage.key} aria-labelledby={`work-${stage.key}`}>
-            <h3 className="work-stage-head" id={`work-${stage.key}`}>{stage.title}<span className="work-count">{items.length}</span></h3>
-            <p className="muted work-stage-hint">{stage.hint}</p>
-            <ul className="work-list">
-              {listed.map((order) => {
-                const deadline = due(order);
-                return <li key={str(order.id)}>
-                  <Link className="work-item" href={`/orders/${str(order.id)}`}>
-                    {/* Not a heading: a service card is found by its heading, and an order carries the same title. */}
-                    <span className="work-item-what">
-                      <strong>{str(order.title, 'Order')}</strong>
-                      <small>for {str(order.buyer_name, 'a buyer')} · {money(order.amount_minor)}</small>
-                    </span>
-                    <Badge tone={toneOf(order.status)}>{humanize(str(order.status))}</Badge>
-                    {deadline ? <span className="work-item-due" data-late={deadline.late ? 'yes' : 'no'}>{deadline.label}</span> : <span className="work-item-due" />}
-                  </Link>
-                </li>;
-              })}
-            </ul>
-            {items.length > listed.length
-              ? <p className="work-more"><Link className="text-link" href="/buyer/orders">{items.length - listed.length} more in this state ›</Link></p>
-              : null}
-          </section>;
-        })}
-      </div>
-    </section>}
-
-    <section className="panel" aria-labelledby="new-orders-heading">
-      <div className="inline-actions">
-        <h2 id="new-orders-heading">New orders</h2>
+      <div className="services-strip-door">
         <span className={status.className}>{status.label}</span>
-      </div>
-      <p className="muted">
-        {inFlight} {inFlight === 1 ? 'order' : 'orders'} in progress. Pause to stop new orders, hires and auctions; work in progress continues.
-      </p>
-      <div className="order-limit-actions">
-        {workload.accepting_orders === false
+        {paused
           ? <CommandForm command="set_accepting_orders" label="Resume new orders" values={{ accepting: 'true' }} returnTo={route} />
           : <CommandForm command="set_accepting_orders" label="Pause new orders" variant="secondary" values={{ accepting: 'false' }} returnTo={route} />}
       </div>
     </section>
 
-    {services.some((s) => str(s.status) !== 'ARCHIVED') && <section className="panel" aria-labelledby="add-sample-heading">
-      <h2 id="add-sample-heading">Work samples</h2>
-      <p className="muted">
-        Show the work itself: an uploaded picture or video plays on the service page, where a link would only point away
-        from it. A sample added here waits for moderation before buyers see it, and appears under the service you pick.
-      </p>
-      {/* One upload field for the page, not one per service: a busy creator's list would otherwise carry hundreds. */}
-      <CommandForm command="add_sample" label="Add work sample" variant="secondary" returnTo={route}>
-        <FileUploadField purpose="SAMPLE" name="asset_id" label="Sample file" maxFiles={1} help="One image, video or PDF. Leave this empty if the work only lives online." />
-        <Field name="title" label="What this work is" required />
-        <Field name="url" label="Link to it online (needed when there is no file)" />
-        <Field name="description" label="A line about it (optional)" />
-        <SelectField name="service_id" label="Show it on" placeholder="Keep it in my portfolio only"
-          options={services.filter((s) => str(s.status) !== 'ARCHIVED').map((s) => ({ value: str(s.id), label: str(s.title) }))} />
-      </CommandForm>
-    </section>}
-
-    {services.length > 0 && <div className="section-heading services-heading">
-      <h2 id="services-list-heading">Services</h2>
+    {services.length > 0 && <div className="services-toolbar">
+      <h2 id="services-list-heading" className="visually-hidden">Services</h2>
+      <nav className="chip-row" aria-label="Filter services">
+        {SERVICE_FILTERS.map((option) => (counts[option.value] || !option.value) ? <Link key={option.label} className="chip-link" href={chipHref(option.value)}
+          aria-current={chosen === option.value ? 'page' : undefined}>{option.label}<span className="muted">{counts[option.value]}</span></Link> : null)}
+      </nav>
       <form className="service-search" role="search" method="get" action={route}>
         {chosen ? <input type="hidden" name="status" value={chosen} /> : null}
         <label htmlFor="service-search-field">Find a service</label>
         <input id="service-search-field" type="search" name="q" defaultValue={search} placeholder="Search by title" />
         <button className="button button-secondary" type="submit">Search</button>
       </form>
-      <nav className="chip-row" aria-label="Filter services">
-        {SERVICE_FILTERS.map((option) => (counts[option.value] || !option.value) ? <Link key={option.label} className="chip-link" href={chipHref(option.value)}
-          aria-current={chosen === option.value ? 'page' : undefined}>{option.label}<span className="muted">{counts[option.value]}</span></Link> : null)}
-      </nav>
     </div>}
+
+    {services.some((s) => str(s.status) !== 'ARCHIVED') && <section className="panel services-sample" aria-labelledby="add-sample-heading">
+      <details>
+        <summary><h2 id="add-sample-heading">Work samples</h2><span className="services-sample-mark" aria-hidden="true" /><span className="muted">Add a picture, video or link to a service</span></summary>
+        <p className="muted">
+          Show the work itself: an uploaded picture or video plays on the service page, where a link would only point away
+          from it. A sample added here waits for moderation before buyers see it, and appears under the service you pick.
+        </p>
+        {/* One upload field for the page, not one per service: a busy creator's list would otherwise carry hundreds. */}
+        <CommandForm command="add_sample" label="Add work sample" variant="secondary" returnTo={route}>
+          <FileUploadField purpose="SAMPLE" name="asset_id" label="Sample file" maxFiles={1} help="One image, video or PDF. Leave this empty if the work only lives online." />
+          <Field name="title" label="What this work is" required />
+          <Field name="url" label="Link to it online (needed when there is no file)" />
+          <Field name="description" label="A line about it (optional)" />
+          <SelectField name="service_id" label="Show it on" placeholder="Keep it in my portfolio only"
+            options={services.filter((s) => str(s.status) !== 'ARCHIVED').map((s) => ({ value: str(s.id), label: str(s.title) }))} />
+        </CommandForm>
+      </details>
+    </section>}
 
     {services.length === 0
       ? <Empty title="No services yet">
         <Link href="/creator/services/new" className="text-link">Create your first service ›</Link>
       </Empty>
-      : shown.length === 0
+      : matching.length === 0
         ? <Empty title={search ? `No service matches “${search}”` : 'No services with that status'}>
           <Link href={route} className="text-link">Show every service ›</Link>
         </Empty>
-        : <><p className="muted service-board-count">{shown.length === services.length
-          ? `${services.length} ${services.length === 1 ? 'service' : 'services'}`
-          : `${shown.length} of ${services.length} services`}</p>
+        : <><p className="muted service-board-count">{pages > 1
+          ? `${(pageNumber - 1) * PAGE_SIZE + 1}–${(pageNumber - 1) * PAGE_SIZE + shown.length} of ${matching.length} ${matching.length === 1 ? 'service' : 'services'}`
+          : matching.length === services.length
+            ? `${services.length} ${services.length === 1 ? 'service' : 'services'}`
+            : `${matching.length} of ${services.length} services`}</p>
         <div className="cards service-board" aria-labelledby="services-list-heading">
           {shown.map(s => {
             const live = byService.get(str(s.id)) ?? [];
@@ -300,6 +257,11 @@ export default async function CreatorServicesPage({
               </div>
             </div>;
           })}
-        </div></>}
+        </div>
+        {pages > 1 && <nav className="services-pages" aria-label="Service pages">
+          {pageNumber > 1 ? <Link className="button button-outline compact" href={listHref(chosen, pageNumber - 1)}>‹ Previous</Link> : <span />}
+          <span className="muted">Page {pageNumber} of {pages}</span>
+          {pageNumber < pages ? <Link className="button button-outline compact" href={listHref(chosen, pageNumber + 1)}>Next ›</Link> : <span />}
+        </nav>}</>}
   </main>;
 }

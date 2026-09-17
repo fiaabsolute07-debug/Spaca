@@ -711,3 +711,9 @@ six commits per `docs/BRAND_ROLLOUT_PROMPT.md`. It replaces the neutral Apple-li
 - Each service card shows its facts ("$35.00 · 1 hour · Digital · 1 sample · 1 active order"), then folded rows. A digital service that already has a file folds its upload under **Upload a new version** (button "Add new version"); one without a file still shows the upload open under "Upload the product file before publishing." Open public page and Publish/Pause sit on one row under a divider.
 - Filter chips read "All 32", "Published 30" with the count set apart; the "Find a service" label stays on one line, and on a phone the search takes the full row with the label kept for screen readers only.
 - A muted explanation above a form in a panel keeps an 18 px gap before the first field.
+
+## 2026-09-17 additions: My services is one section, twenty cards a page
+
+- Replaces the Work in progress lists from "My services leads with the work": an order carries its service's title, so the order rows and the service cards read as the same section twice.
+- Top to bottom: the heading with **New service**; one **Work in progress** strip — a count per stage (Your move in lime, In progress, Waiting on the buyer, On hold; each links to Orders) with All orders ›, and on the right the Accepting/Paused state with Pause new orders or Resume new orders; the filter chips and Find a service; **Work samples** folded ("Add a picture, video or link to a service") with the add-sample form inside; then the cards.
+- Cards: the most recently changed service first (just saved, published, paused or edited), archived last; 20 a page with "1–20 of 452 services", "Page 1 of 23", ‹ Previous / Next ›. Filters and search go back to page 1.

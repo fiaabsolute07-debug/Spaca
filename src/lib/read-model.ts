@@ -13,7 +13,7 @@ import { getXProfileViews, requestXRefresh } from '@/modules/x/service';
 export type ReadRow = Record<string, unknown>;
 const asRows = (value: unknown): ReadRow[] => Array.isArray(value) ? value as ReadRow[] : [];
 
-const SERVICE_COLUMNS_OWNER = sql`s.id,s.title,s.description,s.taxonomy,s.price_minor,s.currency,s.turnaround_hours,s.revision_limit,s.units_per_order,s.status,s.version,s.creator_id,s.published_version_id as service_version_id,s.publish_account_id,s.publish_format,s.min_live_hours,s.disclosure_text,s.access_session_minutes,s.digital_license,s.digital_rights_text,s.digital_stock,s.digital_updates,s.digital_download_limit`;
+const SERVICE_COLUMNS_OWNER = sql`s.id,s.title,s.description,s.taxonomy,s.price_minor,s.currency,s.turnaround_hours,s.revision_limit,s.units_per_order,s.status,s.version,s.creator_id,s.published_version_id as service_version_id,s.publish_account_id,s.publish_format,s.min_live_hours,s.disclosure_text,s.access_session_minutes,s.digital_license,s.digital_rights_text,s.digital_stock,s.digital_updates,s.digital_download_limit,s.updated_at`;
 // Public views always show the published immutable version's terms, never unpublished edits.
 const SERVICE_COLUMNS_PUBLIC = sql`s.id,v.title,v.description,v.taxonomy,v.price_minor,v.currency,v.turnaround_hours,v.revision_limit,v.units_per_order,s.status,s.version,s.creator_id,v.id as service_version_id,v.version as service_version,v.publish_platform,v.publish_handle,v.publish_url,v.publish_format,v.min_live_hours,v.disclosure_text,v.access_session_minutes,v.digital_license,v.digital_rights_text,v.digital_stock,v.digital_updates,v.digital_download_limit`;
 
@@ -253,6 +253,12 @@ export async function getAccountSummary(actor: Actor): Promise<AccountSummary> {
     link: String(row?.social_url ?? ''),
     wallet: row?.wallet_address ? { address: String(row.wallet_address), network: String(row.wallet_network ?? ''), mode: String(row.wallet_mode ?? ''), count: Number(row.wallet_count ?? 1) } : null,
   };
+}
+
+/** The creator's linked posting accounts, for the PUBLISH terms of a new service. */
+export async function getPostingAccounts(creatorId: string) {
+  return asRows(await sql`select id,platform,handle,canonical_url as url,verification_status from app.social_accounts
+    where creator_id=${creatorId} and removed_at is null order by created_at`);
 }
 
 export async function getDashboardData(actor: Actor) {
