@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { Notices } from '@/components/notices';
 import { PageHeading } from '@/components/page-heading';
 import type { Query } from '@/components/page-props';
+import { appStage } from '@/lib/environment';
 
 export type PolicyRoute = '/terms' | '/privacy' | '/refund-policy' | '/support' | '/reset-password';
 export function PolicyScreen({
@@ -12,9 +13,10 @@ export function PolicyScreen({
   query: Query;
 }) {
   const notices = <Notices query={query} />;
+  const local = appStage() === 'local';
   return <main className="container">
     <PageHeading
-      eyebrow="Local sandbox information"
+      eyebrow={local ? 'Local sandbox information' : 'Early access'}
       title={
         route === '/support' ? 'How can we help?'
           : route === '/privacy' ? 'Your project stays yours.'
@@ -28,18 +30,18 @@ export function PolicyScreen({
       {route === '/support' ? <>
         <h2>Get help with an order</h2>
         <p>
-          Open your order workspace to send a message or raise a dispute. This local
-          environment has no external support inbox and sends no email.
+          Open your order workspace to send a message or raise a dispute.{local ? ' This local environment has no external support inbox and sends no email.' : ''}
         </p>
         <Link className="button button-dark" href="/dashboard">Open your workspace</Link>
       </> : route === '/reset-password' ? <p>
-        Email recovery requires a configured authentication email provider. It is not
-        enabled in this local sandbox. Use a separate test account to continue local
-        acceptance testing.
+        {local
+          ? 'Email recovery requires a configured authentication email provider. It is not enabled in this local sandbox. Use a separate test account to continue local acceptance testing.'
+          : 'Password recovery by email is not available yet. Continue with X or Google, which sign in to the same account.'}
       </p> : <>
         <p>
-          This environment is for local product testing. These are product operating
-          rules, not reviewed production legal terms.
+          {local
+            ? 'This environment is for local product testing. These are product operating rules, not reviewed production legal terms.'
+            : 'spaca is in early access and payments are not open. These are the product’s operating rules while the full terms are prepared.'}
         </p>
         <h3>Clear scope and disclosed fees</h3>
         <p>

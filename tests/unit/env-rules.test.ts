@@ -14,6 +14,8 @@ const productionEnv = {
   NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: 'sb_publishable_example',
   DEV_SESSIONS: 'off',
   STORAGE_PROVIDER: 'supabase',
+  SUPABASE_SERVER_SECRET_KEY: 'fixture-not-a-real-server-key',
+  CRON_SECRET: 'production-cron-secret-example-0000000',
   VIEW_HASH_SALT: 'production-view-salt-example',
   NOTICE_SIGNING_SECRET: 'production-notice-signing-secret-example',
   PAYMENT_MODE: 'sandbox',
@@ -30,6 +32,16 @@ describe('env:check — fail closed per environment (§19.2)', () => {
     expect(report.rows.filter((r) => r.status !== 'OK')).toEqual([]);
     expect(report.ok).toBe(true);
     expect(row(report, 'DATABASE_URL')).toMatchObject({ status: 'OK', presence: 'set', host: 'remote' });
+  });
+
+  it('production accepts the launch choice: first-party sessions, no money, Supabase storage and a cron secret', () => {
+    const { NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: _publishable, ...rest } = productionEnv;
+    const launch = checkEnvironment({ ...rest, AUTH_MODE: 'app', PAYMENT_MODE: 'off' }, 'production');
+    expect(launch.rows.filter((r) => r.status !== 'OK')).toEqual([]);
+    const missing = checkEnvironment({ ...rest, AUTH_MODE: 'app', PAYMENT_MODE: 'off', SUPABASE_SERVER_SECRET_KEY: '', CRON_SECRET: 'short' }, 'production');
+    expect(row(missing, 'SUPABASE_SERVER_SECRET_KEY')?.status).toBe('MISSING');
+    expect(row(missing, 'CRON_SECRET')?.status).toBe('INVALID');
+    expect(row(checkEnvironment({ ...rest, AUTH_MODE: 'app', PAYMENT_MODE: 'off', SUPABASE_SERVER_SECRET_KEY: 'sb_publishable_not_the_secret_key' }, 'production'), 'SUPABASE_SERVER_SECRET_KEY')?.status).toBe('INVALID');
   });
 
   it('production refuses loopback databases, mock payments, dev sessions, local auth and nonzero fee', () => {

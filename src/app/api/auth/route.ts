@@ -1,11 +1,16 @@
+import { createHash } from 'node:crypto';
 import { cookies } from 'next/headers';
 import { withNotice } from '../../../lib/notices';
 import { NextResponse } from 'next/server';
 import { sql } from '../../../lib/db';
 import { onboardingPath } from '../../../lib/onboarding';
-import { createSession, getActor, hashPassword, hashSessionToken, isSameOrigin, localAuthEnabled, SESSION_COOKIE, supabaseAuth, verifyPassword, publicUrl } from '../../../lib/auth';
+import { createSession, getActor, hashPassword, hashSessionToken, isSameOrigin, appSessionsEnabled, SESSION_COOKIE, supabaseAuth, verifyPassword, publicUrl } from '../../../lib/auth';
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+/** Failed password sign-ins allowed per address in the window before sign-in with that address waits (drizzle/0037). */
+const MAX_FAILED_SIGN_INS = 10;
+const SIGN_IN_WINDOW_MINUTES = 15;
+const emailHash = (email: string) => createHash('sha256').update(`sign-in:${email}`).digest('hex');
 const validCredentials = (email: string, password: string) => EMAIL_PATTERN.test(email) && email.length <= 254 && password.length >= 12 && password.length <= 256;
 
 /**
@@ -34,7 +39,7 @@ export async function POST(request: Request) {
     if (action === 'add_email') {
       const actor = await getActor();
       if (!actor) return refuse('/sign-in?return_to=%2Fsettings%2Fprofile', 'Sign in first, then add an email from your account settings.');
-      if (!localAuthEnabled()) return refuse('/settings/profile', 'Adding an email is not available in this environment yet.');
+      if (!appSessionsEnabled()) return refuse('/settings/profile', 'Adding an email is not available in this environment yet.');
       if (!validCredentials(email, password)) return refuse('/settings/profile', 'Enter a valid email address and a password of at least 12 characters.');
       try {
         const [updated] = await sql`update app.users set email=${email},password_hash=${hashPassword(password)} where id=${actor.id} and email is null returning id`;
@@ -47,7 +52,7 @@ export async function POST(request: Request) {
     }
 
     if (action !== 'logout' && !validCredentials(email, password)) return failure();
-    if (!localAuthEnabled()) {
+    if (!appSessionsEnabled()) {
       const client = await supabaseAuth();
       if (action === 'logout') { await client.auth.signOut(); return go('/'); }
       const result = await client.auth.signInWithPassword({ email, password });
@@ -70,8 +75,18 @@ export async function POST(request: Request) {
       // reads as "that did not work". `homePath(false)` is the same `/` the logo points visitors at.
       return go('/');
     }
+    const hashed = emailHash(email);
+    const [recent] = await sql<{ n: number }[]>`select count(*)::int as n from app.sign_in_attempts
+      where email_hash=${hashed} and not succeeded and created_at > now() - make_interval(mins => ${SIGN_IN_WINDOW_MINUTES})`;
+    if (Number(recent?.n ?? 0) >= MAX_FAILED_SIGN_INS) {
+      return refuse(`/sign-in?return_to=${encodeURIComponent(returnTo)}`, `Too many sign-in attempts for this email. Try again in ${SIGN_IN_WINDOW_MINUTES} minutes, or continue with X or Google.`);
+    }
     const [user] = await sql`select id,password_hash,onboarded_at is not null as onboarded from app.users where email=${email} and status in ('ACTIVE','SUSPENDED')`;
-    if (!user?.password_hash || !verifyPassword(password, user.password_hash)) return failure();
+    const verified = Boolean(user?.password_hash) && verifyPassword(password, user!.password_hash);
+    await sql`insert into app.sign_in_attempts (email_hash,succeeded) values (${hashed},${verified})`;
+    // Only the window matters; older attempts for this address are dropped as it is used.
+    await sql`delete from app.sign_in_attempts where email_hash=${hashed} and created_at < now() - interval '1 day'`;
+    if (!verified) return failure();
     const previous = jar.get(SESSION_COOKIE)?.value;
     if (previous) await sql`delete from app.sessions where token_hash=${hashSessionToken(previous)}`;
     jar.set(SESSION_COOKIE, await createSession(user.id), { httpOnly: true, sameSite: 'lax', secure: publicUrl(request, '/').protocol === 'https:', path: '/', maxAge: 604800 });

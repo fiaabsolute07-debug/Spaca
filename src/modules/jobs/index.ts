@@ -588,26 +588,48 @@ export async function settleItemAuctionSales(options: { limit?: number; saleId?:
   return { job: 'settle_item_sales', ...(await settleItemSales(options)) };
 }
 
+/** Every durable job, in the order one run takes them, with a name that survives minification for failure reports. */
+const JOBS: ReadonlyArray<readonly [string, () => Promise<JobReport>]> = [
+  ['reprocessWebhookInbox', reprocessWebhookInbox],
+  ['indexChainDeposits', indexChainDeposits],
+  ['reconcileProviderOperations', reconcileProviderOperations],
+  ['expireCheckoutHolds', expireCheckoutHolds],
+  ['expireHireOffers', expireHireOffers],
+  ['closeDueAuctions', closeDueAuctions],
+  ['autoAcceptDeliveries', autoAcceptDeliveries],
+  ['measurePerformancePosts', measurePerformancePosts],
+  ['settlePerformanceBonuses', settlePerformanceBonuses],
+  ['releaseReadySettlements', releaseReadySettlements],
+  ['dispatchReleaseBatches', dispatchReleaseBatches],
+  ['dispatchChainPayouts', dispatchChainPayouts],
+  ['sendOrderReminders', sendOrderReminders],
+  ['dispatchNotificationOutbox', dispatchNotificationOutbox],
+  ['cleanupStorage', cleanupStorage],
+  ['checkWorkloadCounters', checkWorkloadCounters],
+  ['refreshXProfiles', refreshXProfiles],
+  ['closeItemAuctions', closeItemAuctions],
+  ['settleItemAuctionSales', settleItemAuctionSales],
+];
+
 export async function runJobsOnce(): Promise<JobReport[]> {
-  return [
-    await reprocessWebhookInbox(),
-    await indexChainDeposits(),
-    await reconcileProviderOperations(),
-    await expireCheckoutHolds(),
-    await expireHireOffers(),
-    await closeDueAuctions(),
-    await autoAcceptDeliveries(),
-    await measurePerformancePosts(),
-    await settlePerformanceBonuses(),
-    await releaseReadySettlements(),
-    await dispatchReleaseBatches(),
-    await dispatchChainPayouts(),
-    await sendOrderReminders(),
-    await dispatchNotificationOutbox(),
-    await cleanupStorage(),
-    await checkWorkloadCounters(),
-    await refreshXProfiles(),
-    await closeItemAuctions(),
-    await settleItemAuctionSales(),
-  ];
+  const reports: JobReport[] = [];
+  for (const [, job] of JOBS) reports.push(await job());
+  return reports;
+}
+
+/**
+ * For a deployed scheduler (`/api/cron/jobs`): every job runs even when an earlier one fails, and a failure is reported by
+ * name instead of stopping the run.
+ */
+export async function runJobsIsolated(): Promise<Array<JobReport | { job: string; failed: true }>> {
+  const reports: Array<JobReport | { job: string; failed: true }> = [];
+  for (const [name, job] of JOBS) {
+    try {
+      reports.push(await job());
+    } catch (error) {
+      logError('scheduled job failed', error, { job: name });
+      reports.push({ job: name, failed: true });
+    }
+  }
+  return reports;
 }

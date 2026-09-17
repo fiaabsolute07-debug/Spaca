@@ -54,15 +54,20 @@ export function checkEnvironment(env: Environment, target: EnvironmentTarget): E
   add('APP_BASE_URL', deployed, webUrl(deployed), true);
   add('DATABASE_URL', deployed, databaseUrl, true);
   add('DATABASE_MIGRATION_URL', deployed, databaseUrl, true);
-  add('AUTH_MODE', deployed, deployed ? oneOf('supabase') : oneOf('local', 'supabase'));
-  const supabase = deployed || env.AUTH_MODE === 'supabase' || env.NODE_ENV === 'production';
-  add('NEXT_PUBLIC_SUPABASE_URL', supabase, webUrl(deployed), true);
-  add('NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY', supabase, (value) => !/^(?:sb_secret_|sk_|whsec_)/.test(value));
+  // Launch decision (2026-09-17): first-party sessions (`app`) with X, Google and email sign-in; Supabase Auth stays possible.
+  add('AUTH_MODE', deployed, deployed ? oneOf('app', 'supabase') : oneOf('local', 'app', 'supabase'));
+  const supabaseAuth = env.AUTH_MODE === 'supabase' || (env.NODE_ENV === 'production' && env.AUTH_MODE !== 'app');
+  const supabaseStorage = deployed || env.STORAGE_PROVIDER === 'supabase';
+  add('NEXT_PUBLIC_SUPABASE_URL', supabaseAuth || supabaseStorage, webUrl(deployed), true);
+  add('NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY', supabaseAuth, (value) => !/^(?:sb_secret_|sk_|whsec_)/.test(value));
+  // The storage adapter's server key; it must never be a NEXT_PUBLIC_ variable.
+  add('SUPABASE_SERVER_SECRET_KEY', supabaseStorage, (value) => value.length >= 20 && !/^sb_publishable_/.test(value));
   // Legacy alias is read by auth.ts, but deployments must provide the canonical publishable key.
   add('NEXT_PUBLIC_SUPABASE_ANON_KEY', false, (value) => !/^(?:sb_secret_|sk_|whsec_)/.test(value));
   add('DEV_SESSIONS', deployed, deployed ? oneOf('off') : oneOf('on', 'off'));
   add('PLATFORM_FEE_BPS', false, oneOf('0'));
-  add('PAYMENT_MODE', deployed || live, (value) => ['mock', 'sandbox', 'testnet', 'live'].includes(value) &&
+  // `off`: no money at all (the launch choice of 2026-09-17); checkout, collateral, bids and payouts refuse.
+  add('PAYMENT_MODE', deployed || live, (value) => value === 'off' ? !live : ['mock', 'sandbox', 'testnet', 'live'].includes(value) &&
     !(production && value === 'mock') && (live ? value === 'live' && production : value !== 'live') &&
     !(target === 'staging' && value === 'mock'));
   add('LIVE_PAYMENTS_ENABLED', deployed, oneOf('true', 'false'));
@@ -98,7 +103,9 @@ export function checkEnvironment(env: Environment, target: EnvironmentTarget): E
   // Eligible-view hashing (P5-04) must use a real secret salt when deployed.
   add('VIEW_HASH_SALT', deployed, (value) => value.length >= 16);
   add('NOTICE_SIGNING_SECRET', deployed, (value) => value.length >= 32);
-  for (const name of ['SUPABASE_SERVER_SECRET_KEY', 'STORAGE_PUBLIC_BUCKET', 'STORAGE_PRIVATE_BUCKETS',
+  // Scheduled jobs: the host's cron calls /api/cron/jobs with this bearer secret.
+  add('CRON_SECRET', deployed, (value) => value.length >= 32);
+  for (const name of ['STORAGE_PUBLIC_BUCKET', 'STORAGE_PRIVATE_BUCKETS',
     'SUPPORT_CONTACT', 'POLICY_VERSION', 'WALLET_PROVIDER_CONFIG']) add(name);
   const arc = env.PAYMENT_PROVIDER === 'arc_usdc';
   add('ARC_NETWORK_MODE', arc, oneOf('testnet')); // Live Arc has no selected/verified configuration yet.

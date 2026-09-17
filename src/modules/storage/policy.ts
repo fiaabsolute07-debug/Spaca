@@ -64,6 +64,27 @@ function limitFor(kind: AssetKind): number {
   return Number.isSafeInteger(configured) && configured > 0 ? Math.min(configured, defaults[kind]) : defaults[kind];
 }
 
+/**
+ * What each bucket may hold, for creating the buckets of a deployment (`pnpm storage:setup`): the types its purposes
+ * accept and the largest of their size limits. Quarantine takes anything the other buckets take.
+ */
+export function bucketRules(): Record<StorageBucket, { mimeTypes: string[]; maxBytes: number }> {
+  const rules = {} as Record<StorageBucket, { mimeTypes: string[]; maxBytes: number }>;
+  const add = (bucket: StorageBucket, kinds: readonly AssetKind[]) => {
+    const types = Object.entries(TYPES).filter(([, rule]) => kinds.includes(rule.kind)).map(([mime]) => mime);
+    const current = rules[bucket] ?? { mimeTypes: [], maxBytes: 0 };
+    rules[bucket] = {
+      mimeTypes: [...new Set([...current.mimeTypes, ...types])].sort(),
+      maxBytes: Math.max(current.maxBytes, ...kinds.map(limitFor)),
+    };
+  };
+  for (const purpose of ASSET_PURPOSES) {
+    add(BUCKET_FOR_PURPOSE[purpose], PURPOSE_KINDS[purpose]);
+    add(QUARANTINE_BUCKET, PURPOSE_KINDS[purpose]);
+  }
+  return rules;
+}
+
 export class UploadPolicyError extends Error {
   constructor(message: string) {
     super(message);

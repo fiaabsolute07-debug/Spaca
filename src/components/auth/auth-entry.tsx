@@ -1,4 +1,4 @@
-import { localAuthEnabled } from '@/lib/auth';
+import { appSessionsEnabled, devSessionsEnabled } from '@/lib/auth';
 import { verifiedNotice } from '@/lib/notices';
 import { xMode } from '@/modules/x/provider';
 import { googleMode } from '@/modules/google/provider';
@@ -21,7 +21,7 @@ const safePath = (value: string) => (value.startsWith('/') && !value.startsWith(
 
 /** Server wrapper shared by the intercepted dialog and the direct /sign-in and /sign-up pages. */
 export function AuthEntry({ mode, variant, query }: { mode: 'signin' | 'signup'; variant: 'modal' | 'page'; query: Query }) {
-  const showTestAccounts = localAuthEnabled() && process.env.DEV_SESSIONS !== 'off';
+  const showTestAccounts = devSessionsEnabled();
   return <AuthDialog
     mode={mode}
     variant={variant}
@@ -30,7 +30,7 @@ export function AuthEntry({ mode, variant, query }: { mode: 'signin' | 'signup';
     initialError={verifiedNotice(query, 'error')}
     initialMessage={verifiedNotice(query, 'message')}
     testAccounts={showTestAccounts ? TEST_ACCOUNTS : []}
-    x={{ available: localAuthEnabled() && xMode() !== 'off', sandbox: xMode() === 'mock' }}
-    google={{ available: localAuthEnabled() && googleMode() !== 'off', sandbox: googleMode() === 'mock' }}
+    x={{ available: appSessionsEnabled() && xMode() !== 'off', sandbox: xMode() === 'mock' }}
+    google={{ available: appSessionsEnabled() && googleMode() !== 'off', sandbox: googleMode() === 'mock' }}
   />;
 }

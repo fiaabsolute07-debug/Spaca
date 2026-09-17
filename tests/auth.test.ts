@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { hashPassword, verifyPassword, hashSessionToken, isSameOrigin, localAuthEnabled } from '../src/lib/auth';
+import { appSessionsEnabled, devSessionsEnabled, hashPassword, verifyPassword, hashSessionToken, isSameOrigin } from '../src/lib/auth';
 
 describe('local development password and session primitives', () => {
   it('uses randomized salts and rejects incorrect passwords', () => {
@@ -24,8 +24,17 @@ describe('local development password and session primitives', () => {
     expect(isSameOrigin(new Request('http://localhost:3000/api/auth',{headers:{origin:'https://attacker.test'}}))).toBe(false);
     expect(isSameOrigin(new Request('http://localhost:3000/api/auth'))).toBe(false);
   });
-  it('never enables local credentials in production', () => {
+  it('never enables fixture sessions in production; first-party sessions there only with AUTH_MODE=app', () => {
     vi.stubEnv('NODE_ENV', 'production');
-    try { expect(localAuthEnabled()).toBe(false); } finally { vi.unstubAllEnvs(); }
+    try {
+      expect(appSessionsEnabled()).toBe(false);
+      expect(devSessionsEnabled()).toBe(false);
+      vi.stubEnv('AUTH_MODE', 'app');
+      expect(appSessionsEnabled()).toBe(true);
+      expect(devSessionsEnabled()).toBe(false);
+      vi.stubEnv('NODE_ENV', 'development');
+      vi.stubEnv('AUTH_MODE', 'supabase');
+      expect(appSessionsEnabled()).toBe(false);
+    } finally { vi.unstubAllEnvs(); }
   });
 });

@@ -291,9 +291,10 @@ export async function completeXSignIn(input: { state: string; code: string; erro
       if (accountType === 'creator' && profile.protected) {
         return { path: retry, error: `@${profile.username} is a protected account. Buyers cannot see protected posts, so a creator account needs a public X account.` };
       }
-      // Local sessions only (the route checks), so like an email sign-up here the account is local test data.
+      // Accounts made in a local build or with the sandbox X are test data; in production they are real supply.
+      const testData = process.env.NODE_ENV !== 'production' || provider.source === 'MOCK';
       const [created] = await tx<Row[]>`insert into app.users (id,email,display_name,password_hash,roles,is_test,status,onboarded_at)
-        values (gen_random_uuid(),null,${profile.name.slice(0, 100)},null,${[accountType]},true,'ACTIVE',null) returning id`;
+        values (gen_random_uuid(),null,${profile.name.slice(0, 100)},null,${[accountType]},${testData},'ACTIVE',null) returning id`;
       const userId = String(created!.id);
       await saveConnection(tx, { id: userId, creator: accountType === 'creator' }, profile, provider.source);
       await tx`update app.user_identities set last_sign_in_at=now() where user_id=${userId} and provider='X'`;

@@ -7,7 +7,7 @@
 import { isBuyer } from '@/lib/account';
 import { CommandError, UUID_PATTERN, httpUrl, instantField, money, text, uuid, type CommandHandler, type Row, type Tx } from '@/lib/commands';
 import { ITEM_COLLATERAL_MIN_DIVISOR, ITEM_CONFIRM_HOURS, ITEM_PAYMENT_HOURS, usd } from '@/lib/items';
-import { audit, reasonOf, requireRole } from '@/modules/admin/policy';
+import { assertFlags, audit, reasonOf, requireRole } from '@/modules/admin/policy';
 import { screenContent } from '@/modules/moderation/policy';
 
 const HOUR = 3600_000;
@@ -176,6 +176,7 @@ const createItemListing: CommandHandler = async ({ tx, actor, form }) => {
 };
 
 const postItemCollateral: CommandHandler = async ({ tx, actor, form }) => {
+  await assertFlags(tx, ['CHECKOUT_CREATION_ENABLED']);
   const listing = await lockListing(tx, uuid(form, 'listing_id'));
   if (String(listing.seller_id) !== actor.id) throw new CommandError('Listing not found', 'NOT_FOUND');
   if (listing.status !== 'AWAITING_COLLATERAL') throw new CommandError('The collateral is already locked', 'ORDER_STATE_CONFLICT');
@@ -225,6 +226,7 @@ async function assertLive(tx: Tx, listing: Row, actorId: string) {
 }
 
 const bidItem: CommandHandler = async ({ tx, actor, form }) => {
+  await assertFlags(tx, ['BIDDING_ENABLED']);
   const listing = await lockListing(tx, uuid(form, 'listing_id'));
   await assertLive(tx, listing, actor.id);
   const amount = money(text(form, 'amount'), 'Bid');
@@ -242,6 +244,7 @@ const bidItem: CommandHandler = async ({ tx, actor, form }) => {
 };
 
 const buyItemNow: CommandHandler = async ({ tx, actor, form }) => {
+  await assertFlags(tx, ['BIDDING_ENABLED', 'CHECKOUT_CREATION_ENABLED']);
   const listing = await lockListing(tx, uuid(form, 'listing_id'));
   await assertLive(tx, listing, actor.id);
   if (listing.buy_now_price_minor == null) throw new CommandError('This listing has no Buy now price', 'BUY_NOW_UNAVAILABLE');
@@ -254,6 +257,7 @@ const buyItemNow: CommandHandler = async ({ tx, actor, form }) => {
 // After the sale
 
 const payItemSale: CommandHandler = async ({ tx, actor, form }) => {
+  await assertFlags(tx, ['CHECKOUT_CREATION_ENABLED']);
   const { sale, listing } = await lockSale(tx, uuid(form, 'sale_id'));
   if (String(sale.buyer_id) !== actor.id) throw new CommandError('Sale not found', 'NOT_FOUND');
   if (sale.status !== 'AWAITING_PAYMENT') throw new CommandError('This sale is already paid or closed', 'ORDER_STATE_CONFLICT');

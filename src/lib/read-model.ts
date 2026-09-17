@@ -326,7 +326,7 @@ export async function getOrderData(actor: Actor, id: string) {
       (select json_build_object('tx_hash',d.tx_hash,'status',d.status,'reason',d.reason) from app.chain_deposits d where d.intent_id=i.id order by d.created_at desc limit 1) as last_deposit
     from app.crypto_payment_intents i join app.chain_assets a on a.id=i.asset_id join app.chain_networks n on n.chain_id=i.chain_id
     where i.order_id=${id} order by i.created_at desc limit 1`) : [];
-  const cryptoEnabled = isBuyer && order.status === 'AWAITING_PAYMENT' && (await sql`select enabled from app.feature_flags where key='CRYPTO_CHECKOUT_ENABLED'`)[0]?.enabled === true;
+  const cryptoEnabled = isBuyer && order.status === 'AWAITING_PAYMENT' && await isFlagEnabled(sql, 'CRYPTO_CHECKOUT_ENABLED');
   const cryptoOptions = cryptoEnabled ? asRows(await sql`select a.id as asset_id,a.symbol,a.decimals,a.kind,n.chain_id,n.name as network_name,n.mode
     from app.chain_assets a join app.chain_networks n on n.chain_id=a.chain_id
     where n.enabled and a.usd_pegged and a.allowlisted and n.mode in ('LOCAL','TESTNET') ${process.env.NODE_ENV === 'production' ? sql`and n.mode <> 'LOCAL'` : sql``}

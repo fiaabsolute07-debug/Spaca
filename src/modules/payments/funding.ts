@@ -17,6 +17,7 @@ import { activateOrderClaim } from '@/modules/capacity';
 import { recomputeWorkClock } from '@/modules/orders/lifecycle';
 import { fulfillDigitalOrder } from '@/modules/digital';
 import { isFlagEnabled } from '@/modules/admin/policy';
+import { PAYMENTS_CLOSED_MESSAGE, paymentsOpen } from '@/lib/environment';
 import { COST_POLICY_VERSION, lateCostCapBps, lateCostShares, type CostPhase } from './cost-policy';
 import { enqueueChainPayout, registerPayoutEffects } from '@/modules/crypto/payouts';
 import { atomicToUsdMinor, escrowReference, usdMinorToAtomic } from '@/modules/crypto/registry';
@@ -124,6 +125,7 @@ async function lockCheckoutHold(tx: Tx, orderId: string): Promise<Row | undefine
  */
 export async function ensureFundingIntent(tx: Tx, buyerId: string, orderId: string, method: FundingMethod = 'CARD'): Promise<ProviderCallResult> {
   const provider = getMockPaymentProvider();
+  if (!paymentsOpen()) throw new PaymentFlowError(PAYMENTS_CLOSED_MESSAGE, 'UNAVAILABLE');
   if (!(await isFlagEnabled(tx, 'CHECKOUT_CREATION_ENABLED'))) throw new PaymentFlowError('Checkout is temporarily paused; existing payments and refunds continue', 'UNAVAILABLE');
   // BNK-03: bank funding is its own switch; a provider that pays creators to banks does not make it available to buyers.
   if (method === 'BANK_TRANSFER' && !(await isFlagEnabled(tx, 'BANK_FUNDING_ENABLED'))) throw new PaymentFlowError('Bank transfer payments are not available', 'UNAVAILABLE');

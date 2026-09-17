@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getActor, isSameOrigin, localAuthEnabled, publicUrl } from '@/lib/auth';
+import { getActor, isSameOrigin, appSessionsEnabled, publicUrl } from '@/lib/auth';
 import { CommandError } from '@/lib/commands';
 import { logError } from '@/lib/log';
 import { withNotice } from '@/lib/notices';
@@ -18,7 +18,7 @@ export async function POST(request: Request) {
   const actor = connect ? await getActor() : null;
   if (connect && !actor) return NextResponse.redirect(publicUrl(request, '/sign-in?return_to=%2Fsettings%2Fprofile'), 303);
   if (!googleAvailable()) return fail('Google is not available in this environment.');
-  if (!connect && !localAuthEnabled()) return fail('Signing in with Google is not available in this environment yet.');
+  if (!connect && !appSessionsEnabled()) return fail('Signing in with Google is not available in this environment yet.');
   try {
     const destination = await startGoogle({ intent: connect ? 'CONNECT' : 'SIGN_IN', actor, returnTo: form.get('return_to') },
       publicUrl(request, '/api/auth/google/callback').toString());

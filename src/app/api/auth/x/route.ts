@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { isSameOrigin, localAuthEnabled, publicUrl } from '@/lib/auth';
+import { isSameOrigin, appSessionsEnabled, publicUrl } from '@/lib/auth';
 import { CommandError } from '@/lib/commands';
 import { logError } from '@/lib/log';
 import { withNotice } from '@/lib/notices';
@@ -18,7 +18,7 @@ export async function POST(request: Request) {
   const accountType = role === 'creator' ? 'creator' : 'buyer';
   const retry = signup ? `/sign-up${role ? `?role=${accountType}` : ''}` : '/sign-in';
   const fail = (message: string) => NextResponse.redirect(publicUrl(request, withNotice(retry, 'error', message)), 303);
-  if (!localAuthEnabled()) return fail('Signing in with X is not available in this environment yet.');
+  if (!appSessionsEnabled()) return fail('Signing in with X is not available in this environment yet.');
   if (!xConnectAvailable()) return fail('Signing in with X is not available in this environment.');
   if (signup && role !== 'creator' && role !== 'buyer') return fail('Choose Buyer or Creator first.');
   try {

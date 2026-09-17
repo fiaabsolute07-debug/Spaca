@@ -7,8 +7,17 @@ import { sql } from './db';
 export type ActorStatus = 'ACTIVE' | 'SUSPENDED';
 export type Actor = { id: string; email: string | null; display_name: string; roles: string[]; is_test: boolean; status: ActorStatus; timezone: string };
 export const SESSION_COOKIE = 'creator_session';
-export function localAuthEnabled() {
-  return process.env.NODE_ENV !== 'production' && process.env.AUTH_MODE !== 'supabase';
+/**
+ * First-party sessions (`app.sessions`): on by default locally, and in a deployment only with AUTH_MODE=app — the launch
+ * choice (2026-09-17) for sign-up with X and sign-in with X, Google or email. AUTH_MODE=supabase turns them off.
+ */
+export function appSessionsEnabled() {
+  if (process.env.AUTH_MODE === 'supabase') return false;
+  return process.env.NODE_ENV !== 'production' || process.env.AUTH_MODE === 'app';
+}
+/** Fixture personas and test-account sign-in: local development only, never in a production build. */
+export function devSessionsEnabled() {
+  return process.env.NODE_ENV !== 'production' && appSessionsEnabled() && process.env.DEV_SESSIONS !== 'off';
 }
 export function hashPassword(password: string): string {
   const salt = randomBytes(16).toString('hex');
@@ -71,7 +80,7 @@ export function requestHostname(request: Request): string {
   return new URL(request.url).hostname;
 }
 export async function createSession(userId: string): Promise<string> {
-  if (!localAuthEnabled()) throw new Error('Local sessions disabled');
+  if (!appSessionsEnabled()) throw new Error('Sessions are not enabled in this environment');
   const token = randomBytes(32).toString('hex');
   await sql`insert into app.sessions (token_hash, user_id, expires_at) values (${hashSessionToken(token)}, ${userId}, now() + interval '7 days')`;
   return token;
@@ -90,7 +99,7 @@ export async function supabaseAuth() {
 const ACTOR_ROLES = sql`(u.roles || coalesce((select array_agg(r.role order by r.role) from app.user_roles r where r.user_id=u.id and r.revoked_at is null), '{}'::text[]))`;
 
 export async function getActor(): Promise<Actor | null> {
-  if (!localAuthEnabled()) {
+  if (!appSessionsEnabled()) {
     const client = await supabaseAuth();
     const { data: { user }, error } = await client.auth.getUser();
     if (error || !user) return null;

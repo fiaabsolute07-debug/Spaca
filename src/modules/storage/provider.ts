@@ -10,6 +10,7 @@ import { createReadStream } from 'node:fs';
 import { mkdir, open, rename, rm, stat } from 'node:fs/promises';
 import { dirname, resolve, sep } from 'node:path';
 import type { StorageBucket } from './policy';
+import { SupabaseStorageProvider } from './supabase';
 
 export type SignedUrl = { url: string; method: 'PUT' | 'GET'; expiresAt: Date; headers: Record<string, string> };
 export type ObjectInfo = { size: number };
@@ -177,9 +178,17 @@ export class LocalStorageProvider implements StorageProvider {
 
 let override: StorageProvider | undefined;
 let local: LocalStorageProvider | undefined;
+let supabase: SupabaseStorageProvider | undefined;
 
 export function getStorageProvider(): StorageProvider {
   if (override) return override;
+  // Deployments (drizzle/0036 launch runbook): Supabase Storage with the server secret key.
+  if (process.env.STORAGE_PROVIDER === 'supabase') {
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const secretKey = process.env.SUPABASE_SERVER_SECRET_KEY;
+    if (!url || !secretKey) throw new Error('Supabase Storage is not configured for this environment');
+    return (supabase ??= new SupabaseStorageProvider({ url, secretKey }));
+  }
   if (!localStorageEnabled()) throw new Error('No storage provider is configured for this environment');
   return (local ??= new LocalStorageProvider());
 }

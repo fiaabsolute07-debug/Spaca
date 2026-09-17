@@ -3,6 +3,7 @@ import Link from 'next/link';
 import Script from 'next/script';
 import { Archivo, Geist, Geist_Mono } from 'next/font/google';
 import { getActor } from '@/lib/auth';
+import { appStage, paymentsOpen } from '@/lib/environment';
 import { SiteChrome } from '@/components/site-chrome';
 import { HeaderNav } from '@/components/header-nav';
 import { AccountMenu, WorkspaceBack } from '@/components/account-menu';
@@ -36,8 +37,17 @@ export const dynamic = 'force-dynamic';
 export default async function RootLayout({ children, auth, dialog }: { children: React.ReactNode; auth: React.ReactNode; dialog: React.ReactNode }) {
   const actor = await getActor();
   const [account, unread] = actor ? await Promise.all([getAccountSummary(actor), unreadCount(actor.id)]) : [null, 0];
+  // The strip above the header says what kind of place this is: the local sandbox, staging, or early access without payments.
+  const stage = appStage();
+  const banner = stage === 'local'
+    ? <div className="sandbox-banner"><span className="live-dot" /> <strong>Local sandbox</strong> Test accounts and simulated payments. No real funds move.</div>
+    : stage === 'staging'
+      ? <div className="sandbox-banner"><span className="live-dot" /> <strong>Staging</strong> Test data only. No real funds move.</div>
+      : !paymentsOpen()
+        ? <div className="sandbox-banner"><span className="live-dot" /> <strong>Early access</strong> Payments are not open yet. Set up, post and apply now.</div>
+        : null;
   const header = <>
-    <div className="sandbox-banner"><span className="live-dot" /> <strong>Local sandbox</strong> Test accounts and simulated payments. No real funds move.</div>
+    {banner}
     <div className="header-shell">
       <header className="header">
         <Link href={homePath(Boolean(actor))} className="wordmark" aria-label="spaca home"><SpacaLockup size={26} /></Link>
@@ -63,7 +73,9 @@ export default async function RootLayout({ children, auth, dialog }: { children:
       <nav className="site-footer-links" aria-label="Footer">
         <Link href="/explore">Explore</Link><Link href="/requests">Campaigns</Link><Link href="/support">Support</Link><Link href="/terms">Terms</Link><Link href="/privacy">Privacy</Link><Link href="/refund-policy">Refund policy</Link>
       </nav>
-      <small>Local development environment · All displayed transactions are test activity.</small>
+      <small>{stage === 'local' ? 'Local development environment · All displayed transactions are test activity.'
+        : stage === 'staging' ? 'Staging · Test data only.'
+        : !paymentsOpen() ? 'Early access · Payments are not open yet.' : `© ${new Date().getUTCFullYear()} spaca`}</small>
     </div>
   </footer>;
   const type = actor ? accountTypeOf(actor) : null;
