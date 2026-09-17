@@ -33,7 +33,7 @@ export const metadata: Metadata = {
 // production database while collecting static metadata.
 export const dynamic = 'force-dynamic';
 
-export default async function RootLayout({ children, auth }: { children: React.ReactNode; auth: React.ReactNode }) {
+export default async function RootLayout({ children, auth, dialog }: { children: React.ReactNode; auth: React.ReactNode; dialog: React.ReactNode }) {
   const actor = await getActor();
   const [account, unread] = actor ? await Promise.all([getAccountSummary(actor), unreadCount(actor.id)]) : [null, 0];
   const header = <>
@@ -69,5 +69,5 @@ export default async function RootLayout({ children, auth }: { children: React.R
   const type = actor ? accountTypeOf(actor) : null;
   const back = actor ? <WorkspaceBack type={type} /> : null;
   // suppressHydrationWarning: the landing theme boot script may set data-landing-theme on <html> before hydration.
-  return <html lang="en" className={`${archivo.variable} ${geist.variable} ${geistMono.variable}`} suppressHydrationWarning><body><Script id="landing-theme" strategy="beforeInteractive">{themeBootScript}</Script><SiteChrome header={header} footer={footer} back={back}>{children}</SiteChrome>{auth}</body></html>;
+  return <html lang="en" className={`${archivo.variable} ${geist.variable} ${geistMono.variable}`} suppressHydrationWarning><body><Script id="landing-theme" strategy="beforeInteractive">{themeBootScript}</Script><SiteChrome header={header} footer={footer} back={back}>{children}</SiteChrome>{auth}{dialog}</body></html>;
 }

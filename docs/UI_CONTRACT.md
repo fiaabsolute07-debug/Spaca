@@ -717,3 +717,10 @@ six commits per `docs/BRAND_ROLLOUT_PROMPT.md`. It replaces the neutral Apple-li
 - Replaces the Work in progress lists from "My services leads with the work": an order carries its service's title, so the order rows and the service cards read as the same section twice.
 - Top to bottom: the heading with **New service**; one **Work in progress** strip — a count per stage (Your move in lime, In progress, Waiting on the buyer, On hold; each links to Orders) with All orders ›, and on the right the Accepting/Paused state with Pause new orders or Resume new orders; the filter chips and Find a service; **Work samples** folded ("Add a picture, video or link to a service") with the add-sample form inside; then the cards.
 - Cards: the most recently changed service first (just saved, published, paused or edited), archived last; 20 a page with "1–20 of 452 services", "Page 1 of 23", ‹ Previous / Next ›. Filters and search go back to page 1.
+- The Work in progress counts open the overview at **Needs your action** (`/dashboard#overview-actions`); All orders › still opens Orders.
+
+## 2026-09-17 additions: create a service from Explore
+
+- Creator accounts see a lime **+ Create a service** button beside "Find creators for your launch." on Explore (under the title on a phone). Buyer accounts and visitors do not.
+- It opens the new-service form in a dialog over Explore ("Create a service" — "Save a draft with its scope, price and one sample. You publish it from My services."): the address becomes `/creator/services/new`, the first field has focus, Escape / Close / a click outside returns to Explore, and the form scrolls inside the dialog (full screen on a phone). Any in-app link to `/creator/services/new` (New service on My services, the overview shortcut) opens the same dialog; opening the address directly shows the full page.
+- Save draft service creates the draft and goes to My services, where it is the first card; a refused save shows its error there, as from the full page. Implemented as the `@dialog` parallel slot intercepting `(.)creator/services/new`; the form itself is `NewServiceForm`, shared with the page.

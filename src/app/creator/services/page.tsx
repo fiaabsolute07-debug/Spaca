@@ -107,15 +107,15 @@ export default async function CreatorServicesPage({
       <Link className="button button-dark" href="/creator/services/new">New service</Link>
     </div>
 
-    {/* One strip for the work and the door: counts only, so no order title repeats a service title below. The orders
-        themselves are listed on Orders, and what is due first on the overview. */}
+    {/* One strip for the work and the door: counts only, so no order title repeats a service title below. A count
+        opens the overview, where Needs your action lists what is due first; every order is on Orders. */}
     <section className="panel services-strip" aria-label="Work and new orders">
       <div className="services-strip-work">
         <h2 id="work-heading">Work in progress</h2>
         {stages.length
           ? <ul className="services-stages" aria-labelledby="work-heading">
             {stages.map((stage) => <li key={stage.key}>
-              <Link href="/buyer/orders" className="services-stage" data-stage={stage.key} title={stage.hint}>
+              <Link href="/dashboard#overview-actions" className="services-stage" data-stage={stage.key} title={stage.hint}>
                 <span className="services-stage-count">{stage.count}</span>{stage.title}
               </Link>
             </li>)}

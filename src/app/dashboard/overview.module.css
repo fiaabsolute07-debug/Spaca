@@ -48,3 +48,6 @@
   .action { grid-template-columns: auto minmax(0, 1fr) auto; }
   .action .go { display: none; }
 }
+
+/* Links such as /dashboard#overview-actions land the heading below the sticky header. */
+.band h2[id] { scroll-margin-top: 96px; }

@@ -211,6 +211,8 @@ a.panel:hover { border-color: var(--line-strong); background: var(--soft-2); }
 
 /* ---------- Explore (filters + results, or results + detail) ---------- */
 .explore-page .page-heading { margin-bottom: 20px; }
+.explore-head { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 0 20px; }
+.explore-create { display: inline-flex; align-items: center; gap: 8px; margin-bottom: 20px; }
 .explore-search { display: flex; align-items: center; gap: 8px; padding: 8px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--soft); margin-bottom: 24px; }
 .explore-query { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; height: 42px; padding: 0 14px; border-radius: var(--radius); background: var(--bg); color: var(--hint); }
 .explore-query input { border: 0; padding: 0; height: 100%; background: transparent; box-shadow: none; }

@@ -1,5 +1,7 @@
 import Link from 'next/link';
-import { Search, SlidersHorizontal } from 'lucide-react';
+import { Plus, Search, SlidersHorizontal } from 'lucide-react';
+import { getActor } from '@/lib/auth';
+import { isCreator } from '@/lib/account';
 import { EXPLORE_DELIVERY, EXPLORE_PRICES, EXPLORE_SORTS, getExploreData } from '@/lib/read-model';
 import { Select } from '@/components/select';
 import { Empty, rows } from '@/components/ui';
@@ -33,7 +35,7 @@ function FilterGroup({ title, options, current, href }: { title: string; options
 
 export default async function ExplorePage({ searchParams }: PageProps) {
   const query = await searchParams;
-  const data = await getExploreData(query);
+  const [data, actor] = await Promise.all([getExploreData(query), getActor()]);
   const f = data.filters;
   const items = rows(data.items);
 
@@ -101,7 +103,13 @@ export default async function ExplorePage({ searchParams }: PageProps) {
 
   return <main className="container explore-page">
     <Notices query={query} />
-    <PageHeading eyebrow="Explore" title="Find creators for your launch." />
+    <div className="explore-head">
+      <PageHeading eyebrow="Explore" title="Find creators for your launch." />
+      {/* A creator browsing the market can put their own offer on it without leaving: the form opens over this page. */}
+      {actor && isCreator(actor) && <Link className="button button-dark explore-create" href="/creator/services/new" scroll={false}>
+        <Plus size={16} aria-hidden /> Create a service
+      </Link>}
+    </div>
     <form method="get" action="/explore" className="explore-search" role="search">
       {hidden(['q', 'sort'])}
       <label className="explore-query">
