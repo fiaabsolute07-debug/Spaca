@@ -7,7 +7,9 @@ import { xMode } from '@/modules/x/provider';
  * or `error=access_denied`. 404 unless the local X sandbox is on.
  */
 export async function POST(request: Request) {
-  if (xMode() !== 'mock') return new NextResponse(null, { status: 404 });
+  if (process.env.NODE_ENV === 'production' || xMode() !== 'mock') {
+    return NextResponse.json({ error: 'Not found' }, { status: 404 });
+  }
   if (!isSameOrigin(request)) return NextResponse.json({ error: 'Origin not allowed' }, { status: 403 });
   const form = await request.formData();
   const state = String(form.get('state') ?? '').slice(0, 200);

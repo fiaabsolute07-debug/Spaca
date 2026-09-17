@@ -6,8 +6,11 @@ const COLORS = ['#3b82f6', '#8b5cf6', '#ec4899', '#f97316', '#14b8a6', '#22c55e'
 
 /** Sandbox X profile photo: initials on a colour made from the username. 404 unless the local X sandbox is on. */
 export async function GET(_request: Request, context: { params: Promise<{ username: string }> }) {
+  if (process.env.NODE_ENV === 'production' || xMode() !== 'mock') {
+    return NextResponse.json({ error: 'Not found' }, { status: 404 });
+  }
   const { username } = await context.params;
-  if (xMode() !== 'mock' || !/^[A-Za-z0-9_]{1,15}$/.test(username)) return new NextResponse(null, { status: 404 });
+  if (!/^[A-Za-z0-9_]{1,15}$/.test(username)) return new NextResponse(null, { status: 404 });
   const digest = createHash('sha256').update(username.toLowerCase()).digest();
   const color = COLORS[digest[0]! % COLORS.length]!;
   const initials = username.split('_').filter(Boolean).map((part) => part[0]!.toUpperCase()).join('').slice(0, 2) || username[0]!.toUpperCase();
