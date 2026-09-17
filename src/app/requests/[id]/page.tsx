@@ -12,6 +12,7 @@ import { PoolPanel } from '@/components/pools/pool-panel';
 import { Badge, CommandForm, Empty, Field, date, money, num, row, rows, str, type Row } from '@/components/ui';
 import { Notices } from '@/components/notices';
 import { PageHeading } from '@/components/page-heading';
+import { CampaignBy } from '@/components/campaign/campaign-by';
 import { FileUploadField } from '@/components/files/file-upload-field';
 import { categoryOf } from '@/components/category';
 import { APPLICATION_FILTERS, APPLICATION_SORTS, compareApplications, parseFilter, parseSort, quoteSummary } from '@/modules/requests/compare';
@@ -138,7 +139,11 @@ export default async function RequestPage({ params, searchParams }: PageProps<{ 
   return <main className="container">
     <Notices query={query} />
     <Link href="/requests" className="breadcrumbs">← All open briefs</Link>
-    <PageHeading eyebrow={categoryOf(r.taxonomy).title} title={str(r.title)} description={`Posted by ${str(r.buyer_name)} · ${str(r.status)}`} />
+    <PageHeading eyebrow={categoryOf(r.taxonomy).title} title={str(r.title)} />
+    <p className="campaign-by-line">
+      <CampaignBy name={r.buyer_name} avatarAssetId={r.buyer_avatar_asset_id} size={32} prefix="Campaign by" />
+      <span className="muted">· {str(r.status)}</span>
+    </p>
     <div className="split">
       <div>
         <div className="panel">

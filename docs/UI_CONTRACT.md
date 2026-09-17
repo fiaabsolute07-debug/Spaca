@@ -592,6 +592,17 @@ six commits per `docs/BRAND_ROLLOUT_PROMPT.md`. It replaces the neutral Apple-li
 
 
 
+## 2026-09-17 additions: a campaign shows the project running it
+
+- The buyer's **project logo** now sits beside the project name wherever a campaign is named: the campaign board
+  row (`CampaignBy` at 18 px, in the muted line with the goal badge) and the campaign page (32 px, on a line under
+  the title reading "Campaign by **Name** · STATUS", replacing the old "Posted by …" subtitle).
+- The logo is the buyer's `profiles.avatar_asset_id` from setup (drizzle/0031), served by `/api/avatars/<id>`.
+  `getPublicData()`, `getGoalPageData()`, `getDashboardData()` and `getRequestData()` each `left join
+  app.profiles bp` and return `buyer_avatar_asset_id`; a project with no logo returns `null` and `Avatar` draws
+  the project's initial. The orders reads are unchanged and carry no buyer logo.
+- Evidence: `docs/evidence/claude-CAMPAIGN-IDENTITY.md`.
+
 ## 2026-09-17 additions: the landing keeps the hero, the goals and three strips of real stock
 
 - **The page is now:** hero (video, search tablist, popular-campaign chips) → the seven campaign goal tiles →

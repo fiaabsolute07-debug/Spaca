@@ -885,6 +885,13 @@ td small { display: block; color: var(--faint); margin-top: 3px; font-size: 12px
 .board-name { display: grid; gap: 5px; min-width: 0; }
 .board-name strong { font-family: var(--body); font-size: 16px; font-weight: 600; line-height: 1.25; letter-spacing: normal; text-transform: none; }
 .board-name small { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); }
+/* Who is running a campaign: the project's logo beside its name, on the board row and on the campaign page. */
+.campaign-by { display: inline-flex; align-items: center; gap: 7px; min-width: 0; }
+.campaign-by .avatar { border: 1px solid var(--line); }
+.campaign-by > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.campaign-by strong { font-weight: 600; color: var(--ink); }
+.campaign-by-line { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: -8px 0 24px; font-size: 15px; color: var(--muted); }
+
 .board-figure { display: grid; gap: 3px; align-content: center; }
 .board-value { font-family: var(--mono); font-size: 16px; font-weight: 500; font-variant-numeric: tabular-nums; line-height: 1.2; }
 /* Money is the one figure written in lime. */

@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { GoalArt } from './goal-art';
 import { Badge, money, num, rows, str } from '../ui';
+import { CampaignBy } from './campaign-by';
 import { goalByValue } from '@/modules/requests/goals';
 
 const DAY = 24 * 60 * 60 * 1000;
@@ -50,7 +51,7 @@ function BoardRow({ item }: { item: Record<string, unknown> }) {
         <span className="board-name">
           <strong>{str(item.title)}</strong>
           <small>
-            {item.buyer_name ? `by ${str(item.buyer_name)}` : null}
+            <CampaignBy name={item.buyer_name} avatarAssetId={item.buyer_avatar_asset_id} />
             {goal ? <span className="badge badge-goal">{goal.title}</span> : null}
           </small>
         </span>
