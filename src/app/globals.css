@@ -371,6 +371,46 @@ textarea { resize: vertical; min-height: 110px; }
 .report-form summary { cursor: pointer; color: var(--muted); list-style: none; }
 .report-form summary::-webkit-details-marker { display: none; }
 .report-form[open] summary { margin-bottom: 8px; }
+/* ---------- My services: today's work first, then the catalogue ----------
+   A creator opening this page asks "what do I owe, and on which service". Work is grouped by whose move it is,
+   and each service is one scannable row: the long prose sits behind disclosures so a catalogue of hundreds can
+   still be read. Order titles here are deliberately not headings — a service card is located by its heading and
+   an order carries the same title. */
+.work-stages { display: grid; gap: 18px; margin-top: 4px; }
+.work-stage-head { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 11px; font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+.work-stage[data-stage="yours"] .work-stage-head { color: var(--accent-text); }
+.work-count { display: inline-flex; align-items: center; justify-content: center; min-width: 20px; height: 18px; padding: 0 5px; border-radius: var(--radius); background: var(--soft-2); color: var(--ink); font-size: 11px; }
+.work-stage[data-stage="yours"] .work-count { background: var(--accent-soft); color: var(--accent-text); }
+.work-stage-hint { font-size: 13px; margin: 4px 0 8px; }
+.work-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.work-item { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 14px; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--radius); color: var(--ink); transition: border-color 0.15s ease, background-color 0.15s ease; }
+.work-item:hover { border-color: var(--line-strong); background: var(--soft); }
+.work-item-what { display: grid; gap: 2px; min-width: 0; }
+.work-item-what strong { font-size: 15px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.work-item-what small { font-size: 12px; color: var(--muted); }
+.work-item-due { font-family: var(--mono); font-size: 11px; letter-spacing: 0.04em; color: var(--muted); white-space: nowrap; }
+.work-item-due[data-late="yes"] { color: var(--bad); }
+
+.services-heading { margin-bottom: 14px; flex-wrap: wrap; }
+.service-search { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+.service-search label { font-family: var(--mono); font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+.service-search input { height: 32px; padding: 0 10px; border: 1px solid var(--line-strong); border-radius: var(--radius); background: var(--soft); color: var(--ink); font-size: 13px; min-width: 180px; }
+.service-board-count { font-family: var(--mono); font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; margin: 0 0 10px; }
+.work-more { margin: 8px 0 0; font-size: 13px; }
+.service-board { gap: 10px; }
+.service-row { padding: 14px 16px; }
+.service-row-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.service-row-head h3 { font-size: 17px; line-height: 1.25; font-weight: 600; font-stretch: normal; text-transform: none; letter-spacing: normal; min-width: 0; }
+.service-row-facts { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; margin: 6px 0 0; font-size: 13px; color: var(--muted); }
+.service-row-facts strong { font-family: var(--mono); font-size: 14px; color: var(--accent-text); }
+.service-row-live { font-family: var(--mono); font-size: 11px; letter-spacing: 0.04em; text-transform: uppercase; color: var(--ink); border-bottom: 1px solid var(--line-strong); }
+.service-row-live:hover { color: var(--accent-text); border-color: var(--accent-text); }
+
+@media (max-width: 640px) {
+  .work-item { grid-template-columns: minmax(0, 1fr); gap: 6px; }
+  .work-item-due { white-space: normal; }
+}
+
 .service-edit { margin: 12px 0 4px; border-top: 1px solid var(--line); padding-top: 10px; }
 .service-edit summary { cursor: pointer; color: var(--ink); font-size: 14px; font-weight: 600; list-style: none; }
 .service-edit summary::-webkit-details-marker { display: none; }

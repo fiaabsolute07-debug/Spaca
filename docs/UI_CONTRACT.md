@@ -592,6 +592,25 @@ six commits per `docs/BRAND_ROLLOUT_PROMPT.md`. It replaces the neutral Apple-li
 
 
 
+## 2026-09-17 additions: My services leads with the work, not the catalogue
+
+- `/creator/services` opens on **Work in progress**: the creator's live orders grouped by whose move it is —
+  **Your move** (`FUNDED`, `REVISION_REQUESTED`), **In progress** (`IN_PROGRESS`), **Waiting on the buyer**
+  (`AWAITING_PAYMENT`, `DELIVERED`), **On hold** (`DISPUTED`) — each with a count, a line saying what the state
+  means, and rows carrying the buyer, the amount, the state badge and the running deadline (the delivery deadline,
+  or the review window once delivered), with **Overdue** in the error colour. Completed orders are not listed.
+  Each group shows the five most urgent and links the rest to the order list. Lime is spent on **Your move** only.
+- Then **New orders** (pause/resume) and the single **Work samples** form, both unchanged.
+- Then **Services**: a `role="search"` GET form (`?q=`) and status chips with counts (`?status=`), which combine;
+  a count line reads "9 of 427 services" whenever either is on. Each service is one compact row — title, status,
+  price, delivery time, sample count and its live order count linking to the orders — with the description,
+  the samples gallery and the edit form behind disclosures.
+- **Markup contract:** a service stays a `div.panel` holding an `h3` of its title, with the status badge,
+  Publish/Pause, "Open public page ›", the DIGITAL release form and the `Work samples (n)` / `Edit service`
+  disclosures inside it and never inside a closed disclosure — five e2e suites locate services that way. Order
+  titles in Work in progress are `<strong>`, not headings, because an order carries its service's title.
+- Evidence: `docs/evidence/claude-MY-SERVICES-BOARD.md`.
+
 ## 2026-09-17 additions: logging out goes to the landing
 
 - **Log out** (Account menu → `POST /api/auth action=logout`) now ends on the landing `/`, not on `/sign-in`.
