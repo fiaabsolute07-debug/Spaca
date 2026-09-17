@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { chooseOption, expectOrderState, freeLinkedAccountSlot, login, orderPath, payOrder, submit, uniqueSuffix, visit } from './helpers';
+import { chooseOption, chooseServiceType, expectOrderState, freeLinkedAccountSlot, login, orderPath, payOrder, submit, uniqueSuffix, visit } from './helpers';
 
 test('a PUBLISH order is delivered with the post link on the sold X channel and approved by the buyer', async ({ page }) => {
   const suffix = uniqueSuffix();
@@ -17,7 +17,7 @@ test('a PUBLISH order is delivered with the post link on the sold X channel and 
 
   await visit(page, '/creator/services/new');
   await page.getByLabel('Service title', { exact: true }).fill(title);
-  await chooseOption(page, page, 'What are you offering?', 'Publish · a post on your channel');
+  await chooseServiceType(page, 'Publish');
   await page.getByLabel('Price (USD)', { exact: true }).fill('150');
   await page.getByLabel('Delivery time (hours)').fill('48');
   await page.getByLabel('Scope and deliverables').fill(`One disclosed thread on my X account explaining your launch (${suffix}).`);

@@ -95,6 +95,14 @@ export async function freeLinkedAccountSlot(page: Page) {
   expect(await accounts.locator('.record').count(), 'no removable test account left to free a slot').toBeLessThan(10);
 }
 
+/** Picks the kind of service (Create, Publish, Access, Digital) in the new-service form; its terms appear under it. */
+export async function chooseServiceType(scope: Page | Locator, type: 'Create' | 'Publish' | 'Access' | 'Digital') {
+  const radio = scope.getByRole('radio', { name: new RegExp(`^${type}\\b`) });
+  await waitForHydration(radio);
+  await radio.check();
+  await expect(radio).toBeChecked();
+}
+
 /**
  * Picks an option in a spaca select (Radix UI): opens the combobox named by its label and clicks the option by its
  * visible text. Retries the open until the client component has hydrated.
@@ -134,7 +142,7 @@ export async function createPublishedService(page: Page, purpose: string) {
   await login(page, 'creator_c');
   await visit(page, '/creator/services/new');
   await page.getByLabel('Service title', { exact: true }).fill(title);
-  await chooseOption(page, page, 'What are you offering?', 'Create · content you deliver');
+  await chooseServiceType(page, 'Create');
   await page.getByLabel('Price (USD)', { exact: true }).fill('100');
   await page.getByLabel('Delivery time (hours)').fill('24');
   await page.getByLabel('Scope and deliverables').fill(`A complete launch narrative with one revision for ${title}.`);

@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { baseURL, bookFromExplore, chooseOption, completeSetup, createPublishedService, signUpInDialog, expectNoHorizontalOverflow, expectOrderState, login, submit, uniqueSuffix, visit, waitForHydration, openAccountMenu } from './helpers';
+import { baseURL, bookFromExplore, chooseServiceType, completeSetup, createPublishedService, expectNoHorizontalOverflow, expectOrderState, login, openAccountMenu, signUpInDialog, submit, uniqueSuffix, visit, waitForHydration } from './helpers';
 
 test('FND-04: each account type sees only its own workspace; a legacy dual test account can use both; nobody reaches the admin console', async ({ page }) => {
   await login(page, 'buyer_a');
@@ -36,7 +36,7 @@ test('SUP-02 / REV-03: a brand-new creator shows as new, with no invented rating
 
   await visit(page, '/creator/services/new');
   await page.getByLabel('Service title', { exact: true }).fill(title);
-  await chooseOption(page, page, 'What are you offering?', 'Create · content you deliver');
+  await chooseServiceType(page, 'Create');
   await page.getByLabel('Price (USD)', { exact: true }).fill('90');
   await page.getByLabel('Scope and deliverables').fill(`One launch thread with a clear CTA for ${title}.`);
   await page.getByLabel('Link to work online (optional)', { exact: true }).fill(`${baseURL}/?sample=${suffix}`);
@@ -100,7 +100,7 @@ test('SEC-07: markup in briefs and messages stays text, and script or data links
   await login(page, 'creator_c');
   await visit(page, '/creator/services/new');
   await page.getByLabel('Service title', { exact: true }).fill(`Unsafe sample ${uniqueSuffix()}`);
-  await chooseOption(page, page, 'What are you offering?', 'Create · content you deliver');
+  await chooseServiceType(page, 'Create');
   await page.getByLabel('Price (USD)', { exact: true }).fill('50');
   await page.getByLabel('Scope and deliverables').fill('A scope long enough to be accepted by the service form rules.');
   await page.getByLabel('Link to work online (optional)', { exact: true }).fill('javascript:alert(document.cookie)');

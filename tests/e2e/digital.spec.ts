@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { chooseOption, expectNoHorizontalOverflow, expectOrderState, login, orderPath, submit, uniqueSuffix, visit, waitForHydration } from './helpers';
+import { chooseOption, chooseServiceType, expectNoHorizontalOverflow, expectOrderState, login, orderPath, submit, uniqueSuffix, visit, waitForHydration } from './helpers';
 
 test('a DIGITAL product is released, bought, delivered on payment and downloaded only by its buyer', async ({ page }) => {
   const suffix = uniqueSuffix();
@@ -16,7 +16,7 @@ test('a DIGITAL product is released, bought, delivered on payment and downloaded
   await login(page, 'creator_d');
   await visit(page, '/creator/services/new');
   await page.getByLabel('Service title', { exact: true }).fill(title);
-  await chooseOption(page, page, 'What are you offering?', 'Digital · ready-made files');
+  await chooseServiceType(page, 'Digital');
   await page.getByLabel('Price (USD)', { exact: true }).fill('35');
   await page.getByLabel('Delivery time (hours)').fill('1');
   await page.getByLabel('Scope and deliverables').fill(`Notion and Figma templates for a token launch week (${suffix}).`);
