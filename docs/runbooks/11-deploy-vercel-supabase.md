@@ -12,7 +12,7 @@ Owner decisions (2026-09-17): Vercel for the app, Supabase for Postgres and Stor
 1. Create the project in the chosen region. Note the project URL.
 2. Database: in *Project Settings → Database*, take the direct connection string for migrations (`DATABASE_MIGRATION_URL`, owner role) and the pooled connection string for the app (`DATABASE_URL`). Migration `0001` creates the `app_server` role the app uses; set its password in Supabase SQL (`alter role app_server with password …`) and use it in `DATABASE_URL`.
 3. From a trusted machine with those two values in the shell environment only:
-   - `pnpm db:migrate` (with `DATABASE_MIGRATION_URL` set) — applies `drizzle/0001…0036` and records them in `public.schema_migrations`.
+   - `pnpm db:migrate` (with `DATABASE_MIGRATION_URL` set) — applies `drizzle/0001…0037` and records them in `public.schema_migrations`.
    - **Do not** run `pnpm db:seed`: fixtures are local test data.
 4. Storage: with `NEXT_PUBLIC_SUPABASE_URL` and `SUPABASE_SERVER_SECRET_KEY` in the shell environment, run `pnpm storage:setup` to create the nine private buckets with their size and type limits (it prints bucket names and results only; `--dry-run` lists them without calling Supabase). Supabase Free caps every upload at 50 MB; raise the global limit on Pro before videos (250 MB) and zips (100 MB) are uploaded.
 5. Keep *Data API* exposure off for the `app` schema; the app talks to Postgres directly.
