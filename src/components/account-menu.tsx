@@ -2,24 +2,32 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { ChevronDown, ChevronRight } from 'lucide-react';
+import { Briefcase, ChevronDown, ChevronRight, ClipboardList, LayoutDashboard, LogOut, Megaphone, Send, UserRound, Wallet, type LucideIcon } from 'lucide-react';
 import { useEffect, useId, useRef, useState } from 'react';
 import type { AccountType } from '@/lib/account';
 import type { AccountSummary } from '@/lib/read-model';
 import { Avatar } from './avatar';
 
 type NavLink = { href: string; label: string };
-type NavGroup = { title: string; links: NavLink[] };
+type MenuLink = NavLink & { icon: LucideIcon };
 
-const CREATOR_NAV: NavGroup[] = [
-  { title: 'Workspace', links: [{ href: '/dashboard', label: 'Overview' }, { href: '/creator/services', label: 'My services' }, { href: '/buyer/orders', label: 'Orders' }, { href: '/creator/requests', label: 'My applications' }] },
-  { title: 'Find work', links: [{ href: '/requests', label: 'Open campaigns' }, { href: '/creator/services/new', label: 'New service' }, { href: '/creator/auctions/new', label: 'New auction' }] },
+/**
+ * Only the places an account returns to. Everything the header already offers — Explore, Campaigns (Post a brief,
+ * Open campaigns), Auctions and the Fund button — stays out of this menu, and new-item pages are reached from their
+ * list pages (2026-09-17, modelled on Binance's account menu).
+ */
+const CREATOR_LINKS: MenuLink[] = [
+  { href: '/dashboard', label: 'Overview', icon: LayoutDashboard },
+  { href: '/creator/services', label: 'My services', icon: Briefcase },
+  { href: '/buyer/orders', label: 'Orders', icon: ClipboardList },
+  { href: '/creator/requests', label: 'My applications', icon: Send },
 ];
-const BUYER_NAV: NavGroup[] = [
-  { title: 'Workspace', links: [{ href: '/dashboard', label: 'Overview' }, { href: '/buyer/orders', label: 'Orders' }, { href: '/buyer/requests', label: 'My campaigns' }] },
-  { title: 'Hire', links: [{ href: '/explore', label: 'Find creators' }, { href: '/buyer/requests/new', label: 'Post a brief' }, { href: '/auctions', label: 'Auctions' }] },
+const BUYER_LINKS: MenuLink[] = [
+  { href: '/dashboard', label: 'Overview', icon: LayoutDashboard },
+  { href: '/buyer/orders', label: 'Orders', icon: ClipboardList },
+  { href: '/buyer/requests', label: 'My campaigns', icon: Megaphone },
 ];
-const ACCOUNT_NAV: NavGroup = { title: 'Account', links: [{ href: '/settings/profile', label: 'Profile' }, { href: '/funds', label: 'Funds' }] };
+const PROFILE_LINK: MenuLink = { href: '/settings/profile', label: 'Profile', icon: UserRound };
 
 /** 0x12ab…9f3c: enough to recognise an address without reading all of it. */
 const shortAddress = (address: string) => (address.length > 12 ? `${address.slice(0, 6)}…${address.slice(-4)}` : address);
@@ -29,19 +37,18 @@ const ALIASES: [RegExp, string][] = [[/^\/orders\//, '/buyer/orders']];
 
 const within = (pathname: string, href: string) => pathname === href || pathname.startsWith(`${href}/`);
 
-function activeHref(pathname: string, groups: NavGroup[]): string | null {
+function activeHref(pathname: string, links: MenuLink[]): string | null {
   const alias = ALIASES.find(([pattern]) => pattern.test(pathname));
   if (alias) return alias[1];
-  // The most specific entry wins: /creator/services/new is "New service", not "My services".
-  return groups.flatMap((group) => group.links).filter((link) => within(pathname, link.href))
-    .sort((a, b) => b.href.length - a.href.length)[0]?.href ?? null;
+  // The most specific entry wins.
+  return links.filter((link) => within(pathname, link.href)).sort((a, b) => b.href.length - a.href.length)[0]?.href ?? null;
 }
 
 /**
- * Workspace navigation for signed-in accounts, in the header's top-right corner (the user wanted it there rather than in a
- * sidebar). A disclosure: the button toggles a panel of links and Log out; Escape, a click outside or navigating closes it.
- * The panel opens on the account itself (2026-09-16): photo, name, whether it is a buyer or a creator account, setup
- * state and the linked wallet, then the workspace links.
+ * Workspace navigation for signed-in accounts, in the header's top-right corner. A disclosure: the button toggles the
+ * panel; Escape, a click outside or navigating closes it. The panel opens on who is signed in — photo, name, and a
+ * Buyer / Creator label with the handle — then one short list with icons (the account's own pages, Wallet with its
+ * state, Profile) and Log out. No group headings: the list is short enough to read at a glance.
  */
 export function AccountMenu({ type, account }: { type: AccountType | null; account: AccountSummary }) {
   const pathname = usePathname();
@@ -49,8 +56,9 @@ export function AccountMenu({ type, account }: { type: AccountType | null; accou
   const root = useRef<HTMLDivElement>(null);
   const button = useRef<HTMLButtonElement>(null);
   const panelId = useId();
-  const groups = [...(type === 'creator' ? CREATOR_NAV : BUYER_NAV), ACCOUNT_NAV];
-  const active = activeHref(pathname, groups);
+  const links = type === 'creator' ? CREATOR_LINKS : BUYER_LINKS;
+  const active = activeHref(pathname, [...links, PROFILE_LINK]);
+  const close = () => setOpen(false);
 
   useEffect(() => setOpen(false), [pathname]);
   useEffect(() => {
@@ -71,6 +79,11 @@ export function AccountMenu({ type, account }: { type: AccountType | null; accou
     };
   }, [open]);
 
+  const item = (link: MenuLink) => <Link key={link.href} className="account-item" href={link.href} aria-current={active === link.href ? 'page' : undefined} onClick={close}>
+    <link.icon size={16} aria-hidden />
+    <span>{link.label}</span>
+  </Link>;
+
   return <div className="account-menu" ref={root}>
     <button ref={button} type="button" className="button compact account-menu-button" aria-expanded={open} aria-controls={panelId} onClick={() => setOpen((value) => !value)}>
       <span className="account-menu-face">
@@ -80,37 +93,34 @@ export function AccountMenu({ type, account }: { type: AccountType | null; accou
       Account <ChevronDown size={14} aria-hidden />
     </button>
     <div id={panelId} className="account-menu-panel" hidden={!open}>
-      <section className="account-card" aria-label="Signed in as">
-        <div className="account-card-who">
-          <Avatar name={account.name} assetId={account.avatarAssetId} size={44} />
-          <div>
-            <strong className="account-card-name">{account.name}</strong>
-            {account.handle && account.onboarded && <span className="account-card-handle">@{account.handle}</span>}
-            <span className={`account-card-type account-card-${type ?? 'operator'}`}>{type === 'creator' ? 'Creator account' : type === 'buyer' ? 'Buyer account' : 'Operator'}</span>
-          </div>
+      <section className="account-head" aria-label="Signed in as">
+        <Avatar name={account.name} assetId={account.avatarAssetId} size={40} />
+        <div className="account-head-text">
+          <strong>{account.name}</strong>
+          <span>
+            <span className="account-head-type">{type === 'creator' ? 'Creator' : type === 'buyer' ? 'Buyer' : 'Operator'}</span>
+            {account.handle && account.onboarded ? <span className="account-head-handle"> · @{account.handle}</span> : null}
+          </span>
         </div>
-        {!account.onboarded && <Link className="account-card-setup" href="/welcome" onClick={() => setOpen(false)}>
-          <span><strong>Finish setup</strong>{type === 'creator' ? 'Photo, creator name and introduction' : 'Logo, project name and introduction'}</span>
-          <ChevronRight size={16} aria-hidden />
-        </Link>}
-        <Link className="account-card-wallet" href="/settings/profile#wallets" onClick={() => setOpen(false)}>
-          <span className="account-card-label">Wallet</span>
-          {account.wallet
-            ? <span className="account-card-value"><span className="status-dot status-good" aria-hidden /> <span className="mono">{shortAddress(account.wallet.address)}</span>
-              <span className="account-card-network">{account.wallet.network}{account.wallet.count > 1 ? ` · +${account.wallet.count - 1}` : ''}</span></span>
-            : <span className="account-card-value account-card-connect">Connect wallet</span>}
-          <ChevronRight size={14} aria-hidden />
-        </Link>
       </section>
+      {!account.onboarded && <Link className="account-setup" href="/welcome" onClick={close}>
+        <span className="account-setup-dot" aria-hidden />
+        <span>Finish setup</span>
+        <ChevronRight size={15} aria-hidden />
+      </Link>}
       <nav aria-label="Account menu">
-        {groups.map((group) => <div key={group.title} className="account-menu-group">
-          <h4>{group.title}</h4>
-          {group.links.map((link) => <Link key={link.href} href={link.href} aria-current={active === link.href ? 'page' : undefined} onClick={() => setOpen(false)}>{link.label}</Link>)}
-        </div>)}
+        {links.map(item)}
+        <hr />
+        <Link className="account-item" href="/settings/profile#wallets" onClick={close}>
+          <Wallet size={16} aria-hidden />
+          <span>Wallet</span>
+          <span className={`account-item-meta${account.wallet ? ' mono' : ' is-action'}`}>{account.wallet ? shortAddress(account.wallet.address) : 'Connect'}</span>
+        </Link>
+        {item(PROFILE_LINK)}
       </nav>
       <form method="post" action="/api/auth" className="account-menu-logout">
         <input type="hidden" name="action" value="logout" />
-        <button className="plain-button" type="submit">Log out</button>
+        <button className="account-item" type="submit"><LogOut size={16} aria-hidden /><span>Log out</span></button>
       </form>
     </div>
   </div>;

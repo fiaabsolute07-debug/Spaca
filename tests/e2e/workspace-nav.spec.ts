@@ -10,7 +10,7 @@ test('workspace navigation lives in the header Account menu; pages change in the
 
   let menu = await openAccountMenu(page);
   await expect(menu.getByRole('link', { name: 'Overview', exact: true })).toHaveAttribute('aria-current', 'page');
-  await expect(menu.getByRole('link', { name: 'Post a brief', exact: true })).toBeVisible();
+  await expect(menu.getByRole('link', { name: 'My campaigns', exact: true })).toBeVisible();
   await expect(menu.getByRole('link', { name: 'My services', exact: true })).toHaveCount(0);
   await expect(page.getByRole('banner').getByRole('button', { name: 'Log out', exact: true })).toBeVisible();
   await page.keyboard.press('Escape');

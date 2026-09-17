@@ -38,9 +38,10 @@ test('setup comes first after sign-up: it previews the profile, asks for the log
   let menu = await openAccountMenu(page);
   const card = page.getByRole('region', { name: 'Signed in as' });
   await expect(card.getByText('New project')).toBeVisible();
-  await expect(card.getByText('Buyer account', { exact: true })).toBeVisible();
-  await expect(card.getByRole('link', { name: /Finish setup/ })).toHaveAttribute('href', '/welcome');
-  await expect(menu.getByRole('link', { name: 'Post a brief' })).toBeVisible();
+  await expect(card.getByText('Buyer', { exact: true })).toBeVisible();
+  const panel = page.locator('.account-menu-panel');
+  await expect(panel.getByRole('link', { name: 'Finish setup' })).toHaveAttribute('href', '/welcome');
+  await expect(menu.getByRole('link', { name: 'My campaigns' })).toBeVisible();
 
   // Signing in again goes back to setup.
   await submit(page, page.getByRole('banner').getByRole('button', { name: 'Log out', exact: true }));
@@ -59,15 +60,15 @@ test('setup comes first after sign-up: it previews the profile, asks for the log
   menu = await openAccountMenu(page);
   await expect(card.getByText(name)).toBeVisible();
   await expect(card.locator('img.avatar-photo')).toBeVisible();
-  await expect(card.getByRole('link', { name: /Finish setup/ })).toHaveCount(0);
-  await expect(card.getByRole('link', { name: /Wallet/ })).toHaveAttribute('href', '/settings/profile#wallets');
+  await expect(panel.getByRole('link', { name: 'Finish setup' })).toHaveCount(0);
+  await expect(menu.getByRole('link', { name: /^Wallet/ })).toHaveAttribute('href', '/settings/profile#wallets');
   await expect(menu).toBeVisible();
   // A finished account going to /welcome is sent on.
   await visit(page, '/welcome');
   await expect(page).toHaveURL(/\/dashboard$/);
 });
 
-test('the Account menu opens on the account: photo, name, handle, account type and wallet, before the workspace links', async ({ page }) => {
+test('the Account menu is short: who is signed in, the account’s own pages with icons, wallet state, profile and log out', async ({ page }) => {
   await login(page, 'creator_c');
   await visit(page, '/dashboard');
   const button = page.getByRole('banner').getByRole('button', { name: 'Account', exact: true });
@@ -75,14 +76,19 @@ test('the Account menu opens on the account: photo, name, handle, account type a
   const menu = await openAccountMenu(page);
   const card = page.getByRole('region', { name: 'Signed in as' });
   await expect(card.getByText('Ari Nguyen', { exact: true })).toBeVisible();
-  await expect(card.getByText('@ari-makes', { exact: true })).toBeVisible();
-  await expect(card.getByText('Creator account', { exact: true })).toBeVisible();
-  const wallet = card.getByRole('link', { name: /Wallet/ });
-  await expect(wallet).toHaveText(/^Wallet\s*(Connect wallet|0x[0-9a-fA-F]{4}…[0-9a-fA-F]{4})/);
-  // The account card comes before the workspace links.
+  await expect(card).toContainText('Creator · @ari-makes');
+  // The account comes first, then one list without group headings.
   const order = await page.locator('.account-menu-panel').evaluate((panel) => [...panel.children].map((child) => child.getAttribute('aria-label') ?? child.tagName.toLowerCase()));
-  expect(order.slice(0, 2)).toEqual(['Signed in as', 'Account menu']);
-  await expect(menu.getByRole('link', { name: 'My services', exact: true })).toBeVisible();
+  expect(order).toEqual(['Signed in as', 'Account menu', 'form']);
+  await expect(page.locator('.account-menu-panel h4')).toHaveCount(0);
+  const labels = (await menu.getByRole('link').allTextContents()).map((text) => text.replace(/\s+/g, ' ').trim());
+  expect(labels.slice(0, 4)).toEqual(['Overview', 'My services', 'Orders', 'My applications']);
+  expect(labels[4]).toMatch(/^Wallet ?(Connect|0x[0-9a-fA-F]{4}…[0-9a-fA-F]{4})$/);
+  expect(labels[5]).toBe('Profile');
+  expect(labels).toHaveLength(6);
+  // What the header already offers is not repeated here.
+  for (const name of ['Open campaigns', 'New service', 'New auction', 'Funds']) await expect(menu.getByRole('link', { name, exact: true })).toHaveCount(0);
+  await expect(page.getByRole('banner').getByRole('button', { name: 'Log out', exact: true })).toBeVisible();
 });
 
 test('on a phone, setup stacks the preview above the form and fits the screen', async ({ browser }) => {

@@ -6,7 +6,7 @@ test('FND-04: each account type sees only its own workspace; a legacy dual test 
   await visit(page, '/creator/services');
   await expect(page.getByRole('heading', { level: 1, name: 'This page is for creator accounts' })).toBeVisible();
   const menu = await openAccountMenu(page);
-  await expect(menu.getByRole('link', { name: 'Post a brief', exact: true })).toBeVisible();
+  await expect(menu.getByRole('link', { name: 'My campaigns', exact: true })).toBeVisible();
   await expect(menu.getByRole('link', { name: 'My services', exact: true })).toHaveCount(0);
   expect((await page.goto('/admin'))?.status()).toBe(404);
 

@@ -43,7 +43,7 @@ test('Get started asks for the account type first, then creates a buyer account 
   await expect(page.getByRole('banner').getByRole('button', { name: 'Account', exact: true })).toBeVisible();
   const menu = await openAccountMenu(page);
   await expect(menu.getByRole('link', { name: 'Profile', exact: true })).toBeVisible();
-  await expect(menu.getByRole('link', { name: 'Post a brief' })).toBeVisible();
+  await expect(menu.getByRole('link', { name: 'My campaigns' })).toBeVisible();
   await expect(menu.getByRole('link', { name: 'My services' })).toHaveCount(0);
 });
 
@@ -59,7 +59,7 @@ test('a creator account sells: its workspace has no hiring tools and booking ask
   const menu = await openAccountMenu(page);
   await expect(menu.getByRole('link', { name: 'Profile', exact: true })).toBeVisible();
   await expect(menu.getByRole('link', { name: 'My services' })).toBeVisible();
-  await expect(menu.getByRole('link', { name: 'Post a brief' })).toHaveCount(0);
+  await expect(menu.getByRole('link', { name: 'My campaigns' })).toHaveCount(0);
 
   await visit(page, '/buyer/requests/new');
   await expect(page.getByRole('heading', { name: 'This page is for buyer accounts' })).toBeVisible();
