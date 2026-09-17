@@ -2,7 +2,7 @@ import { expect, test, type Page } from '@playwright/test';
 import { TINY_PNG, baseURL, login, submit, uniqueSuffix, visit, waitForHydration } from './helpers';
 
 /** Fill the listing form; times keep their defaults (opens now, closes in 3 days, delivery within 7 days). */
-async function listItem(page: Page, fields: { title: string; type: string; origin?: 'project' | 'resale'; buyNow?: string; starting?: string; collateral?: string; pictures?: number }) {
+async function listItem(page: Page, fields: { title: string; type: string; origin?: 'project' | 'resale'; buyNow?: string; starting?: string; collateral?: string; increment?: string; pictures?: number }) {
   await visit(page, '/auctions/new');
   const create = page.getByRole('button', { name: 'Create listing' });
   await waitForHydration(create);
@@ -22,6 +22,9 @@ async function listItem(page: Page, fields: { title: string; type: string; origi
   await page.getByLabel('How the winner receives it').fill("I submit the winner's wallet to the team's form before the snapshot.");
   await page.getByLabel('What the winner must give you').fill('EVM wallet address');
   await page.getByLabel('Starting price (USD)').fill(fields.starting ?? '100');
+  // Stated, not inherited: the bid amounts below are arithmetic on this step, and the form's default is a
+  // presentation choice that may change with the prices the marketplace suggests.
+  await page.getByLabel('Minimum increment (USD)').fill(fields.increment ?? '10');
   if (fields.buyNow) await page.getByLabel(/^Buy now price/).fill(fields.buyNow);
   await page.getByLabel('Your collateral (USD)').fill(fields.collateral ?? '19');
   await expect(page.getByText(/At least \$20\.00, a fifth of the starting price\. Covers 19% of the starting price\./)).toBeVisible();
