@@ -1,6 +1,11 @@
 allowBuilds:
   # Native binaries needed locally: embedded PostgreSQL runtime, esbuild (tsx/vitest), unrs-resolver (eslint).
   '@embedded-postgres/darwin-arm64': true
+  # The other platform builds only matter where the tests run; a deployment never starts a local database.
+  '@embedded-postgres/linux-x64': false
+  '@embedded-postgres/linux-arm64': false
+  '@embedded-postgres/darwin-x64': false
+  '@embedded-postgres/windows-x64': false
   esbuild: true
   unrs-resolver: true
   protobufjs: false
