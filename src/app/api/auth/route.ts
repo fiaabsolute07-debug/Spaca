@@ -33,7 +33,7 @@ export async function POST(request: Request) {
     if (action === 'signup' && (!displayName || displayName.length > 100)) return failure();
     if (!localAuthEnabled()) {
       const client = await supabaseAuth();
-      if (action === 'logout') { await client.auth.signOut(); return go('/sign-in'); }
+      if (action === 'logout') { await client.auth.signOut(); return go('/'); }
       const result = action === 'signup'
         ? await client.auth.signUp({ email, password, options: { data: { display_name: displayName, account_type: accountType } } })
         : await client.auth.signInWithPassword({ email, password });
@@ -53,7 +53,9 @@ export async function POST(request: Request) {
       const token = jar.get(SESSION_COOKIE)?.value;
       if (token) await sql`delete from app.sessions where token_hash=${hashSessionToken(token)}`;
       jar.delete(SESSION_COOKIE);
-      return go('/sign-in');
+      // Logging out leaves the product: the landing is what a visitor sees, and offering the sign-in form again
+      // reads as "that did not work". `homePath(false)` is the same `/` the logo points visitors at.
+      return go('/');
     }
     let userId: string;
     let onboarded: boolean;

@@ -592,6 +592,15 @@ six commits per `docs/BRAND_ROLLOUT_PROMPT.md`. It replaces the neutral Apple-li
 
 
 
+## 2026-09-17 additions: logging out goes to the landing
+
+- **Log out** (Account menu → `POST /api/auth action=logout`) now ends on the landing `/`, not on `/sign-in`.
+  Signing out is leaving the product, and being handed the sign-in form again reads as a failed attempt. Both
+  auth paths do it: the local session (delete the row, clear the cookie) and the Supabase one (`signOut()`).
+- The session is really gone: the workspace pages then show their "Your workspace is one login away" prompt, and
+  the landing renders its visitor header (Early access / Apply as a creator, the logo pointing at `/`).
+- Covered by `tests/e2e/workspace-nav.spec.ts`, beside the test for where the logo leads.
+
 ## 2026-09-17 additions: a campaign shows the project running it
 
 - The buyer's **project logo** now sits beside the project name wherever a campaign is named: the campaign board

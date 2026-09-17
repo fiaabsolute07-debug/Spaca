@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { login, openAccountMenu, visit } from './helpers';
+import { login, openAccountMenu, submit, visit } from './helpers';
 
 test('workspace navigation lives in the header Account menu; pages change in the same tab and inner pages link back', async ({ page }) => {
   await login(page, 'buyer_a');
@@ -63,3 +63,24 @@ test('the spaca logo leads a signed-in account to the product and a visitor to t
   for (const link of await page.getByRole('link', { name: 'spaca home' }).all()) await expect(link).toHaveAttribute('href', '/dashboard');
 });
 
+
+test('logging out leaves the product and lands on the landing page', async ({ page }) => {
+  await login(page, 'buyer_a');
+  await visit(page, '/dashboard');
+  await openAccountMenu(page);
+  await submit(page, page.getByRole('banner').getByRole('button', { name: 'Log out', exact: true }));
+
+  // Straight to the landing, not back to a sign-in form: signing out is leaving, not a failed attempt.
+  expect(new URL(page.url()).pathname).toBe('/');
+  await expect(page.getByRole('heading', { level: 1, name: 'Find the voices your launch needs.' })).toBeVisible();
+
+  // And the page is the visitor's: the way in, never the workspace.
+  await expect(page.getByRole('banner').getByRole('button', { name: 'Account', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('banner').getByRole('link', { name: 'Early access', exact: true })).toBeVisible();
+  await expect(page.getByRole('banner').getByRole('link', { name: 'spaca home' })).toHaveAttribute('href', '/');
+
+  // The session is really gone: the workspace now asks the visitor to log in.
+  // The unauthenticated prompt deliberately uses h3, not a page h1, so this navigates without `visit`.
+  expect((await page.goto('/dashboard'))?.status()).toBe(200);
+  await expect(page.getByRole('heading', { name: 'Your workspace is one login away' })).toBeVisible();
+});
