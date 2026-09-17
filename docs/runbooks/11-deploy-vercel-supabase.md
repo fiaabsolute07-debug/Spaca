@@ -48,7 +48,7 @@ Environment variables (Production; Preview gets its own staging values):
 
 Then `pnpm env:check production` locally with the same values exported (it prints names and OK/MISSING/INVALID only) must pass before the first deploy.
 
-Cron: `vercel.json` schedules `/api/cron/jobs`. Vercel Hobby runs crons at most daily; the jobs need Pro for a 5-minute schedule.
+Cron: `vercel.json` schedules `/api/cron/jobs` once a day (`0 3 * * *`), which is all a Hobby account allows — a deploy is refused outright with a shorter one. On Pro, change it to `*/5 * * * *`: deadlines (auto-accept, hold expiry, auction and item closing) are measured in hours, so a daily run lets them sit. An outside scheduler calling the same URL with the `CRON_SECRET` bearer token works too.
 
 ## 4. First deploy and smoke (owner go-ahead required)
 
