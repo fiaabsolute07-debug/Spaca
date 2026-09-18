@@ -52,9 +52,23 @@ This did not fail before because the old development database was full of servic
 the day after that data was cleaned — and an empty database is exactly the state production is in. **The live landing
 almost certainly carries the same two dead links today.**
 
-The fix is a product decision, so it is left for the owner rather than taken here: either hide both links when the
-strip is empty, or keep the section present with an honest empty state. Hiding the links matches the rest of the
-landing, which already refuses to show a strip it has no real content for.
+**Fixed the same day, on the owner's "sửa link chết trên service luôn".** The links now go where the section goes:
+`LandingPage` computes which strips will render and drops the matching links from both the navigation and the footer.
+Hiding them matches the rest of the landing, which already refuses to show a strip it has no real content for.
+
+`#creators` had the same defect and no test had caught it: `CreatorsAvailable` also returns `null` on an empty list,
+and the only reason the suite stayed green there is that the database happened to hold creators. It is fixed with the
+same change. `#auctions`, `#faq` and `#top` always render, so they were never at risk.
+
+Verified in both directions against a real dev server, because one state alone proves nothing here:
+
+| Database | `href="#services"` | `id="services"` | `href="#creators"` | `id="creators"` | `landing.spec.ts` |
+|---|---|---|---|---|---|
+| empty (migrated, not seeded) | 0 | 0 | 0 | 0 | 7 passed, 2 skipped by their own guards |
+| the dev database after the suite | 2 (nav + footer) | 1 | 1 | 1 | 9 passed, nothing skipped |
+
+`public.spec.ts` passes alongside it (11 passed in total on the populated run). Every remaining `href="#…"` on the page
+resolves to exactly one element in both states, which is what `landing.spec.ts:56` asserts.
 
 ## 3. Findings
 

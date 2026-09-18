@@ -97,5 +97,6 @@ spec needing a second run.
   landing navigation and the footer while nothing on the page carries `id="services"`. The strip renders only when the
   showcase query returns a service **with** a PUBLIC, APPROVED image sample — an inner `join lateral` — so on an empty
   or freshly seeded database both links lead nowhere. Production's database is empty, so the live landing carries the
-  same two dead links. Whether to hide the links or keep an empty section is a product decision, so it was left for the
-  owner: [the audit](evidence/claude-AUDIT-2026-09-18.md) §2.
+  same two dead links. **Fixed on the owner's go-ahead the same day**: the landing now drops the navigation and footer
+  links for a strip that will not render, and `#creators` — which had the same defect and no failing test — goes with
+  it. Verified against both an empty database and a populated one: [the audit](evidence/claude-AUDIT-2026-09-18.md) §2.

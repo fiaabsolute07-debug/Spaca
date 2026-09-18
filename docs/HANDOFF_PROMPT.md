@@ -77,7 +77,9 @@ Playwright **76 passed / 1 failed / 1 skipped** · `restore-rehearsal` 8 bất b
 37 migration áp sạch trên PG16.
 
 Một lỗi thật: **landing có `href="#services"` ở cả nav và footer trong khi không có `id="services"`** khi chưa có dịch
-vụ nào kèm sample ảnh đã duyệt — tức là đúng tình trạng DB production hiện nay. 6 phát hiện bảo mật (CSP, chặn
+vụ nào kèm sample ảnh đã duyệt — tức là đúng tình trạng DB production hiện nay. **Đã sửa cùng ngày** theo yêu cầu user:
+link nav/footer chỉ hiện khi section tương ứng render; `#creators` bị y hệt (chưa test nào bắt được) nên sửa luôn. Đã
+kiểm tra cả hai chiều: DB rỗng và DB có nội dung. 6 phát hiện bảo mật (CSP, chặn
 brute-force theo email, `add_email` không xác minh, `PAYMENT_MODE` mặc định mở, deploy không chạy `env-check`, TLS DB
 không verify chứng chỉ). Chi tiết và cách sửa: `docs/evidence/claude-AUDIT-2026-09-18.md`.
 
@@ -178,9 +180,9 @@ vài spec hỏng ngẫu nhiên (đã gặp: 4 spec lỗi rồi đạt lại khi 
 
 ## Việc tiếp theo đề xuất (theo thứ tự)
 
-0. **Sửa các mục của audit 2026-09-18** (`docs/evidence/claude-AUDIT-2026-09-18.md`): link chết `#services` trên
-   landing (đang hiện trên site thật), rồi F5 (`env-check` trong `buildCommand`), F4 (`PAYMENT_MODE` thiếu thì coi như
-   `off`), F6 (verify chứng chỉ TLS tới DB), F2 (chặn brute-force theo IP), F1 (CSP), F3 (xác minh email).
+0. **Sửa các mục còn lại của audit 2026-09-18** (`docs/evidence/claude-AUDIT-2026-09-18.md`; link chết đã sửa):
+   F5 (`env-check` trong `buildCommand`), F4 (`PAYMENT_MODE` thiếu thì coi như `off`), F6 (verify chứng chỉ TLS tới DB),
+   F2 (chặn brute-force theo IP), F1 (CSP), F3 (xác minh email).
 0b. Chạy phần audit còn thiếu từ máy user: kiểm tra site thật (header, route dev đóng, `/api/cron/jobs` không secret),
    `discovery-benchmark`, `brand-contrast`, `brand-shots`.
 1. Cập nhật `docs/ACCEPTANCE.md` + `docs/BUILD_STATUS.md` cho các tính năng 2026-09-16 (nhận diện, landing, icon, đăng ký + onboarding) — chỉ PASS khi có test.

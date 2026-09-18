@@ -46,14 +46,18 @@ export default async function LandingPage() {
   const hasVideo = existsSync(path.join(process.cwd(), 'public', HERO_VIDEO));
   const [goalCounts, showcase, actor] = await Promise.all([getOpenGoalCounts(), getLandingShowcase(), getActor()]);
   const home = homePath(Boolean(actor));
+  // The services and creators strips render nothing when there is no real work to show, and an empty database is what a
+  // fresh deployment has. A link to a section that is not on the page does nothing when clicked, so the links go with it.
+  const sections = { services: showcase.services.length > 0, creators: showcase.creators.length > 0 };
+  const footerColumns = FOOTER_COLUMNS.map((column) => ({ ...column, links: column.links.filter((link) => link.href !== '#services' || sections.services) }));
 
   return <div className={styles.page} id="top">
     <header className={styles.nav}>
       <div className={styles.navInner}>
         <Link href={home} className={styles.brand} aria-label="spaca home"><SpacaLockup size={26} /></Link>
         <nav className={styles.navLinks} aria-label="Landing sections">
-          <a href="#services">Services</a>
-          <a href="#creators">Creators</a>
+          {sections.services && <a href="#services">Services</a>}
+          {sections.creators && <a href="#creators">Creators</a>}
           <a href="#auctions">Auctions</a>
           <a href="#faq">FAQ</a>
         </nav>
@@ -126,7 +130,7 @@ export default async function LandingPage() {
             <p>Creator campaigns for web3 launches, on X. Each creator is paid when their work is approved.</p>
             <span className={styles.footerTag}><span aria-hidden>{'{'}</span> Local build · testnet only <span aria-hidden>{'}'}</span></span>
           </div>
-          {FOOTER_COLUMNS.map((column) => <nav key={column.title} className={styles.footerCol} aria-label={column.title}>
+          {footerColumns.map((column) => <nav key={column.title} className={styles.footerCol} aria-label={column.title}>
             <span className={styles.footerHead}>{column.title}</span>
             {column.links.map((link) => <Link key={link.href} href={link.href}>{link.label}</Link>)}
           </nav>)}
