@@ -224,6 +224,8 @@ export type AccountSummary = {
   name: string;
   handle: string | null;
   avatarAssetId: string | null;
+  /** The connected X account's photo, shown until the account uploads one of its own. */
+  avatarUrl: string | null;
   onboarded: boolean;
   headline: string;
   bio: string;
@@ -235,9 +237,11 @@ export type AccountSummary = {
 export async function getAccountSummary(actor: Actor): Promise<AccountSummary> {
   const [row] = asRows(await sql`select u.display_name,u.onboarded_at is not null as onboarded,p.handle,p.avatar_asset_id,p.headline,p.bio,p.niche,p.social_url,
       w.address as wallet_address,n.name as wallet_network,n.mode as wallet_mode,
-      (select count(*)::int from app.wallets x where x.user_id=u.id and x.revoked_at is null) as wallet_count
+      (select count(*)::int from app.wallets x where x.user_id=u.id and x.revoked_at is null) as wallet_count,
+      xp.profile_image_url as x_image
     from app.users u
     left join app.profiles p on p.user_id=u.id
+    left join app.x_profiles xp on xp.user_id=u.id and xp.unavailable_at is null
     left join lateral (select address,chain_id from app.wallets where user_id=u.id and revoked_at is null order by verified_at desc limit 1) w on true
     left join app.chain_networks n on n.chain_id=w.chain_id
     where u.id=${actor.id}`);
@@ -246,6 +250,7 @@ export async function getAccountSummary(actor: Actor): Promise<AccountSummary> {
     name: String(row?.display_name ?? actor.display_name),
     handle: row?.handle ? String(row.handle) : null,
     avatarAssetId: row?.avatar_asset_id ? String(row.avatar_asset_id) : null,
+    avatarUrl: row?.x_image ? String(row.x_image) : null,
     onboarded: row ? Boolean(row.onboarded) : true,
     headline: String(row?.headline ?? ''),
     bio: String(row?.bio ?? ''),

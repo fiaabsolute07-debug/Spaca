@@ -24,6 +24,8 @@ type Props = {
   x: { available: boolean; sandbox: boolean };
   /** The same for "Continue with Google", which signs in to accounts that connected Google in settings. */
   google: { available: boolean; sandbox: boolean };
+  /** Whether the dialog offers email and password at all (EMAIL_SIGN_IN). */
+  emailSignIn: boolean;
 };
 
 type AccountChoice = 'buyer' | 'creator';
@@ -47,7 +49,7 @@ const ACCOUNT_CHOICES: { value: AccountChoice; title: string; line: string; icon
  * "Continue with Google" are form posts to /api/auth/x and /api/auth/google; email sign-in posts to /api/auth as JSON so
  * errors show in place; test accounts (local sandbox only) post to /api/dev/session.
  */
-export function AuthDialog({ mode: initialMode, variant, returnTo, defaultRole = null, initialError = null, initialMessage = null, testAccounts, x, google }: Props) {
+export function AuthDialog({ mode: initialMode, variant, returnTo, defaultRole = null, initialError = null, initialMessage = null, testAccounts, x, google, emailSignIn }: Props) {
   const router = useRouter();
   const [mode, setMode] = useState(initialMode);
   const [view, setView] = useState<'options' | 'email'>('options');
@@ -158,7 +160,7 @@ export function AuthDialog({ mode: initialMode, variant, returnTo, defaultRole =
         </form>
         {signup && !role && <p className="account-choice-hint" id={`${titleId}-choose`}>Choose Buyer or Creator to continue.</p>}
         {!x.available && <p className="account-choice-hint">Signing in with X is not available in this environment.</p>}
-        {(google.available || !signup) && <div className="auth-divider"><span>or</span></div>}
+        {(google.available || (!signup && emailSignIn)) && <div className="auth-divider"><span>or</span></div>}
         {google.available && <form action="/api/auth/google" method="post" className="auth-x">
           <input type="hidden" name="intent" value={signup ? 'signup' : 'signin'} />
           <input type="hidden" name="return_to" value={returnTo} />
@@ -168,12 +170,18 @@ export function AuthDialog({ mode: initialMode, variant, returnTo, defaultRole =
             <GoogleLogo size={18} /> <span>Continue with Google</span>
           </button>
         </form>}
-        {!signup && <button type="button" className="auth-option" onClick={() => { setView('email'); setError(null); }}>
+        {!signup && emailSignIn && <button type="button" className="auth-option" onClick={() => { setView('email'); setError(null); }}>
           <Mail size={18} aria-hidden /> <span>Continue with email</span>
         </button>}
+        {/* With X the only way in, a note about the other two would describe buttons that are not on the dialog. */}
         <p className="account-choice-next">{signup
-          ? 'Either one creates the account. You can add an email and password in your account settings afterwards.'
-          : 'Google and email work once you have connected them to your account.'}</p>
+          ? google.available
+            ? 'Either one creates the account. You can add an email and password in your account settings afterwards.'
+            : 'Your X account creates the account. You can add an email and password in your account settings afterwards.'
+          : google.available && emailSignIn ? 'Google and email work once you have connected them to your account.'
+            : google.available ? 'Google works once you have connected it to your account.'
+              : emailSignIn ? 'Email works once you have added one to your account.'
+                : 'Sign in with the X account you signed up with.'}</p>
         {(x.sandbox || google.sandbox) && <p className="auth-sandbox-note">Local sandbox: {x.sandbox && google.sandbox ? 'X and Google open stand-in pages' : x.sandbox ? 'X opens a stand-in page' : 'Google opens a stand-in page'}. No real account is used.</p>}
         {testAccounts.length > 0 && !signup && <>
           <div className="auth-divider"><span>Local test accounts</span></div>

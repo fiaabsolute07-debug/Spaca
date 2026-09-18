@@ -121,7 +121,7 @@ describe.skipIf(!RUN_DB)('Account setup after sign-up (drizzle/0031)', () => {
     expect((await setup(buyer, { ...base, asset_ids: logo, link: 'javascript:alert(1)' })).body.error).toMatch(/must start with http/);
     const other = await createUser('not-mine', ['buyer']);
     expect((await setup(other, { ...base, asset_ids: logo })).status).toBe(404);
-    // Nothing was saved by the refusals.
+    // Nothing was saved by the refusals, and a buyer's sign-up seeds no profile from X: the project names itself.
     expect((await sql`select 1 from app.profiles where user_id=${buyer.id}`).length).toBe(0);
 
     const form = new FormData();

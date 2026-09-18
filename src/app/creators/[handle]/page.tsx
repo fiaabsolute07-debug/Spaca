@@ -33,7 +33,7 @@ export default async function CreatorPage({
     {notices}
     <div className="panel">
       <div className="creator-hero">
-        <Avatar name={c.display_name} assetId={c.avatar_asset_id} size={88} />
+        <Avatar name={c.display_name} assetId={c.avatar_asset_id} imageUrl={result.x?.imageUrl} size={88} />
         <div>
           <PageHeading
             eyebrow={str(c.niche, 'Independent creator')}

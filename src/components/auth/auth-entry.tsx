@@ -1,4 +1,5 @@
 import { appSessionsEnabled, devSessionsEnabled } from '@/lib/auth';
+import { emailSignInEnabled } from '@/lib/environment';
 import { verifiedNotice } from '@/lib/notices';
 import { xMode } from '@/modules/x/provider';
 import { googleMode } from '@/modules/google/provider';
@@ -32,5 +33,6 @@ export function AuthEntry({ mode, variant, query }: { mode: 'signin' | 'signup';
     testAccounts={showTestAccounts ? TEST_ACCOUNTS : []}
     x={{ available: appSessionsEnabled() && xMode() !== 'off', sandbox: xMode() === 'mock' }}
     google={{ available: appSessionsEnabled() && googleMode() !== 'off', sandbox: googleMode() === 'mock' }}
+    emailSignIn={emailSignInEnabled()}
   />;
 }

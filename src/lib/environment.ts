@@ -9,6 +9,12 @@ export const appStage = (): AppStage => (process.env.NODE_ENV !== 'production' ?
 
 export const paymentsOpen = () => process.env.PAYMENT_MODE !== 'off';
 
+/**
+ * Whether the sign-in dialog offers email and password. `EMAIL_SIGN_IN=off` hides it, leaving the connected
+ * accounts as the only way in; an email and password added in settings still work if the dialog is shown again.
+ */
+export const emailSignInEnabled = () => process.env.EMAIL_SIGN_IN !== 'off';
+
 /** The line under item auctions about where the money is: sandbox wording off production, early access while closed. */
 export function auctionMoneyNote(): string | null {
   if (appStage() !== 'production') return 'Sandbox: collateral and escrow are recorded by spaca and no funds move.';

@@ -48,7 +48,7 @@ function Detail({ s, onClose }: { s: Row; onClose: () => void }) {
       <span className="chip">{CATEGORY[str(s.taxonomy)] ?? str(s.taxonomy)}</span>
       <h2>{str(s.title)}</h2>
       <Link className="detail-creator" href={s.handle ? `/creators/${str(s.handle)}` : '#'}>
-        <Avatar name={s.creator_name} assetId={s.avatar_asset_id} size={32} />
+        <Avatar name={s.creator_name} assetId={s.avatar_asset_id} imageUrl={x?.imageUrl} size={32} />
         <span>
           <strong>{str(s.creator_name, 'Creator')}</strong>
           <small>{[str(s.headline) || str(s.niche), s.rating ? `★ ${str(s.rating)} (${num(s.review_count)})` : '', num(s.completed_jobs) ? `${num(s.completed_jobs)} completed` : 'New creator'].filter(Boolean).join(' · ')}</small>
@@ -143,7 +143,7 @@ export function ExploreBrowser({ items, initialSelected, sidebar, toolbar, pager
           const availability = availabilityLabel(s.availability_status);
           return <li key={str(s.id)}>
             <a href={`/services/${str(s.id)}`} className={`explore-card${active ? ' is-active' : ''}`} aria-current={active ? 'true' : undefined} onClick={(event) => choose(event, str(s.id))}>
-              <Avatar name={s.creator_name} assetId={s.avatar_asset_id} size={40} className="explore-card-avatar" />
+              <Avatar name={s.creator_name} assetId={s.avatar_asset_id} imageUrl={xOf(s)?.imageUrl} size={40} className="explore-card-avatar" />
               <span className="explore-card-main">
                 <span className="explore-card-headline">
                   <h3>{str(s.title)}</h3>

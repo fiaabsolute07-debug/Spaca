@@ -87,14 +87,14 @@ export function AccountMenu({ type, account }: { type: AccountType | null; accou
   return <div className="account-menu" ref={root}>
     <button ref={button} type="button" className="button compact account-menu-button" aria-expanded={open} aria-controls={panelId} onClick={() => setOpen((value) => !value)}>
       <span className="account-menu-face">
-        <Avatar name={account.name} assetId={account.avatarAssetId} size={22} />
+        <Avatar name={account.name} assetId={account.avatarAssetId} imageUrl={account.avatarUrl} size={22} />
         {!account.onboarded && <span className="account-menu-dot" aria-hidden />}
       </span>
       Account <ChevronDown size={14} aria-hidden />
     </button>
     <div id={panelId} className="account-menu-panel" hidden={!open}>
       <section className="account-head" aria-label="Signed in as">
-        <Avatar name={account.name} assetId={account.avatarAssetId} size={40} />
+        <Avatar name={account.name} assetId={account.avatarAssetId} imageUrl={account.avatarUrl} size={40} />
         <div className="account-head-text">
           <strong>{account.name}</strong>
           <span>

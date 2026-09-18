@@ -13,7 +13,7 @@ import { isCreator } from '@/lib/account';
 import { CommandError, UUID_PATTERN, type CommandHandler, type Row, type Tx } from '@/lib/commands';
 import { sql } from '@/lib/db';
 import { logError } from '@/lib/log';
-import type { XProfileView, XSource } from '@/lib/x-profile';
+import { xProfileUrl, type XProfileView, type XSource } from '@/lib/x-profile';
 import { onboardingPath } from '@/lib/onboarding';
 import { keepsAnotherSignIn } from '@/modules/google/service';
 import { canonicalizeSocialAccount } from '@/modules/publish';
@@ -145,6 +145,22 @@ async function linkSocialAccount(tx: Tx, actor: { id: string }, username: string
  * Saves the X account on a spaca account: the profile copy, the identity it signs in with, and for creators the verified
  * linked account. One X account belongs to one spaca account.
  */
+/**
+ * A new creator account starts out as its X account: the same @handle, bio, location and link, and (through
+ * `app.x_profiles`) the same photo. Account setup still shows every field and can change any of it. A handle that is
+ * already taken, or too short to be a spaca handle, leaves the profile unwritten and setup asks for one.
+ *
+ * Buyers are skipped on purpose: a buyer account is a project, not the person whose X account opened it, so its
+ * handle comes from the project name given in setup and its introduction describes the project.
+ */
+async function seedProfileFromX(tx: Tx, userId: string, profile: XProfile) {
+  const handle = profile.username.toLowerCase();
+  if (!/^[a-z0-9][a-z0-9_-]{2,31}$/.test(handle)) return;
+  await tx`insert into app.profiles (user_id,handle,bio,niche,social_url,location)
+    values (${userId},${handle},${profile.description.slice(0, 600)},'',${xProfileUrl(profile.username)},${profile.location.slice(0, 120)})
+    on conflict do nothing`;
+}
+
 async function saveConnection(tx: Tx, actor: { id: string; creator: boolean }, profile: XProfile, source: XSource): Promise<string> {
   await tx`select pg_advisory_xact_lock(hashtextextended(${`x-profile:${source}:${profile.xUserId}`}, 0))`;
   const [owner] = await tx<Row[]>`select 1 from app.x_profiles where source=${source} and x_user_id=${profile.xUserId} and user_id<>${actor.id}
@@ -297,6 +313,7 @@ export async function completeXSignIn(input: { state: string; code: string; erro
         values (gen_random_uuid(),null,${profile.name.slice(0, 100)},null,${[accountType]},${testData},'ACTIVE',null) returning id`;
       const userId = String(created!.id);
       await saveConnection(tx, { id: userId, creator: accountType === 'creator' }, profile, provider.source);
+      if (accountType === 'creator') await seedProfileFromX(tx, userId, profile);
       await tx`update app.user_identities set last_sign_in_at=now() where user_id=${userId} and provider='X'`;
       return { userId, path: onboardingPath(returnTo), message: `Signed up with X as @${profile.username}.` };
     });

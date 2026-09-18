@@ -61,7 +61,7 @@ export default async function ProfilePage({
         <section className="panel" aria-labelledby="photo-heading">
           <h2 id="photo-heading">Profile photo</h2>
           <div className="profile-photo">
-            <Avatar name={profile.display_name ?? actor.display_name} assetId={profile.avatar_asset_id} size={88} />
+            <Avatar name={profile.display_name ?? actor.display_name} assetId={profile.avatar_asset_id} imageUrl={x?.imageUrl} size={88} />
             <div className="profile-photo-actions">
               <p className="muted">PNG, JPG, GIF or WebP up to 10 MB. A square photo of your face or brand mark works best.</p>
               <CommandForm command="set_avatar" label={profile.avatar_asset_id ? 'Save new photo' : 'Save photo'} variant="secondary" returnTo={route}>
