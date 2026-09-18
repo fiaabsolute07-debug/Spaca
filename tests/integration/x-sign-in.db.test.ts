@@ -124,7 +124,7 @@ describe.skipIf(!RUN_DB)('Sign up and sign in with X (drizzle/0035)', () => {
   it('email sign-up is gone; an email and password are added once from settings and then sign in', async () => {
     const refused = await callRoute(auth.POST, '/api/auth', null, { action: 'signup', email: `nobody-${randomUUID().slice(0, 6)}@example.test`, password: PASSWORD, role: 'buyer' });
     expect(refused.status).toBe(400);
-    expect(refused.body.error).toBe('New accounts sign up with X. You can add an email and password later from your account settings.');
+    expect(refused.body.error).toBe('New accounts sign up with X or Google. You can add an email and password later from your account settings.');
 
     const { actor, user, username } = await signUpWithX(X, 'creator');
     const email = `${username}@example.test`;

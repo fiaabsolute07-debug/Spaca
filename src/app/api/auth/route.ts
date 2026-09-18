@@ -14,8 +14,8 @@ const emailHash = (email: string) => createHash('sha256').update(`sign-in:${emai
 const validCredentials = (email: string, password: string) => EMAIL_PATTERN.test(email) && email.length <= 254 && password.length >= 12 && password.length <= 256;
 
 /**
- * Email and password: sign in, log out, and add an email to an account created with X. New accounts are created only by
- * signing up with X (/api/auth/x, drizzle/0035), so `signup` is refused here.
+ * Email and password: sign in, log out, and add an email to an account created with X or Google. New accounts are made
+ * by signing up with X (/api/auth/x, drizzle/0035) or Google (/api/auth/google, drizzle/0038), so `signup` is refused here.
  */
 export async function POST(request: Request) {
   if (!isSameOrigin(request)) return NextResponse.json({ error: 'Origin not allowed' }, { status: 403 });
@@ -34,7 +34,7 @@ export async function POST(request: Request) {
   const failure = () => refuse(`/sign-in?return_to=${encodeURIComponent(returnTo)}`, 'The email or password is not correct.');
   try {
     if (!['login', 'signup', 'logout', 'add_email'].includes(action)) return NextResponse.json({ error: 'Invalid action' }, { status: 400 });
-    if (action === 'signup') return refuse('/sign-up', 'New accounts sign up with X. You can add an email and password later from your account settings.');
+    if (action === 'signup') return refuse('/sign-up', 'New accounts sign up with X or Google. You can add an email and password later from your account settings.');
 
     if (action === 'add_email') {
       const actor = await getActor();

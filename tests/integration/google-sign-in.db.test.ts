@@ -27,9 +27,10 @@ const command = (actor: TestUser, fields: Record<string, string>) => callRoute(c
 type Result = { location: URL; state: string; error: string | null; message: string | null };
 
 /** Start (Connect Google when `actor` is given, otherwise Continue with Google), choose `email` on sandbox Google, come back. */
-async function google(actor: TestUser | null, email: string, options: { code?: string; callbackActor?: TestUser | null; returnTo?: string } = {}): Promise<Result> {
+async function google(actor: TestUser | null, email: string, options: { code?: string; callbackActor?: TestUser | null; returnTo?: string; signUpAs?: 'buyer' | 'creator' } = {}): Promise<Result> {
   const form = new FormData();
-  form.set('intent', actor ? 'connect' : 'signin');
+  form.set('intent', actor ? 'connect' : options.signUpAs ? 'signup' : 'signin');
+  if (options.signUpAs) form.set('role', options.signUpAs);
   form.set('return_to', options.returnTo ?? (actor ? '/settings/profile' : '/explore'));
   sessionState.token = actor?.token ?? null;
   const started = await googleStart.POST(new Request(`${ORIGIN}/api/auth/google`, { method: 'POST', headers: { origin: ORIGIN }, body: form }));
@@ -80,7 +81,53 @@ describe.skipIf(!RUN_DB)('Connect Google and Continue with Google (drizzle/0036)
     const stranger = gmail();
     const unknown = await google(null, stranger);
     expect(unknown.location.pathname).toBe('/sign-up');
-    expect(unknown.error).toBe(`No spaca account signs in with ${stranger} yet. Sign up with X, then connect Google from your account settings.`);
+    expect(unknown.error).toBe(`No spaca account signs in with ${stranger} yet. Choose Buyer or Creator to create one.`);
+  });
+
+  it('signing up with Google creates the chosen account type, and signing up again with it signs in instead (drizzle/0038)', async () => {
+    const email = gmail();
+    const signUp = await google(null, email, { signUpAs: 'creator', returnTo: '/explore' });
+    expect(signUp.error).toBeNull();
+    expect(signUp.message).toBe(`Signed up with Google as ${email}.`);
+    // Setup comes first, and the place the person was heading for is carried through it.
+    expect(signUp.location.pathname).toBe('/welcome');
+    expect(signUp.location.searchParams.get('return_to')).toBe('/explore');
+
+    const [created] = await sql`select u.id,u.roles,u.email,u.display_name,u.onboarded_at,i.subject,i.email as identity_email,i.last_sign_in_at
+      from app.users u join app.user_identities i on i.user_id=u.id and i.provider='GOOGLE'
+      where i.subject=${mockGoogleProfile(email).sub}`;
+    expect(created?.roles).toEqual(['creator']);
+    // The account's own email is the one that signs in with a password; nobody has set one yet.
+    expect(created?.email).toBeNull();
+    expect(created?.identity_email).toBe(email);
+    expect(created?.display_name).toBe(mockGoogleProfile(email).name);
+    expect(created?.onboarded_at).toBeNull();
+    expect(created?.last_sign_in_at).not.toBeNull();
+
+    // Coming back through sign-up with the same Google account is not a second account.
+    const again = await google(null, email, { signUpAs: 'buyer' });
+    expect(again.error).toBeNull();
+    expect(again.message).toBe(`${email} already has a spaca account, so you are signed in to it.`);
+    expect((await sql`select count(*)::int as n from app.user_identities where provider='GOOGLE' and subject=${mockGoogleProfile(email).sub}`)[0]?.n).toBe(1);
+    expect((await sql`select roles from app.users where id=${String(created!.id)}`)[0]?.roles).toEqual(['creator']);
+
+    // And plain Continue with Google now finds it.
+    const signIn = await google(null, email);
+    expect(signIn.error).toBeNull();
+    expect(signIn.location.pathname).toBe('/welcome');
+  });
+
+  it('a Google sign-up without an account type is refused before Google is opened', async () => {
+    const form = new FormData();
+    form.set('intent', 'signup');
+    form.set('return_to', '/explore');
+    sessionState.token = null;
+    const started = await googleStart.POST(new Request(`${ORIGIN}/api/auth/google`, { method: 'POST', headers: { origin: ORIGIN }, body: form }));
+    const location = new URL(started.headers.get('location') ?? '/', ORIGIN);
+    expect(location.pathname).toBe('/sign-up');
+    expect(location.searchParams.get('error')).toBe('Choose Buyer or Creator first.');
+    // Refused before anything was started, so there is no state to claim later.
+    expect(location.searchParams.get('state')).toBeNull();
   });
 
   it('one Google account stays with one spaca account; connecting another Google account replaces the first', async () => {

@@ -42,8 +42,8 @@ const ACCOUNT_CHOICES: { value: AccountChoice; title: string; line: string; icon
 ];
 
 /**
- * Sign in / create account in one dialog. New accounts sign up with X only (after choosing Buyer or Creator); Google and
- * an email and password can be connected later from account settings, and then sign in here too. "Continue with X" and
+ * Sign in / create account in one dialog. New accounts sign up with X or Google (after choosing Buyer or Creator); an
+ * email and password can be added later from account settings, and then sign in here too. "Continue with X" and
  * "Continue with Google" are form posts to /api/auth/x and /api/auth/google; email sign-in posts to /api/auth as JSON so
  * errors show in place; test accounts (local sandbox only) post to /api/dev/session.
  */
@@ -144,7 +144,7 @@ export function AuthDialog({ mode: initialMode, variant, returnTo, defaultRole =
             <span className="account-choice-text"><strong>{choice.title}</strong><span>{choice.line}</span></span>
             <span className="account-choice-tick" aria-hidden><Check size={14} strokeWidth={3} /></span>
           </label>)}
-          <p className="account-choice-note">Each account is one type and signs in with its own X account.</p>
+          <p className="account-choice-note">Each account is one type and signs in with its own X or Google account.</p>
         </fieldset>}
         {error && <p className="auth-error" role="alert">{error}</p>}
         <form action="/api/auth/x" method="post" className="auth-x">
@@ -158,21 +158,23 @@ export function AuthDialog({ mode: initialMode, variant, returnTo, defaultRole =
         </form>
         {signup && !role && <p className="account-choice-hint" id={`${titleId}-choose`}>Choose Buyer or Creator to continue.</p>}
         {!x.available && <p className="account-choice-hint">Signing in with X is not available in this environment.</p>}
-        {signup
-          ? <p className="account-choice-next">After joining, you can connect Google (Gmail) or add an email in your account settings.</p>
-          : <>
-            <div className="auth-divider"><span>or</span></div>
-            {google.available && <form action="/api/auth/google" method="post" className="auth-x">
-              <input type="hidden" name="intent" value="signin" />
-              <input type="hidden" name="return_to" value={returnTo} />
-              <button type="submit" className="auth-option"><GoogleLogo size={18} /> <span>Continue with Google</span></button>
-            </form>}
-            <button type="button" className="auth-option" onClick={() => { setView('email'); setError(null); }}>
-              <Mail size={18} aria-hidden /> <span>Continue with email</span>
-            </button>
-            <p className="account-choice-next">Google and email work once you have connected them to your account.</p>
-          </>}
-        {(x.sandbox || (!signup && google.sandbox)) && <p className="auth-sandbox-note">Local sandbox: {signup || !google.sandbox ? 'X opens a stand-in page' : 'X and Google open stand-in pages'}. No real account is used.</p>}
+        {(google.available || !signup) && <div className="auth-divider"><span>or</span></div>}
+        {google.available && <form action="/api/auth/google" method="post" className="auth-x">
+          <input type="hidden" name="intent" value={signup ? 'signup' : 'signin'} />
+          <input type="hidden" name="return_to" value={returnTo} />
+          {signup && <input type="hidden" name="role" value={role ?? ''} />}
+          <button type="submit" className="auth-option" disabled={signup && !role}
+            aria-describedby={signup && !role ? `${titleId}-choose` : undefined}>
+            <GoogleLogo size={18} /> <span>Continue with Google</span>
+          </button>
+        </form>}
+        {!signup && <button type="button" className="auth-option" onClick={() => { setView('email'); setError(null); }}>
+          <Mail size={18} aria-hidden /> <span>Continue with email</span>
+        </button>}
+        <p className="account-choice-next">{signup
+          ? 'Either one creates the account. You can add an email and password in your account settings afterwards.'
+          : 'Google and email work once you have connected them to your account.'}</p>
+        {(x.sandbox || google.sandbox) && <p className="auth-sandbox-note">Local sandbox: {x.sandbox && google.sandbox ? 'X and Google open stand-in pages' : x.sandbox ? 'X opens a stand-in page' : 'Google opens a stand-in page'}. No real account is used.</p>}
         {testAccounts.length > 0 && !signup && <>
           <div className="auth-divider"><span>Local test accounts</span></div>
           <ul className="auth-test-accounts">

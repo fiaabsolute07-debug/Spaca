@@ -755,10 +755,36 @@ six commits per `docs/BRAND_ROLLOUT_PROMPT.md`. It replaces the neutral Apple-li
 
 ## 2026-09-17 additions: Connect Google and Continue with Google (drizzle/0036)
 
-- Sign-up stays X only. The join dialog now says "After joining, you can connect Google (Gmail) or add an email in your account settings."
+- Sign-up stayed X only until 2026-09-18; see the section below for the join dialog as it is now.
 - **Sign-in dialog**: Continue with X; "or"; **Continue with Google** (Google "G", outlined like email); Continue with email; "Google and email work once you have connected them to your account."; sandbox line "Local sandbox: X and Google open stand-in pages. No real account is used."
 - **Settings → Sign-in**: three rows — X, **Google** (the connected address and "sandbox Google", badge Signs in and **Disconnect**; or "Not connected" with **Connect Google**), Email and password. The add-email field starts with the Google address when there is one.
 - Connect Google opens Google's account chooser (in the sandbox `/dev/google-authorize`: "Choose an account to continue to spaca", any address, Continue / Cancel) and returns to settings with "Google account name@gmail.com connected. You can now sign in with Google." One Google account belongs to one spaca account ("…is already connected to another spaca account"); connecting another replaces it. Only Google's account id and verified address are kept.
-- Continue with Google signs in to the account that connected it; an unknown Google account goes to the join dialog: "No spaca account signs in with name@gmail.com yet. Sign up with X, then connect Google from your account settings." Google accounts without a verified email are refused.
+- Continue with Google signs in to the account that connected it; an unknown Google account goes to the join dialog (the message changed on 2026-09-18, below). Google accounts without a verified email are refused.
 - Whichever of X, Google and email is the last way in cannot be disconnected ("Google is how you sign in to this account. Connect X or add an email and password first, then disconnect Google.").
 - Live configuration: `GOOGLE_PROVIDER=live`, `GOOGLE_CLIENT_ID` (`….apps.googleusercontent.com`), `GOOGLE_CLIENT_SECRET`; authorized redirect URI `<APP_BASE_URL>/api/auth/google/callback`. `env:check` refuses the sandbox in staging and production.
+
+## 2026-09-18 addition: sign up with Google as well as X (drizzle/0038)
+
+An account can now be created either way. Nothing else about either flow changed: the account type is still chosen
+first, one account is still one type, and setup at `/welcome` still comes before the workspace.
+
+- **Join dialog**: the account-type cards, then **Continue with X** (the one filled button), "or", **Continue with
+  Google**. Both are disabled until a type is chosen and both point at the same hint, "Choose Buyer or Creator to
+  continue." Under them: "Each account is one type and signs in with its own X or Google account." and "Either one
+  creates the account. You can add an email and password in your account settings afterwards." There is still no email
+  form here: `POST /api/auth action=signup` answers "New accounts sign up with X or Google. …".
+- The sandbox line names whichever stand-ins are on: "Local sandbox: X and Google open stand-in pages. No real account
+  is used."
+- **After Google**: a new account lands on setup with "Signed up with Google as name@gmail.com." Its display name is
+  the name Google reports, falling back to the address's local part; **`users.email` stays null**, exactly as after an
+  X sign-up, because that column is the address that signs in with a password and nobody has set one yet. Google's
+  verified address is kept on the identity and offered in Settings → Sign-in.
+- A Google account that already belongs to a spaca account signs in to it instead, from the join dialog too:
+  "name@gmail.com already has a spaca account, so you are signed in to it." The account type chosen on the way is
+  ignored in that case — an account never changes type.
+- On **sign-in**, an unknown Google account is now offered sign-up rather than sent to X: "No spaca account signs in
+  with name@gmail.com yet. Choose Buyer or Creator to create one." — the same sentence X uses.
+- A creator account made with Google has no X account connected. It can be connected later from Settings → Sign-in, and
+  publishing a PUBLISH service still requires one.
+- Configuration is unchanged (`GOOGLE_PROVIDER=live`, client id and secret, the same redirect URI). With Google
+  configured and X not, sign-up works; that was not true before.

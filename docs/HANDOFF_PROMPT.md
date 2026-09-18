@@ -31,7 +31,7 @@ Nghĩa: commit đều; chưa dùng Supabase (PostgreSQL local); crypto nhắm Ar
 ## Quyết định UI/sản phẩm của user — không làm ngược lại
 
 - Điều hướng workspace nằm trong menu **Account** góc phải header (không sidebar, không nút avatar riêng). Trang con có link "‹ Back to …"; không mở tab mới. **Đổi 2026-09-16 theo yêu cầu user:** menu mở ra với tài khoản trước — avatar, tên, @handle, nhãn Buyer/Creator account, "Finish setup" khi chưa xong hồ sơ, dòng Wallet (địa chỉ rút gọn hoặc "Connect wallet") — rồi mới tới các nhóm link; ảnh đại diện nằm trong nút Account.
-- **Đăng ký:** chọn Buyer/Creator bằng 2 thẻ trước, rồi mới email + mật khẩu. **Onboarding `/welcome` được ưu tiên:** avatar/logo, tên creator hoặc tên dự án, một dòng "làm gì", giới thiệu ≥40 ký tự (bắt buộc); lĩnh vực, link, ví (tuỳ chọn). Cho phép "Do this later" nhưng đăng dịch vụ / ứng tuyển / đăng campaign phải chờ xong hồ sơ.
+- **Đăng ký:** chọn Buyer/Creator bằng 2 thẻ trước, rồi **Continue with X hoặc Continue with Google** (từ 2026-09-18, migration 0038 — trước đó chỉ có X). Email + mật khẩu chỉ để đăng nhập, thêm sau trong settings. **Onboarding `/welcome` được ưu tiên:** avatar/logo, tên creator hoặc tên dự án, một dòng "làm gì", giới thiệu ≥40 ký tự (bắt buộc); lĩnh vực, link, ví (tuỳ chọn). Cho phép "Do this later" nhưng đăng dịch vụ / ứng tuyển / đăng campaign phải chờ xong hồ sơ.
 - **Icon menu:** animation hover phải diễn đúng ý nghĩa icon (tên lửa phóng, loa phát sóng âm, dù rơi…), không lắc chung chung; CSS thuần, chạy một lần, tắt trên cảm ứng/giảm chuyển động.
 - **Landing:** thanh tìm kiếm kiểu Fiverr trên video hero (giữ video), các section bên dưới có phần tử 3D tương tác / 2D chuyển động; footer thả tự do, không ô vuông.
 - Header: **Explore** và **Campaigns** là menu thả xuống kiểu Zealy (ô màu nổi bật bên trái, mục có tiêu đề + 1 dòng mô tả bên phải); **Auctions** là link thường. Không làm thanh tab Explore/Campaigns/Auctions phía trên danh sách (user đã bắt xóa) — khác với 7 tab mục tiêu trong Campaigns, là thứ user muốn.
@@ -52,7 +52,7 @@ export PATH=/Users/dohoangphi/.cache/codex-runtimes/codex-primary-runtime/depend
 ```
 
 - Máy khác: `corepack pnpm install --frozen-lockfile`, Node 24, Chrome hệ thống cho Playwright, Foundry cho `contracts/`.
-- Migration hiện tới **0031** (`onboarded_at`). Cả DB dev và test đã áp dụng.
+- Migration hiện tới **0038** (`google_oauth_states.account_type`, đăng ký bằng Google). Cả DB dev và test đã áp dụng.
 - Dev server: `.claude/launch.json` → `marketplace-dev` (Next dev webpack, cổng **3100**). Mock payment provider nằm trong bộ nhớ process: restart dev server là mất lịch sử provider.
 - Job local: `POST /api/dev/jobs` (same-origin). Flag bật trên DB dev: `DIGITAL_PRODUCTS_ENABLED`, `CRYPTO_CHECKOUT_ENABLED`, `PERFORMANCE_CAMPAIGNS_ENABLED`.
 - Nếu PostgreSQL hoặc dev server tắt (`ECONNREFUSED` / `ERR_CONNECTION_REFUSED`): khởi động lại như trên.
