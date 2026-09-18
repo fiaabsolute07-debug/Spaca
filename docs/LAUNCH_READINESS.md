@@ -1,8 +1,15 @@
 # Launch readiness
 
-Updated 2026-09-17 at commit `6d0a2d9` (migrations through `0037`). Nothing is deployed; no real money, mainnet, public deploy or outbound email has happened. Platform fee is enforced at 0 in code and the fee model is still undecided. This page lists what stands between the current build and a public launch, split into what is verified, what engineering still has to build, and what only the owner can decide or provide.
+Updated 2026-09-18 at commit `8b56d18` (migrations through `0037`). The app is now deployed and public at
+`www.spaca.xyz`; no real money, mainnet or outbound email has happened, and payments stay closed (`PAYMENT_MODE=off`). Platform fee is enforced at 0 in code and the fee model is still undecided. This page lists what stands between the current build and a public launch, split into what is verified, what engineering still has to build, and what only the owner can decide or provide.
 
 ## 1. Verified today (local)
+
+Re-run on 2026-09-18 in a Linux container, with the full findings in
+[the audit](evidence/claude-AUDIT-2026-09-18.md). The container runs Node 22 and PostgreSQL 16 rather than the
+repository's Node 24 and embedded PostgreSQL 18, so these are evidence, not the same evidence the owner's machine
+gives. `forge test` (19 passed) and the anvil escrow suite (3 passed) ran there too, for the first time since
+2026-09-15.
 
 | Check | Result |
 |---|---|
@@ -11,7 +18,8 @@ Updated 2026-09-17 at commit `6d0a2d9` (migrations through `0037`). Nothing is d
 | Production build (`next build`, documented local build env, `NEXT_DIST_DIR=.next-scan`) | compiles; the whole-project file tracing warning from local storage was fixed today |
 | Secret scan over tracked files and the production client bundle | 569 tracked files, 42 client files: clean, after two fixtures shaped like `sb_secret_` keys were replaced (`tests/unit/env-rules.test.ts`, `tests/unit/supabase-storage.test.ts`) |
 | `RUN_DB_INTEGRATION=1 vitest run` | 444 passed, 3 skipped (anvil) |
-| Playwright | 78 tests: everything passes except `publish.spec.ts`, which is blocked on development data — see §5 |
+| Playwright | 78 tests: **76 passed, 1 failed, 1 skipped** on 2026-09-18. `publish.spec.ts` passes now that the development data is clean; the failure is a real landing defect — see §5 |
+| `reconcile:dry-run` and `restore-rehearsal` | run twice on 2026-09-18, the second time over the 17 orders and 34 ledger entries the browser suite leaves behind: 5 checks agree, 8 invariants hold with 0 violations, restore verified in 10.2s |
 
 ## 2. Engineering blockers and their state
 
@@ -21,11 +29,11 @@ The owner answered D1–D3 and D5 on 2026-09-17: **Vercel + Supabase, first-part
 |---|---|---|---|
 | E1 | Production sign-in | **Built** (`6d0a2d9`): `AUTH_MODE=app` runs first-party sessions in a production build; fixture sign-in never does; failed password sign-ins throttled per email (drizzle/0037); accounts made with live X in production are real, not test data. | Live X and Google apps (D6, D7); first sign-up on staging. |
 | E2 | Production file storage | **Built** (`6d0a2d9`): `SupabaseStorageProvider` (signed upload/download, private buckets), `pnpm storage:setup` creates buckets with type and size limits. Unit-tested with the API stubbed. | A Supabase project; the first real upload on staging. Supabase Free caps any upload at 50 MB — videos (250 MB) and zips (100 MB) need the Pro limit raised. |
-| E3 | Scheduled jobs | **Built** (`6d0a2d9`): `/api/cron/jobs` behind `CRON_SECRET`, every job isolated; `vercel.json` schedules it every 5 minutes. | Vercel Pro for that schedule (Hobby runs crons at most daily). |
+| E3 | Scheduled jobs | **Built** (`6d0a2d9`): `/api/cron/jobs` behind `CRON_SECRET`, every job isolated. `vercel.json` now schedules it **once a day** (`0 3 * * *`), because Hobby refuses anything shorter, while the jobs were written for a five-minute tick. | Vercel Pro for the real schedule, before payments open. |
 | E4 | Real payment rail | Not needed at launch (D3: no money). `PAYMENT_MODE=off` refuses every money step. | Choose a rail before payments open. |
 | E5 | Transactional email | Open (D4). Email stays in the in-app timeline; password recovery says to continue with X or Google. | Sender domain and provider. |
 | E6 | Launch-mode copy and flags | **Built**: banner and footer by environment (local sandbox / staging / early access), policy pages without sandbox text in production, test accounts hidden, money flags fail closed; today also a **Payments open later** note in place of booking, collateral, bidding, paying into escrow, hiring offers and reward pools, and sandbox wording on auctions and checkout limited to local and staging. | Real policy text (D8). |
-| E7 | Deploy pipeline | Open: needs the owner's Vercel and Supabase projects and a go-ahead per deploy. Runbook: `docs/runbooks/11-deploy-vercel-supabase.md`. | Staging project, smoke, restore and rollback rehearsal. |
+| E7 | Deploy pipeline | **In use**: the app is deployed and public at `www.spaca.xyz` on the owner's Vercel and Supabase projects (each deploy still needs a go-ahead). Runbook: `docs/runbooks/11-deploy-vercel-supabase.md`. | Nothing gates a deploy on `env-check`, so a missing variable ships (audit F5); staging project, smoke, restore and rollback rehearsal. |
 | E8 | Hardening added today | Security headers on every response (nosniff, referrer policy, permissions policy; in production also no framing and HSTS) and `/api/health` for uptime checks. | Monitoring service pointed at `/api/health` (D9). |
 
 ## 3. Decisions and accounts only the owner can provide
@@ -76,3 +84,18 @@ Re-running each failing spec on its own against a restarted dev server resolved 
 
 Full detail, including the launch-gate secret-scan fix and the review of the cron, no-money and storage code:
 `docs/evidence/claude-LAUNCH-PREP.md`.
+
+### The run of 2026-09-18
+
+The suite was re-run at `8b56d18` against a clean development database, in a container driving Chromium rather than
+system Chrome (`d85df5a` made the browser configurable). **76 passed, 1 failed, 1 skipped in 18.5 minutes**, with no
+spec needing a second run.
+
+- `publish.spec.ts` **passes** (24.0s). The data it was blocked on is gone.
+- The skip is the services strip's own guard: no published service in that database carries an approved public image.
+- The failure is real and is in the product, not the test: `landing.spec.ts:56` finds `href="#services"` in both the
+  landing navigation and the footer while nothing on the page carries `id="services"`. The strip renders only when the
+  showcase query returns a service **with** a PUBLIC, APPROVED image sample — an inner `join lateral` — so on an empty
+  or freshly seeded database both links lead nowhere. Production's database is empty, so the live landing carries the
+  same two dead links. Whether to hide the links or keep an empty section is a product decision, so it was left for the
+  owner: [the audit](evidence/claude-AUDIT-2026-09-18.md) §2.

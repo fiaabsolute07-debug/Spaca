@@ -24,7 +24,7 @@ Nghĩa: commit đều; chưa dùng Supabase (PostgreSQL local); crypto nhắm Ar
 - Nhãn luôn tách bạch mock / sandbox / LOCAL devnet / TESTNET / live. Không claim PASS nếu chưa có test thật chạy qua.
 - Không sửa tay dữ kiện thanh toán (vd. set RELEASED, refunded) trong DB.
 - Git: chỉ `git add <đường dẫn cụ thể>` (không `-A`); không `reset`/`rebase`/`stash`; chạy `git diff --cached --stat` trước khi commit; không commit `next-env.d.ts` và `AGENTS.md` (hai file này đang sửa sẵn, để nguyên); commit message kết thúc bằng dòng `Co-Authored-By:` theo quy ước của repo.
-- Repo **chưa có remote GitHub**: chỉ push khi user đưa URL repo (`git remote add origin <URL>` rồi `git push -u origin main`).
+- Repo đã có remote `origin` (github.com/fiaabsolute07-debug/Spaca). Push lên nhánh được giao, không push thẳng `main` nếu user chưa cho phép.
 - Xoá/đổi tên DB dev hay dọn dữ liệu cần user trả lời đúng **"đồng ý dọn"**. Auto-mode vẫn chặn `CREATE DATABASE` và `mv` thư mục dù user đã đồng ý: cách đi vòng an toàn là đổi tên DB bằng `ALTER DATABASE ... RENAME TO` (giữ nguyên dữ liệu) rồi để `pnpm db:start` tự tạo lại DB trống.
 - `AGENTS.md` (do `next dev` thêm): Next.js ở repo là bản 16 có thay đổi phá vỡ — đọc hướng dẫn trong `node_modules/next/dist/docs/` trước khi viết code Next mới.
 
@@ -68,7 +68,23 @@ TZ=UTC ./node_modules/.bin/playwright test            # cần dev server 3100 đ
 cd contracts && forge test
 ```
 
-## Trạng thái kiểm tra mới nhất (cây `904b910`)
+## Tự audit 2026-09-18 (cây `8b56d18`) — mới nhất
+
+Bản audit đầu tiên kể từ 2026-09-15, chạy trong container Linux (Node 22, PostgreSQL 16 thay embedded PG18, Chromium
+thay Chrome): `tsc` sạch · vitest **444 passed / 3 skipped** · bộ anvil **3/3** · `forge test` **19/19** ·
+`release:check` mọi mục PASS · quét secret sạch cả 570 file tracked lẫn 42 file bundle client · build production sạch ·
+Playwright **76 passed / 1 failed / 1 skipped** · `restore-rehearsal` 8 bất biến 0 vi phạm trên dữ liệu thật.
+37 migration áp sạch trên PG16.
+
+Một lỗi thật: **landing có `href="#services"` ở cả nav và footer trong khi không có `id="services"`** khi chưa có dịch
+vụ nào kèm sample ảnh đã duyệt — tức là đúng tình trạng DB production hiện nay. 6 phát hiện bảo mật (CSP, chặn
+brute-force theo email, `add_email` không xác minh, `PAYMENT_MODE` mặc định mở, deploy không chạy `env-check`, TLS DB
+không verify chứng chỉ). Chi tiết và cách sửa: `docs/evidence/claude-AUDIT-2026-09-18.md`.
+
+**Chưa kiểm tra được:** site thật `www.spaca.xyz` (network policy của môi trường chặn), `discovery-benchmark`,
+`brand-contrast`, `brand-shots` — cần chạy từ máy user.
+
+## Trạng thái kiểm tra trước đó (cây `904b910`)
 
 - `tsc`: sạch. Vitest toàn bộ: **340 passed, 3 skipped** (42 file).
 - Playwright **chưa chạy toàn bộ** sau landing/icon/onboarding. Đã chạy riêng và đạt: `onboarding` + `auth-dialog` (lặp 2 lần, 16/16), `workspace-nav`, `public`, `landing`, `header-menus`, `funds`, `explore-profile`, `responsive`, `honest-states` (trừ AUC-13).
@@ -123,9 +139,9 @@ Tài liệu đã cập nhật cho các mục trên: `docs/UI_CONTRACT.md` (các 
 
 0. **Việc user đang chờ/đã giao:**
    - ~~**Dọn dữ liệu dummy** trong DB dev~~ — **xong 2026-09-18** sau khi user trả lời "đồng ý dọn". DB cũ giữ nguyên dưới tên `creator_marketplace_bak_20260918` (không xoá gì), DB mới đã migrate 37 file + seed 9 persona; 3 flag (`DIGITAL_PRODUCTS_ENABLED`, `CRYPTO_CHECKOUT_ENABLED`, `PERFORMANCE_CAMPAIGNS_ENABLED`) bật lại bằng lệnh `admin_set_flag` thật (có audit); file upload cũ chuyển sang `.local/storage-bak-20260918`. `publish.spec` hết nghẽn, pass 24,7s. Còn 2 DB rác nếu muốn dọn tiếp: `creator_marketplace_polluted_20260913` (21 MB), `creator_marketplace_test` (383 MB, tự tạo lại được bằng `pnpm db:test:prepare`).
-   - **Push GitHub:** chờ user đưa URL repo.
+   - ~~**Push GitHub**~~ — repo đã có remote `origin` (github.com/fiaabsolute07-debug/Spaca).
    - **Sửa lệch múi giờ form đấu giá (AUC-13)** — đã đề xuất thành task riêng; kiểm tra luôn các ô `datetime-local` khác (hạn campaign…).
-1. **Chạy lại toàn bộ Playwright** (`TZ=UTC` như lệnh chuẩn) sau `904b910`, ghi số thật vào bằng chứng.
+1. ~~**Chạy lại toàn bộ Playwright**~~ — **xong 2026-09-18**: 76 passed / 1 failed / 1 skipped, số thật ở `docs/evidence/claude-AUDIT-2026-09-18.md`.
 2. **Dữ liệu dev bị lỗi từ trước bản sửa `1f7ad3e`:** vài đơn performance trong DB dev vẫn có case `UNEXPECTED_REFUND`/`REFUND_FAILED` mở và `/funds` hiện phần giữ (40–80 USD) là "đang giữ". Không sửa tay; nếu cần, xử lý qua console vận hành/retry operation, hoặc bỏ qua vì là dữ liệu test.
 3. **Tài liệu tổng chưa cập nhật số mới:** `docs/ACCEPTANCE.md` (thêm/đếm lại dòng cho performance, goals, funds, ACCESS/DIGITAL campaign), `docs/BUILD_STATUS.md` (kết quả mới), `docs/REQUIREMENTS_TRACEABILITY.md`, `docs/COLLABORATION.md`.
 4. **Performance campaigns còn giới hạn:** metrics giả lập (chưa nối API nền tảng thật), chưa có cờ "median tăng quá nhanh", tín hiệu gian lận mới có 2 loại.
@@ -162,9 +178,13 @@ vài spec hỏng ngẫu nhiên (đã gặp: 4 spec lỗi rồi đạt lại khi 
 
 ## Việc tiếp theo đề xuất (theo thứ tự)
 
+0. **Sửa các mục của audit 2026-09-18** (`docs/evidence/claude-AUDIT-2026-09-18.md`): link chết `#services` trên
+   landing (đang hiện trên site thật), rồi F5 (`env-check` trong `buildCommand`), F4 (`PAYMENT_MODE` thiếu thì coi như
+   `off`), F6 (verify chứng chỉ TLS tới DB), F2 (chặn brute-force theo IP), F1 (CSP), F3 (xác minh email).
+0b. Chạy phần audit còn thiếu từ máy user: kiểm tra site thật (header, route dev đóng, `/api/cron/jobs` không secret),
+   `discovery-benchmark`, `brand-contrast`, `brand-shots`.
 1. Cập nhật `docs/ACCEPTANCE.md` + `docs/BUILD_STATUS.md` cho các tính năng 2026-09-16 (nhận diện, landing, icon, đăng ký + onboarding) — chỉ PASS khi có test.
 1b. Hiện logo + tên dự án của buyer trên thẻ/trang campaign (dữ liệu đã có từ onboarding).
-2. Dọn dữ liệu e2e tích tụ trong DB dev (10 tài khoản X của creator_d và các service giữ chúng) để `publish.spec.ts` chạy lại được.
 3. **Explore theo mục tiêu** (goal → playbook → creator → sample, ngân sách micro, §11.7) — nối với 7 mục tiêu campaign đã có.
 4. Số dư Arc: nạp/rút (§11.7) nối vào nút Fund — chỉ LOCAL/TESTNET, không tiền thật.
 5. Các dòng PARTIAL còn lại (`docs/NEXT_SESSION.md` §5.1) và hạ tầng §5.3 (rate limiter, MFA admin, scheduler thật, `reconcile:dry-run`).
