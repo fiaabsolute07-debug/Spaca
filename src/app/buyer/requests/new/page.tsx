@@ -59,7 +59,7 @@ export default async function NewRequestPage({
           <Field name="per_creator_cap" label="Per creator cap (USD, optional)" type="number" placeholder="50" />
           <Field name="target_hires" label="Creators needed" type="number" value="1" required />
           <TimeField name="application_deadline" label="Applications close (optional)" />
-          <TimeField name="deadline" label="Delivery deadline (optional, two weeks by default)" />
+          <TimeField name="deadline" label="Delivery deadline" help="Leave empty for two weeks from today." />
         </div>
       </CommandForm>
     </div>

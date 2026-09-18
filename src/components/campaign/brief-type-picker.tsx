@@ -69,17 +69,9 @@ export function BriefTypePicker({ performanceEnabled, initialGoal = null }: { pe
       </div>
     </fieldset>
 
-    <fieldset className="choice-group">
-      <legend>What do you need?</legend>
-      <div className="choice-cards">
-        {CATEGORIES.map((category) => <label key={category.value} className="choice-card">
-          <input type="radio" name="taxonomy" value={category.value} checked={taxonomy === category.value} onChange={() => setTaxonomy(category.value)} required />
-          <span className="choice-icon">{category.icon}</span>
-          <strong>{category.title}</strong>
-          <small>{category.need}</small>
-        </label>)}
-      </div>
-    </fieldset>
+    {/* The goal already says what kind of work it needs — Shiller is posts on their channel, AMA & Spaces is a live
+        call — so asking again was asking the same question twice. The kind travels with the goal. */}
+    <input type="hidden" name="taxonomy" value={taxonomy} />
 
     {access && <div className="publish-block">
       <h3 className="brief-section">The session you are booking</h3>
@@ -117,8 +109,8 @@ export function BriefTypePicker({ performanceEnabled, initialGoal = null }: { pe
       <p className="muted">Each creator posts on their own account, in their own words, with a sponsorship disclosure. Briefs that ask to hide the sponsorship, fake engagement or promise returns are refused.</p>
       <Chips name="publish_platform" legend="Platform" options={PLATFORMS} value={platform} onChange={setPlatform} />
       <Chips name="publish_format" legend="Post format" options={FORMATS} value={format} onChange={setFormat} />
+      {/* Same as the service form: 72 hours is what nearly every brief asks for, so the server's default carries it. */}
       <div className="form-grid">
-        <label className="field"><span>Keep posts live for (hours)</span><input name="min_live_hours" inputMode="numeric" defaultValue="72" /></label>
         <label className="field"><span>Sponsorship disclosure</span><input name="disclosure_text" defaultValue="#ad" /></label>
       </div>
 

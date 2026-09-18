@@ -9,7 +9,6 @@ test('a buyer backs a campaign with a reward pool, gets a deposit reference, and
     await login(page, 'buyer_a');
     await visit(page, '/buyer/requests/new');
     await page.getByRole('group', { name: 'What is the campaign for?' }).getByRole('radio', { name: /^Education/ }).check();
-    await page.getByRole('group', { name: 'What do you need?' }).getByRole('radio', { name: /^Create/ }).check();
     await page.getByLabel('Brief title', { exact: true }).fill(title);
     await page.getByLabel('Brief', { exact: true }).fill(`Launch threads for ${title}, paid from a funded reward pool.`);
     await page.getByLabel('Total budget (USD, optional if you set a cap)', { exact: true }).fill('500');

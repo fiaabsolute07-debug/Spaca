@@ -23,7 +23,8 @@ export function NewServiceForm({ accounts }: { accounts: Row[] }) {
         <SelectField name="publish_account_id" label="Posting account" defaultValue=""
           options={[{ value: '', label: 'Choose the account you post from' }, ...accounts.map(account => ({ value: str(account.id), label: `${account.handle ? `@${str(account.handle)}` : str(account.url)} · ${str(account.platform)}` }))]} />
         <SelectField name="publish_format" label="Post format" defaultValue="POST" options={[{ value: 'POST', label: 'Post' }, { value: 'THREAD', label: 'Thread' }, { value: 'QUOTE_POST', label: 'Quote post' }, { value: 'VIDEO', label: 'Video' }, { value: 'NEWSLETTER_ISSUE', label: 'Newsletter issue' }, { value: 'ARTICLE', label: 'Article' }]} />
-        <Field name="min_live_hours" label="Keeps the post live for (hours)" type="number" value="72" />
+        {/* How long the post stays up is the same 72 hours for almost everyone (DEFAULT_MIN_LIVE_HOURS), so the form
+            no longer asks. A creator who wants another number sets it when editing the service. */}
         <Field name="disclosure_text" label="Sponsorship disclosure" value="#ad" />
       </div>
     </>,

@@ -59,7 +59,6 @@ test('a performance campaign pays a fixed fee plus a measured bonus, and returns
     await login(page, 'buyer_a');
     await visit(page, '/buyer/requests/new');
     await page.getByRole('group', { name: 'What is the campaign for?' }).getByRole('radio', { name: /^Launch/ }).check();
-    await page.getByRole('group', { name: 'What do you need?' }).getByRole('radio', { name: /^Publish/ }).check();
     await page.getByRole('group', { name: 'How you pay' }).getByRole('radio', { name: /view bonus/ }).check();
     await expect(page.getByText(/You pay at most \$100\.00 per creator/)).toBeVisible();
     await page.getByLabel('Brief title', { exact: true }).fill(title);

@@ -8,19 +8,19 @@ async function listItem(page: Page, fields: { title: string; type: string; origi
   await waitForHydration(create);
   if (fields.origin === 'project') await page.getByRole('radio', { name: /I’m the project/ }).check();
   await page.getByRole('button', { name: fields.type, exact: true }).click();
-  await expect(page.getByLabel('Item type', { exact: true })).toHaveValue(fields.type);
+  await expect(page.getByLabel('Item type (optional)', { exact: true })).toHaveValue(fields.type);
   await page.getByLabel('Title').fill(fields.title);
   if (fields.pictures) {
     await page.getByLabel('Pictures (optional)').setInputFiles(Array.from({ length: fields.pictures }, (_, index) => ({ name: `picture-${index + 1}.png`, mimeType: 'image/png', buffer: TINY_PNG })));
     await expect(page.getByText('Ready', { exact: true })).toHaveCount(fields.pictures);
   }
-  await page.getByLabel('Project', { exact: true }).fill('Nebula Punks');
+  await page.getByLabel('Project (optional)', { exact: true }).fill('Nebula Punks');
   await page.getByLabel(/^Project link/).fill('x.com/nebulapunks');
-  await page.getByLabel('Network').fill('Base');
-  await page.getByLabel('Quantity').fill('1 spot');
-  await page.getByLabel('Description').fill('One spot in the Nebula Punks genesis mint on Oct 12, mint price 0.015 ETH.');
-  await page.getByLabel('How the winner receives it').fill("I submit the winner's wallet to the team's form before the snapshot.");
-  await page.getByLabel('What the winner must give you').fill('EVM wallet address');
+  await page.getByLabel('Network (optional)').fill('Base');
+  await page.getByLabel('Quantity (optional)').fill('1 spot');
+  await page.getByLabel('Description (optional)').fill('One spot in the Nebula Punks genesis mint on Oct 12, mint price 0.015 ETH.');
+  await page.getByLabel('How the winner receives it (optional)').fill("I submit the winner's wallet to the team's form before the snapshot.");
+  await page.getByLabel('What the winner must give you (optional)').fill('EVM wallet address');
   await page.getByLabel('Starting price (USD)').fill(fields.starting ?? '100');
   // Stated, not inherited: the bid amounts below are arithmetic on this step, and the form's default is a
   // presentation choice that may change with the prices the marketplace suggests.

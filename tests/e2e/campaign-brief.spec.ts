@@ -36,7 +36,8 @@ test('a buyer picks the campaign type from cards, adds a project image, and crea
   // Posting terms appear only once the work is a post; picking the Shiller goal suggests Publish.
   await expect(page.getByRole('group', { name: 'Post format' })).toBeHidden();
   await page.getByRole('group', { name: 'What is the campaign for?' }).getByRole('radio', { name: /^Shiller/ }).check();
-  await expect(page.getByRole('group', { name: 'What do you need?' }).getByRole('radio', { name: /^Publish/ })).toBeChecked();
+  // The goal carries the kind of work: Shiller is a post, so the posting terms appear without a second question.
+  await expect(page.getByRole('group', { name: 'Post format' })).toBeVisible();
   await expect(page.getByRole('group', { name: 'Platform' }).getByRole('radio', { name: 'X', exact: true })).toBeChecked();
   await page.getByRole('group', { name: 'Post format' }).getByRole('radio', { name: 'Thread', exact: true }).check();
 
@@ -89,7 +90,6 @@ test('an access campaign asks for a session length, and a digital one for the ri
 
   // Each category asks only for its own terms: a session length here, no posting terms and no license.
   await page.getByRole('group', { name: 'What is the campaign for?' }).getByRole('radio', { name: /^AMA/ }).check();
-  await expect(page.getByRole('group', { name: 'What do you need?' }).getByRole('radio', { name: /^Access/ })).toBeChecked();
   await expect(page.getByRole('group', { name: 'Session length' })).toBeVisible();
   await expect(page.getByRole('group', { name: 'Post format' })).toHaveCount(0);
   await expect(page.getByRole('group', { name: 'License' })).toHaveCount(0);
@@ -108,7 +108,6 @@ test('an access campaign asks for a session length, and a digital one for the ri
   const filesTitle = `E2E licensed files ${uniqueSuffix()}`;
   await visit(page, '/buyer/requests/new');
   await page.getByRole('group', { name: 'What is the campaign for?' }).getByRole('radio', { name: /^Memes/ }).check();
-  await expect(page.getByRole('group', { name: 'What do you need?' }).getByRole('radio', { name: /^Digital/ })).toBeChecked();
   await expect(page.getByRole('group', { name: 'Session length' })).toHaveCount(0);
   await page.getByRole('group', { name: 'License' }).getByRole('radio', { name: /^Exclusive to you/ }).check();
   const rights = 'Use in our own marketing on any channel, edit for size and language, worldwide, with no time limit.';

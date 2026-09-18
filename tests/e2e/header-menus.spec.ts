@@ -8,7 +8,6 @@ test('the header opens Explore and Campaigns as menus, and a campaign goal filte
   // Arriving from a goal preselects it, and the kind of work it usually needs.
   const goals = page.getByRole('group', { name: 'What is the campaign for?' });
   await expect(goals.getByRole('radio', { name: /^Airdrop/ })).toBeChecked();
-  await expect(page.getByRole('group', { name: 'What do you need?' }).getByRole('radio', { name: /^Publish/ })).toBeChecked();
   await page.getByLabel('Brief title', { exact: true }).fill(title);
   await page.getByLabel('Brief', { exact: true }).fill(`Explain who is eligible for our testnet airdrop and how to join, with the disclosure (${title}).`);
   await page.getByLabel('Total budget (USD, optional if you set a cap)', { exact: true }).fill('300');
@@ -130,7 +129,9 @@ test('menu icons act out what they stand for on hover, once, and stay still with
   });
   expect(away).toEqual({ overflow: 'hidden', outside: true });
 
-  const reduced = await browser.newContext({ reducedMotion: 'reduce', baseURL: 'http://127.0.0.1:3100' });
+  // The same address the config gives every other context: hard-coding the port failed the run whenever the dev
+  // server was started somewhere else (E2E_BASE_URL).
+  const reduced = await browser.newContext({ reducedMotion: 'reduce', baseURL: process.env.E2E_BASE_URL ?? 'http://127.0.0.1:3100' });
   const still = await reduced.newPage();
   await visit(still, '/requests');
   const stillNav = still.getByRole('navigation', { name: 'Main navigation' });

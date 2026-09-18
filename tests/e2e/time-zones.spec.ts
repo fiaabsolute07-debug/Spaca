@@ -23,14 +23,14 @@ test.describe('times are read on the clock the person is looking at', () => {
     await visit(page, '/auctions/new');
     const create = page.getByRole('button', { name: 'Create listing' });
     await waitForHydration(create);
-    await page.getByLabel('Item type', { exact: true }).fill('WL spot');
+    await page.getByLabel('Item type (optional)', { exact: true }).fill('WL spot');
     await page.getByLabel('Title', { exact: true }).fill(`Zone WL spot ${uniqueSuffix()}`);
-    await page.getByLabel('Project', { exact: true }).fill('Zone');
-    await page.getByLabel('Network', { exact: true }).fill('Base');
-    await page.getByLabel('Quantity', { exact: true }).fill('1 spot');
-    await page.getByLabel('Description', { exact: true }).fill('One whitelist spot, listed from Bangkok for a time zone check.');
-    await page.getByLabel('How the winner receives it', { exact: true }).fill('The project adds the wallet to the allowlist.');
-    await page.getByLabel('What the winner must give you', { exact: true }).fill('EVM wallet address');
+    await page.getByLabel('Project (optional)', { exact: true }).fill('Zone');
+    await page.getByLabel('Network (optional)', { exact: true }).fill('Base');
+    await page.getByLabel('Quantity (optional)', { exact: true }).fill('1 spot');
+    await page.getByLabel('Description (optional)', { exact: true }).fill('One whitelist spot, listed from Bangkok for a time zone check.');
+    await page.getByLabel('How the winner receives it (optional)', { exact: true }).fill('The project adds the wallet to the allowlist.');
+    await page.getByLabel('What the winner must give you (optional)', { exact: true }).fill('EVM wallet address');
     await page.getByLabel('Starting price (USD)', { exact: true }).fill('100');
     await page.getByLabel('Your collateral (USD)', { exact: true }).fill('20');
     await page.getByLabel('Bidding opens', { exact: true }).fill(`${day}T09:00`);
@@ -49,9 +49,9 @@ test.describe('times are read on the clock the person is looking at', () => {
     await login(page, 'buyer_a');
     await visit(page, '/buyer/requests/new');
     const title = `Zone brief ${uniqueSuffix()}`;
-    // Both radio groups are required: without a goal the browser refuses the form and nothing is ever posted.
-    await page.getByRole('group', { name: 'What is the campaign for?' }).getByRole('radio', { name: /^Launch/ }).check();
-    await page.getByRole('group', { name: 'What do you need?' }).getByRole('radio', { name: /^Create/ }).check();
+    // A goal is required: without one the browser refuses the form and nothing is ever posted. Education is work
+    // delivered to the buyer, which is what this brief is.
+    await page.getByRole('group', { name: 'What is the campaign for?' }).getByRole('radio', { name: /^Education/ }).check();
     await page.getByLabel('Brief title', { exact: true }).fill(title);
     await page.getByLabel('Brief', { exact: true }).fill('Three launch videos, audience and references included, for a timezone check.');
     await page.getByLabel('Total budget (USD, optional if you set a cap)', { exact: true }).fill('600');

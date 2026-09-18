@@ -9,7 +9,6 @@ test('a cap-only two-hire request funds one creator after application, offer and
   await visit(page, '/buyer/requests/new');
   await page.getByLabel('Brief title', { exact: true }).fill(title);
   await page.getByRole('group', { name: 'What is the campaign for?' }).getByRole('radio', { name: /^Education/ }).check();
-  await page.getByRole('group', { name: 'What do you need?' }).getByRole('radio', { name: /^Create/ }).check();
   await page.getByLabel('Brief', { exact: true }).fill(`Develop two independent launch narratives for ${title}, each with audience, message and CTA.`);
   await page.getByLabel('Total budget (USD, optional if you set a cap)', { exact: true }).fill('');
   await page.getByLabel('Per creator cap (USD, optional)', { exact: true }).fill('200');
