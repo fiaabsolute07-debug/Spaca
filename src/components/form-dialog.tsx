@@ -3,22 +3,26 @@
 import { useRouter } from 'next/navigation';
 import { X } from 'lucide-react';
 import { useEffect, useId, useRef, type ReactNode } from 'react';
-import styles from './service-dialog.module.css';
+import styles from './form-dialog.module.css';
 
 const FOCUSABLE = 'a[href], button:not([disabled]), input:not([type=hidden]):not([disabled]), textarea, select, [tabindex="0"]';
 
 /**
- * A page opened over the page the creator was on (the new-service form over Explore): the URL is the page's own, Back or
- * Close returns to where they were, and opening the URL directly shows the full page instead.
+ * A page opened over the page someone was already on — the new-service form over Explore, the brief form over the
+ * campaign board. The URL is the page's own, Back or Close returns to where they were, and opening the URL directly
+ * (a new tab, a pasted link, a reload) shows the full page instead.
+ *
+ * `fallback` is where Close goes when there is nothing to go back to, which is what happens when the dialog is the
+ * first page of a session.
  */
-export function ServiceDialog({ title, description, children }: { title: string; description?: string; children: ReactNode }) {
+export function FormDialog({ title, description, fallback = '/explore', children }: { title: string; description?: string; fallback?: string; children: ReactNode }) {
   const router = useRouter();
   const card = useRef<HTMLDivElement>(null);
   const titleId = useId();
 
   const close = () => {
     if (window.history.length > 1) router.back();
-    else router.push('/explore');
+    else router.push(fallback);
   };
 
   useEffect(() => {

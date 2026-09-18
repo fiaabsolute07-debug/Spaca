@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { TINY_PNG, authorizeSandboxX, completeSetup, login, openAccountMenu, signUpInDialog, submit, uniqueSuffix, visit, waitForHydration } from './helpers';
+import { baseURL, TINY_PNG, authorizeSandboxX, completeSetup, login, openAccountMenu, signUpInDialog, submit, uniqueSuffix, visit, waitForHydration } from './helpers';
 
 test('setup comes first after sign-up: it previews the profile, asks for the logo, and waits for the account until done', async ({ page }) => {
   await visit(page, '/explore');
@@ -95,7 +95,7 @@ test('the Account menu is short: who is signed in, the account’s own pages wit
 });
 
 test('on a phone, setup stacks the preview above the form and fits the screen', async ({ browser }) => {
-  const context = await browser.newContext({ viewport: { width: 390, height: 844 }, baseURL: 'http://127.0.0.1:3100' });
+  const context = await browser.newContext({ viewport: { width: 390, height: 844 }, baseURL });
   const page = await context.newPage();
   await visit(page, '/sign-up?role=creator');
   await signUpInDialog(page, 'Creator');

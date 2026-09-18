@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { completeSetup, submit, signUpInDialog, uniqueSuffix, visit, waitForHydration, openAccountMenu } from './helpers';
+import { baseURL, completeSetup, submit, signUpInDialog, uniqueSuffix, visit, waitForHydration, openAccountMenu } from './helpers';
 
 test('Log in opens a dialog over the current page; errors show in place; Escape returns to the page', async ({ page }) => {
   await visit(page, '/explore');
@@ -112,5 +112,5 @@ test('on the landing, Early access opens the join dialog over the landing with t
   await expect(dialog.getByRole('radio', { name: /^Creator/ })).toBeChecked();
   await dialog.getByRole('button', { name: 'Close' }).click();
   await expect(dialog).toBeHidden();
-  await expect(page).toHaveURL(/127\.0\.0\.1:3100\/$/);
+  await expect(page).toHaveURL(`${baseURL}/`);
 });

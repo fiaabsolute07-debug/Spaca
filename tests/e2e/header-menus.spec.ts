@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { nextBriefStep, dateTimeLocal, login, submit, uniqueSuffix, visit, waitForHydration } from './helpers';
+import { baseURL, nextBriefStep, dateTimeLocal, login, submit, uniqueSuffix, visit, waitForHydration } from './helpers';
 
 test('the header opens Explore and Campaigns as menus, and a campaign goal filters the campaign list', async ({ page }) => {
   await login(page, 'buyer_a');
@@ -133,7 +133,7 @@ test('menu icons act out what they stand for on hover, once, and stay still with
 
   // The same address the config gives every other context: hard-coding the port failed the run whenever the dev
   // server was started somewhere else (E2E_BASE_URL).
-  const reduced = await browser.newContext({ reducedMotion: 'reduce', baseURL: process.env.E2E_BASE_URL ?? 'http://127.0.0.1:3100' });
+  const reduced = await browser.newContext({ reducedMotion: 'reduce', baseURL });
   const still = await reduced.newPage();
   await visit(still, '/requests');
   const stillNav = still.getByRole('navigation', { name: 'Main navigation' });
