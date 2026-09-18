@@ -13,7 +13,8 @@ export default async function globalSetup(config: FullConfig) {
   // A route that never answers must not stall the whole run: give each warmup request 90 seconds.
   for (const path of paths) await fetch(new URL(path, baseURL), { signal: AbortSignal.timeout(90_000) }).catch(() => undefined);
 
-  const browser = await chromium.launch({ channel: 'chrome' });
+  const executablePath = process.env.E2E_BROWSER_EXECUTABLE;
+  const browser = await chromium.launch(executablePath ? { executablePath } : { channel: process.env.E2E_BROWSER_CHANNEL ?? 'chrome' });
   try {
     const page = await browser.newPage({ baseURL });
     await page.goto('/explore');
