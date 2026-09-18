@@ -118,8 +118,13 @@ async function freezePerformanceTerms(tx: Tx, request: Row, application: Row, ac
   };
 }
 
+/** A brief with no date still has one: two weeks, which is what most briefs ask for anyway. */
+const DEFAULT_DEADLINE_DAYS = 14;
+
 function deadlines(form: FormData, existing?: Row) {
-  const deadline = text(form, 'deadline', !existing) ? instantField(form, 'deadline') : new Date(existing!.deadline);
+  const deadline = text(form, 'deadline', false)
+    ? instantField(form, 'deadline')
+    : existing ? new Date(existing.deadline) : new Date(Date.now() + DEFAULT_DEADLINE_DAYS * 24 * 3600_000);
   const applicationDeadline = text(form, 'application_deadline', false) ? instantField(form, 'application_deadline') : existing ? new Date(existing.application_deadline) : deadline;
   if (applicationDeadline > deadline) throw new CommandError('Applications must close on or before the delivery deadline');
   return { deadline, applicationDeadline };

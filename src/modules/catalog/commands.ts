@@ -245,15 +245,20 @@ const addSample: CommandHandler = async ({ tx, actor, form }) => {
   return { path: '/creator/services', message: 'Sample added and waiting for moderation', id: String(sample!.id) };
 };
 
+/** Three days unless the creator says otherwise: the delivery box starts filled and may be emptied. */
+const DEFAULT_TURNAROUND_HOURS = 72;
+const turnaroundHours = (form: FormData) =>
+  text(form, 'turnaround_hours', false) ? integer(text(form, 'turnaround_hours'), 'turnaround_hours', 1, 8760) : DEFAULT_TURNAROUND_HOURS;
+
+// No shortest title, scope or brief: "Launch thread" and "1 thread, 5 posts, by Friday" are complete, and a
+// minimum only taught people to pad. Empty is still refused, and the maximums are what the columns hold.
 const createService: CommandHandler = async ({ tx, actor, form }) => {
   const title = text(form, 'title', true, 160);
   const description = text(form, 'description', true, 10000);
   const taxonomy = text(form, 'taxonomy');
   if (!TAXONOMIES.includes(taxonomy)) throw new CommandError('Unsupported service category');
-  if (title.length < 3) throw new CommandError('Service title must be at least 3 characters');
-  if (description.length < 20) throw new CommandError('Describe the scope in at least 20 characters');
   const price = money(text(form, 'price'), 'price');
-  const turnaround = integer(text(form, 'turnaround_hours'), 'turnaround_hours', 1, 8760);
+  const turnaround = turnaroundHours(form);
   const units = unitsPerOrder(form);
   const publish = await publishTermsFromForm(tx, actor, taxonomy, form);
   const sessionMinutes = taxonomy === 'ACCESS' ? accessSessionMinutes(form) : null;
@@ -321,8 +326,7 @@ const updateService: CommandHandler = async ({ tx, actor, form }) => {
   const title = text(form, 'title', true, 160);
   const description = text(form, 'description', true, 10000);
   const price = money(text(form, 'price'), 'price');
-  const turnaround = integer(text(form, 'turnaround_hours'), 'turnaround_hours', 1, 8760);
-  if (title.length < 3 || description.length < 20) throw new CommandError('Title needs 3+ characters and scope 20+ characters');
+  const turnaround = turnaroundHours(form);
   const units = unitsPerOrder(form);
   const publish = form.has('publish_account_id') ? await publishTermsFromForm(tx, actor, String(service.taxonomy), form) : null;
   const sessionMinutes = service.taxonomy === 'ACCESS' && form.has('access_session_minutes') ? accessSessionMinutes(form) : null;
@@ -386,7 +390,6 @@ const book: CommandHandler = async ({ tx, actor, form }) => {
   // A DIGITAL purchase needs no brief: the files already exist. Everything else needs one before work can start.
   const isDigital = service.taxonomy === 'DIGITAL';
   const brief = text(form, 'brief', !isDigital, 12000) || (isDigital ? 'Digital product purchase' : '');
-  if (brief.length < 20 && !isDigital) throw new CommandError('Share a brief of at least 20 characters', 'BRIEF_INCOMPLETE');
   assertContentPolicy(brief);
   const [version] = await tx<Row[]>`select * from app.service_versions where id=${String(service.published_version_id)}`;
   const requestedVersion = String(form.get('service_version_id') ?? '').trim();

@@ -65,6 +65,21 @@ afterAll(async () => {
 });
 
 describe.skipIf(!RUN_DB)('Web3 item auctions (drizzle/0033)', () => {
+  it('a listing opens on a title, a price and a closing time; everything else is optional and takes a sensible default', async () => {
+    const seller = await createUser('item-minimal', ['creator']);
+    const ends = new Date(Date.now() + 3 * HOUR);
+    const created = await command(seller, {
+      command: 'create_item_listing', idempotency_key: key('item-min'), origin: 'RESALE',
+      title: 'WL spot', starting_price: '100', ends_at: utc(ends),
+    });
+    expect(created.status, JSON.stringify(created.body)).toBe(200);
+    const listing = await listingOf(String(created.body.id));
+    // Collateral is the floor, a fifth of the starting price; bids step by $5; delivery is due a week after the close.
+    expect(listing).toMatchObject({ collateral_minor: '2000', min_increment_minor: '500', item_type: '', description: '' });
+    expect(new Date(String(listing.delivery_due_at)).getTime()).toBe(new Date(String(listing.ends_at)).getTime() + 7 * 24 * HOUR);
+    expect(new Date(String(listing.starts_at)).getTime()).toBeLessThanOrEqual(Date.now() + 1000);
+  });
+
   it('a listing states the item, its delivery and collateral, and opens only once the collateral is locked', async () => {
     const creator = await createUser('item-seller', ['creator']);
     const project = await createUser('item-project', ['buyer']);
@@ -74,7 +89,7 @@ describe.skipIf(!RUN_DB)('Web3 item auctions (drizzle/0033)', () => {
     expect((await command(creator, listingFields({ collateral: '19.99' }))).body.error).toBe('Collateral must be at least $20.00, a fifth of the starting price');
     expect((await command(creator, listingFields({ buy_now_price: '100' }))).body.error).toBe('Set the Buy now price above the starting price, or leave it empty');
     expect((await command(creator, listingFields({ delivery_due_at: utc(new Date(Date.now() + 2.5 * HOUR)) }))).body.error).toBe('Set the delivery deadline at least an hour after the auction ends');
-    expect((await command(creator, listingFields({ description: 'Too short.' }))).body.error).toBe('A description needs at least 20 characters');
+    expect((await command(creator, listingFields({ title: '' }))).body.error).toBe('Add a title');
     expect((await command(creator, listingFields({ starts_at: utc(new Date(Date.now() - HOUR)) }))).body.error).toBe('The start time is in the past');
 
     const created = await command(project, listingFields({ origin: 'PROJECT', item_type: 'GTD mint', title: 'Arcadia GTD mint, sold by the team' }));
@@ -234,7 +249,7 @@ describe.skipIf(!RUN_DB)('Web3 item auctions (drizzle/0033)', () => {
     const saleId = String((await saleOf(id)).id);
     await command(buyer, { command: 'pay_item_sale', idempotency_key: key('pay'), sale_id: saleId, buyer_details: '0x6666' });
     await command(seller, { command: 'mark_item_delivered', idempotency_key: key('dl'), sale_id: saleId, delivery_proof: 'Screenshot of the allowlist' });
-    expect((await command(buyer, { command: 'dispute_item_sale', idempotency_key: key('dp'), sale_id: saleId, dispute_reason: 'short' })).body.error).toBe('What went wrong needs at least 10 characters');
+    expect((await command(buyer, { command: 'dispute_item_sale', idempotency_key: key('dp'), sale_id: saleId, dispute_reason: '  ' })).body.error).toBe('Add what went wrong');
     expect((await command(buyer, { command: 'dispute_item_sale', idempotency_key: key('dp'), sale_id: saleId, dispute_reason: 'My wallet is not on the allowlist checker.' })).body.message).toMatch(/^Dispute opened/);
     expect((await queries.getItemDisputes()).find((dispute) => dispute.id === saleId)).toMatchObject({ disputeReason: 'My wallet is not on the allowlist checker.', buyerDetails: '0x6666' });
 

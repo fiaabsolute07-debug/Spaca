@@ -14,18 +14,27 @@ const HOUR = 3600_000;
 const START_TOLERANCE_MS = 5 * 60_000;
 const MIN_DURATION_MS = 5 * 60_000;
 const MAX_DURATION_MS = 14 * 24 * HOUR;
+/** What an empty box means: $5.00 between bids, and a week after the close to deliver. */
+const DEFAULT_INCREMENT_MINOR = 500n;
+const DEFAULT_DELIVERY_DAYS = 7;
 
 const dbNow = async (tx: Tx) => new Date(String((await tx<Row[]>`select now() as now`)[0]!.now));
 const when = (value: unknown) => new Date(String(value)).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'UTC' }) + ' UTC';
 
-/** A required text field with a message people understand. */
-function field(form: FormData, name: string, label: string, min: number, max: number): string {
+/**
+ * A required text field with a message people understand. There is no shortest length any more: a seller who says
+ * "1 WL spot" in three words has said everything, and the old minimums only made people pad the box. The maximum is
+ * what the column holds.
+ */
+function field(form: FormData, name: string, label: string, max: number): string {
   const value = String(form.get(name) ?? '').trim();
   if (!value) throw new CommandError(`Add ${label}`);
-  if (value.length < min) throw new CommandError(`${label[0]!.toUpperCase()}${label.slice(1)} needs at least ${min} characters`);
   if (value.length > max) throw new CommandError(`${label[0]!.toUpperCase()}${label.slice(1)} can be at most ${max} characters`);
   return text(form, name, true, max);
 }
+
+/** The same, for everything a listing reads better with but can open without. */
+const optional = (form: FormData, name: string, max: number): string => text(form, name, false, max);
 
 /** One balanced ledger transaction; a repeated key posts nothing and reports false. */
 async function post(tx: Tx, kind: string, key: string, entries: [account: string, amount: bigint][]): Promise<boolean> {
@@ -133,33 +142,43 @@ const createItemListing: CommandHandler = async ({ tx, actor, form }) => {
   if (origin === 'PROJECT' && !isBuyer(actor)) {
     throw new CommandError('Only a project (buyer) account can sell its own allocation. Choose "I’m reselling" if you hold this item.', 'FORBIDDEN');
   }
-  const itemType = field(form, 'item_type', 'what kind of item this is', 2, 40);
-  const title = field(form, 'title', 'a title', 4, 120);
-  const projectName = field(form, 'project_name', 'the project name', 1, 80);
+  // A listing opens on a title and a price. Everything else is worth saying and nothing else is worth blocking on:
+  // the seller fills in what they know, and the listing shows only the lines that were filled.
+  const itemType = optional(form, 'item_type', 60);
+  const title = field(form, 'title', 'a title', 200);
+  const projectName = optional(form, 'project_name', 120);
   const projectLink = text(form, 'project_url', false, 300);
   const projectUrl = projectLink ? httpUrl(/^https?:\/\//i.test(projectLink) ? projectLink : `https://${projectLink}`, 'The project link') : null;
   if (projectUrl && !projectUrl.startsWith('https://')) throw new CommandError('The project link must start with https://');
-  const network = field(form, 'network', 'the network', 1, 40);
-  const quantity = field(form, 'quantity', 'the quantity', 1, 60);
-  const description = field(form, 'description', 'a description', 20, 2000);
-  const deliveryMethod = field(form, 'delivery_method', 'how the item is delivered', 10, 500);
-  const buyerProvides = field(form, 'buyer_provides', 'what the buyer must provide', 3, 120);
+  const network = optional(form, 'network', 60);
+  const quantity = optional(form, 'quantity', 120);
+  const description = optional(form, 'description', 20000);
+  const deliveryMethod = optional(form, 'delivery_method', 5000);
+  const buyerProvides = optional(form, 'buyer_provides', 500);
   const violations = screenContent(title, description, deliveryMethod);
   if (violations.length) throw new CommandError(`This listing breaks the marketplace content policy: ${violations.map((v) => v.message).join(' ')}`, 'DOMAIN_RULE');
 
   const starting = money(text(form, 'starting_price'), 'Starting price');
-  const increment = money(text(form, 'min_increment'), 'Minimum increment');
+  const incrementValue = text(form, 'min_increment', false, 20);
+  const increment = incrementValue ? money(incrementValue, 'Minimum increment') : DEFAULT_INCREMENT_MINOR;
   const buyNowValue = text(form, 'buy_now_price', false, 20);
   const buyNow = buyNowValue ? money(buyNowValue, 'Buy now price') : null;
   if (buyNow !== null && buyNow <= starting) throw new CommandError('Set the Buy now price above the starting price, or leave it empty');
-  const collateral = money(text(form, 'collateral'), 'Collateral');
+  // A fifth of the starting price is the floor, so an empty box takes exactly that: the seller chooses only when
+  // they want to lock up more than the rules ask for.
   const floor = (starting + BigInt(ITEM_COLLATERAL_MIN_DIVISOR) - 1n) / BigInt(ITEM_COLLATERAL_MIN_DIVISOR);
+  const collateralValue = text(form, 'collateral', false, 20);
+  const collateral = collateralValue ? money(collateralValue, 'Collateral') : floor;
   if (collateral < floor) throw new CommandError(`Collateral must be at least ${usd(floor)}, a fifth of the starting price`);
 
   const now = await dbNow(tx);
-  const startsAt = instantField(form, 'starts_at');
+  // Bidding closes is the one time a seller has to decide. Opening now and delivering within a week of the close are
+  // what almost everyone picks anyway, so they are what an empty box means.
+  const startsAt = text(form, 'starts_at', false) ? instantField(form, 'starts_at') : now;
   const endsAt = instantField(form, 'ends_at');
-  const deliveryDue = instantField(form, 'delivery_due_at');
+  const deliveryDue = text(form, 'delivery_due_at', false)
+    ? instantField(form, 'delivery_due_at')
+    : new Date(endsAt.getTime() + DEFAULT_DELIVERY_DAYS * 24 * HOUR);
   if (startsAt.getTime() < now.getTime() - START_TOLERANCE_MS) throw new CommandError('The start time is in the past');
   if (endsAt.getTime() - startsAt.getTime() < MIN_DURATION_MS) throw new CommandError('The auction must run for at least 5 minutes');
   if (endsAt.getTime() - startsAt.getTime() > MAX_DURATION_MS) throw new CommandError('The auction can run for at most 14 days');
@@ -262,7 +281,7 @@ const payItemSale: CommandHandler = async ({ tx, actor, form }) => {
   if (String(sale.buyer_id) !== actor.id) throw new CommandError('Sale not found', 'NOT_FOUND');
   if (sale.status !== 'AWAITING_PAYMENT') throw new CommandError('This sale is already paid or closed', 'ORDER_STATE_CONFLICT');
   if (await dbNow(tx) > new Date(String(sale.payment_due_at))) throw new CommandError('The payment window has closed', 'ORDER_STATE_CONFLICT');
-  const details = field(form, 'buyer_details', `your ${String(listing.buyer_provides)}`, 3, 300);
+  const details = field(form, 'buyer_details', `your ${String(listing.buyer_provides) || 'delivery details'}`, 500);
   await post(tx, 'ITEM_PAYMENT_LOCKED', `item-payment-lock:${String(sale.id)}`, [
     [wallet(actor.id), -BigInt(String(sale.price_minor))],
     [`item_escrow:${String(sale.id)}`, BigInt(String(sale.price_minor))],
@@ -276,7 +295,7 @@ const markItemDelivered: CommandHandler = async ({ tx, actor, form }) => {
   if (String(sale.seller_id) !== actor.id) throw new CommandError('Sale not found', 'NOT_FOUND');
   if (sale.status !== 'AWAITING_DELIVERY') throw new CommandError('This sale is not waiting for delivery', 'ORDER_STATE_CONFLICT');
   if (await dbNow(tx) > new Date(String(listing.delivery_due_at))) throw new CommandError('The delivery deadline has passed', 'ORDER_STATE_CONFLICT');
-  const proof = field(form, 'delivery_proof', 'proof of delivery', 5, 500);
+  const proof = field(form, 'delivery_proof', 'proof of delivery', 2000);
   await tx`update app.item_sales set status='DELIVERED',delivered_at=now(),delivery_proof=${proof},confirm_by=now() + make_interval(hours => ${ITEM_CONFIRM_HOURS}),
     version=version+1,updated_at=now() where id=${String(sale.id)}`;
   return { path: path(listing), message: `Marked as delivered. The buyer has ${ITEM_CONFIRM_HOURS} hours to confirm or dispute.` };
@@ -296,7 +315,7 @@ const disputeItemSale: CommandHandler = async ({ tx, actor, form }) => {
   const now = await dbNow(tx);
   const open = sale.status === 'AWAITING_DELIVERY' || (sale.status === 'DELIVERED' && now <= new Date(String(sale.confirm_by)));
   if (!open) throw new CommandError('This sale can no longer be disputed', 'ORDER_STATE_CONFLICT');
-  const reason = field(form, 'dispute_reason', 'what went wrong', 10, 1000);
+  const reason = field(form, 'dispute_reason', 'what went wrong', 4000);
   await tx`update app.item_sales set status='DISPUTED',disputed_at=now(),dispute_reason=${reason},version=version+1,updated_at=now() where id=${String(sale.id)}`;
   return { path: path(listing), message: 'Dispute opened. The payment and collateral stay in escrow until an operator decides.' };
 };

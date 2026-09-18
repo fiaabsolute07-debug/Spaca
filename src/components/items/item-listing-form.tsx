@@ -75,8 +75,8 @@ export function ItemListingForm({ idempotencyKey, canSellAsProject, defaults, mo
       </fieldset>
 
       <div className="field">
-        <label htmlFor={`${id}-type`}>Item type</label>
-        <input id={`${id}-type`} name="item_type" value={itemType} onChange={(event) => setItemType(event.target.value)} required minLength={2} maxLength={40}
+        <label htmlFor={`${id}-type`}>Item type <span className="items-optional">(optional)</span></label>
+        <input id={`${id}-type`} name="item_type" value={itemType} onChange={(event) => setItemType(event.target.value)} maxLength={60}
           list={`${id}-types`} placeholder="WL spot, GTD mint, Pre-market token…" />
         <datalist id={`${id}-types`}>{ITEM_TYPE_SUGGESTIONS.map((type) => <option key={type} value={type} />)}</datalist>
         <div className="chip-row items-type-suggestions" aria-label="Common item types">
@@ -86,31 +86,31 @@ export function ItemListingForm({ idempotencyKey, canSellAsProject, defaults, mo
       </div>
       <div className="field">
         <label htmlFor={`${id}-title`}>Title</label>
-        <input id={`${id}-title`} name="title" required minLength={4} maxLength={120} placeholder="Arcadia genesis mint, 1 WL spot" />
+        <input id={`${id}-title`} name="title" required maxLength={200} placeholder="Arcadia genesis mint, 1 WL spot" />
       </div>
       <div className="form-grid">
         <div className="field">
-          <label htmlFor={`${id}-project`}>Project</label>
-          <input id={`${id}-project`} name="project_name" required maxLength={80} placeholder="Arcadia" />
+          <label htmlFor={`${id}-project`}>Project <span className="items-optional">(optional)</span></label>
+          <input id={`${id}-project`} name="project_name" maxLength={120} placeholder="Arcadia" />
         </div>
         <div className="field">
           <label htmlFor={`${id}-url`}>Project link <span className="items-optional">(optional)</span></label>
           <input id={`${id}-url`} name="project_url" maxLength={300} placeholder="https://x.com/arcadia" autoCapitalize="none" spellCheck={false} />
         </div>
         <div className="field">
-          <label htmlFor={`${id}-network`}>Network</label>
-          <input id={`${id}-network`} name="network" required maxLength={40} placeholder="Base, Solana, Ethereum…" />
+          <label htmlFor={`${id}-network`}>Network <span className="items-optional">(optional)</span></label>
+          <input id={`${id}-network`} name="network" maxLength={60} placeholder="Base, Solana, Ethereum…" />
         </div>
         <div className="field">
-          <label htmlFor={`${id}-quantity`}>Quantity</label>
-          <input id={`${id}-quantity`} name="quantity" required maxLength={60} placeholder="1 spot, 5,000 $ARC, 1,200 points" />
+          <label htmlFor={`${id}-quantity`}>Quantity <span className="items-optional">(optional)</span></label>
+          <input id={`${id}-quantity`} name="quantity" maxLength={120} placeholder="1 spot, 5,000 $ARC, 1,200 points" />
         </div>
       </div>
       <FileUploadField purpose="ITEM_IMAGE" name="image_ids" label="Pictures (optional)" maxFiles={6}
         help="Up to 6: the art, the project banner, a screenshot of the allowlist. The first is the cover; PNG, JPG, GIF or WebP up to 10 MB." />
       <div className="field">
-        <label htmlFor={`${id}-description`}>Description</label>
-        <textarea id={`${id}-description`} name="description" required minLength={20} maxLength={2000} rows={4}
+        <label htmlFor={`${id}-description`}>Description <span className="items-optional">(optional)</span></label>
+        <textarea id={`${id}-description`} name="description" rows={4}
           placeholder="What exactly the winner gets, the mint or TGE date, price at mint, and any conditions from the project." />
       </div>
     </section>
@@ -118,16 +118,16 @@ export function ItemListingForm({ idempotencyKey, canSellAsProject, defaults, mo
     <section className="panel items-form-section" aria-labelledby={`${id}-delivery`}>
       <h2 id={`${id}-delivery`}>Delivery</h2>
       <div className="field">
-        <label htmlFor={`${id}-method`}>How the winner receives it</label>
-        <textarea id={`${id}-method`} name="delivery_method" required minLength={10} maxLength={500} rows={3}
+        <label htmlFor={`${id}-method`}>How the winner receives it <span className="items-optional">(optional)</span></label>
+        <textarea id={`${id}-method`} name="delivery_method" rows={3}
           placeholder="The project adds the winner's wallet to the allowlist before the mint on Oct 12." />
       </div>
       <div className="form-grid">
         <div className="field">
-          <label htmlFor={`${id}-provides`}>What the winner must give you</label>
-          <input id={`${id}-provides`} name="buyer_provides" required minLength={3} maxLength={120} placeholder="EVM wallet address" />
+          <label htmlFor={`${id}-provides`}>What the winner must give you <span className="items-optional">(optional)</span></label>
+          <input id={`${id}-provides`} name="buyer_provides" maxLength={500} placeholder="EVM wallet address" />
         </div>
-        <TimeField name="delivery_due_at" label="Deliver by" required value={defaults.deliveryDueAt}
+        <TimeField name="delivery_due_at" label="Deliver by" value={defaults.deliveryDueAt}
           help="Miss it and the buyer is refunded with your collateral." />
       </div>
     </section>
@@ -141,7 +141,7 @@ export function ItemListingForm({ idempotencyKey, canSellAsProject, defaults, mo
         </div>
         <div className="field">
           <label htmlFor={`${id}-increment`}>Minimum increment (USD)</label>
-          <input id={`${id}-increment`} name="min_increment" type="number" min="0.01" step="0.01" inputMode="decimal" required defaultValue="5" />
+          <input id={`${id}-increment`} name="min_increment" type="number" min="0.01" step="0.01" inputMode="decimal" defaultValue="5" />
         </div>
         <div className="field">
           <label htmlFor={`${id}-buy-now`}>Buy now price <span className="items-optional">(optional)</span></label>
@@ -150,10 +150,10 @@ export function ItemListingForm({ idempotencyKey, canSellAsProject, defaults, mo
         </div>
         <div className="field">
           <label htmlFor={`${id}-collateral`}>Your collateral (USD)</label>
-          <input id={`${id}-collateral`} name="collateral" type="number" min="0.01" step="0.01" inputMode="decimal" required value={collateral} onChange={(event) => setCollateral(event.target.value)} />
+          <input id={`${id}-collateral`} name="collateral" type="number" min="0.01" step="0.01" inputMode="decimal" value={collateral} onChange={(event) => setCollateral(event.target.value)} />
           <small>{floor ? `At least ${usd(floor)}, a fifth of the starting price.` : 'At least a fifth of the starting price.'}{coverage !== null ? ` Covers ${coverage}% of the starting price.` : ''}</small>
         </div>
-        <TimeField name="starts_at" label="Bidding opens" required value={defaults.startsAt} />
+        <TimeField name="starts_at" label="Bidding opens" value={defaults.startsAt} />
         <TimeField name="ends_at" label="Bidding closes" required value={defaults.endsAt} help="Up to 14 days after it opens." />
       </div>
       <p className="items-form-terms">The winner pays into escrow within {ITEM_PAYMENT_HOURS} hours. After you mark the item delivered, the buyer has {ITEM_CONFIRM_HOURS} hours to confirm or dispute; silence counts as confirmed.{moneyNote ? ` ${moneyNote}` : ''}</p>
