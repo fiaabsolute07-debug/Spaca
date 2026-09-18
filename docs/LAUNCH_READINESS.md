@@ -41,7 +41,7 @@ The owner answered D1–D3 and D5 on 2026-09-17: **Vercel + Supabase, first-part
 | D7 | Google Cloud OAuth web client (`GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`), redirect `<APP_BASE_URL>/api/auth/google/callback`, consent screen published. | |
 | D8 | Legal entity, terms, privacy, refund policy, support contact; platform fee decision (currently 0). | Policy pages are sandbox text today. The privacy policy must also cover Vercel Analytics, which is now in the deployed build. |
 | D9 | Monitoring (Sentry DSN), backups/retention owner, incident contact. | Vercel Analytics is wired in (`@vercel/analytics`), counting page views on the deployments only, never locally. It has to be switched on for the project in Vercel before it records anything. |
-| D10 | Dev data: the local database holds hundreds of test services and accounts. Production starts empty; local cleanup needs "đồng ý dọn". | |
+| D10 | Dev data: done on 2026-09-18 on the user's "đồng ý dọn". The old development database is kept as `creator_marketplace_bak_20260918` and the old uploads as `.local/storage-bak-20260918`; the fresh one holds the nine fixture personas, one service and no orders. Production was always empty. | |
 
 ## 4. Suggested order once D1–D3 are answered
 
@@ -69,10 +69,10 @@ Re-running each failing spec on its own against a restarted dev server resolved 
   minimum increment, and `258ecce` lowered that default from $10 to $5 with the other price examples, so the bid
   amounts the test asserts no longer matched. The test now fills the increment explicitly, since those amounts
   are arithmetic on the step and a suggested default is free to change.
-- **`publish.spec.ts` is the only genuine failure.** Its fixture helper stops with "no removable test account
-  left to free a slot": `creator_d` holds the maximum linked X accounts from earlier runs, each held by a
-  published service. It clears with the development database cleanup waiting on **"đồng ý dọn"** (D10), and no
-  product code is involved.
+- **`publish.spec.ts` passed once the development data was cleaned (2026-09-18).** Its fixture helper used to
+  stop with "no removable test account left to free a slot", because `creator_d` held the maximum linked X
+  accounts from earlier runs, each held by a published service. With the database reseeded it passes in 24.7s.
+  No product code was involved.
 
 Full detail, including the launch-gate secret-scan fix and the review of the cron, no-money and storage code:
 `docs/evidence/claude-LAUNCH-PREP.md`.
