@@ -23,8 +23,13 @@ const config: NextConfig = {
         { key: 'Strict-Transport-Security', value: 'max-age=31536000; includeSubDomains' },
       ] : []),
     ];
+    // The hero video and its poster are the heaviest thing a first-time visitor downloads, and files under `public/`
+    // are served with `max-age=0, must-revalidate` by default, so every visit fetched them from the origin again.
+    // A month at the CDN and a day in the browser: a new encoding ships under a new file name, so nothing goes stale.
+    const media = [{ key: 'Cache-Control', value: 'public, max-age=86400, s-maxage=2592000, stale-while-revalidate=86400' }];
     return [
       { source: '/:path*', headers: security },
+      { source: '/landing/:file*', headers: media },
       ...PRIVATE_SOURCES.map((source) => ({ source, headers: [{ key: 'X-Robots-Tag', value: 'noindex, nofollow' }] })),
     ];
   },

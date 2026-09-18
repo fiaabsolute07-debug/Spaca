@@ -14,8 +14,16 @@ const local = ['127.0.0.1', 'localhost', '::1'].includes(host.hostname);
 // no prepared statements; serverless functions also should not hold many connections each.
 const transactionPooler = /pooler\.supabase\.com$/.test(host.hostname) && host.port === '6543';
 const createPool = (): Sql => postgres(databaseUrl, {
-  max: transactionPooler ? 3 : 10,
-  idle_timeout: 20,
+  // A page render runs several queries at once, so three connections made the sixth visitor queue behind the first
+  // five. The pooler multiplexes them onto far fewer server connections, so holding a few more costs the database
+  // nothing.
+  max: transactionPooler ? 8 : 10,
+  // A serverless instance is frozen between requests, and the pooler drops a connection it has not heard from. The
+  // socket then looks open to us and answers nothing, which is how one request used to hold its instance for five
+  // minutes. Closing connections quickly, and never keeping one for long, means a frozen instance wakes up with
+  // nothing stale to reuse.
+  idle_timeout: transactionPooler ? 5 : 20,
+  max_lifetime: transactionPooler ? 120 : undefined,
   connect_timeout: 10,
   prepare: !transactionPooler,
   // Hosted databases take TLS only; the local embedded server has none.

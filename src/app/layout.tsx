@@ -35,6 +35,10 @@ export const metadata: Metadata = {
 // production database while collecting static metadata.
 export const dynamic = 'force-dynamic';
 
+// A page render is a handful of short queries; anything still running after this is stuck, not slow. Without a limit
+// the host lets a wedged request hold its instance for five minutes, and every visitor behind it waits with it.
+export const maxDuration = 20;
+
 export default async function RootLayout({ children, auth, dialog }: { children: React.ReactNode; auth: React.ReactNode; dialog: React.ReactNode }) {
   const actor = await getActor();
   const [account, unread] = actor ? await Promise.all([getAccountSummary(actor), unreadCount(actor.id)]) : [null, 0];
