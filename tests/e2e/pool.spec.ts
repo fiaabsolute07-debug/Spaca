@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { dateTimeLocal, flagCard, login, setFlag, submit, uniqueSuffix, visit } from './helpers';
+import { nextBriefStep, dateTimeLocal, flagCard, login, setFlag, submit, uniqueSuffix, visit } from './helpers';
 
 test('a buyer backs a campaign with a reward pool, gets a deposit reference, and creators see only the rewards', async ({ page }) => {
   const title = `E2E pool campaign ${uniqueSuffix()}`;
@@ -9,8 +9,10 @@ test('a buyer backs a campaign with a reward pool, gets a deposit reference, and
     await login(page, 'buyer_a');
     await visit(page, '/buyer/requests/new');
     await page.getByRole('group', { name: 'What is the campaign for?' }).getByRole('radio', { name: /^Education/ }).check();
+    await nextBriefStep(page);
     await page.getByLabel('Brief title', { exact: true }).fill(title);
     await page.getByLabel('Brief', { exact: true }).fill(`Launch threads for ${title}, paid from a funded reward pool.`);
+    await nextBriefStep(page);
     await page.getByLabel('Total budget (USD, optional if you set a cap)', { exact: true }).fill('500');
     await page.getByLabel('Creators needed', { exact: true }).fill('2');
     await page.getByLabel('Delivery deadline', { exact: true }).fill(dateTimeLocal(new Date(Date.now() + 14 * 86400_000)));

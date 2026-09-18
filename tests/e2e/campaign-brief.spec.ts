@@ -1,6 +1,6 @@
 import { crc32, deflateSync } from 'node:zlib';
 import { expect, test } from '@playwright/test';
-import { dateTimeLocal, login, submit, uniqueSuffix, visit, waitForHydration } from './helpers';
+import { nextBriefStep, dateTimeLocal, login, submit, uniqueSuffix, visit, waitForHydration } from './helpers';
 
 /** A real RGB PNG of noise, large enough (1600×1000, a few MB) that the browser makes a card-sized copy of it. */
 function noisePng(width: number, height: number): Buffer {
@@ -41,6 +41,7 @@ test('a buyer picks the campaign type from cards, adds a project image, and crea
   await expect(page.getByRole('group', { name: 'Platform' }).getByRole('radio', { name: 'X', exact: true })).toBeChecked();
   await page.getByRole('group', { name: 'Post format' }).getByRole('radio', { name: 'Thread', exact: true }).check();
 
+  await nextBriefStep(page);
   await page.getByLabel('Brief title', { exact: true }).fill(title);
   await page.getByLabel('Brief', { exact: true }).fill(`Two disclosed launch threads for ${title}, covering the product, audience and CTA.`);
   const fileInput = page.locator('input[type="file"]');
@@ -48,6 +49,7 @@ test('a buyer picks the campaign type from cards, adds a project image, and crea
   await fileInput.setInputFiles({ name: 'cover.png', mimeType: 'image/png', buffer: PNG });
   // A few megabytes plus the card copy the browser makes: allow for a busy dev server.
   await expect(page.getByText('Ready', { exact: true })).toBeVisible({ timeout: 60_000 });
+  await nextBriefStep(page);
   await page.getByLabel('Total budget (USD, optional if you set a cap)', { exact: true }).fill('600');
   await page.getByLabel('Creators needed', { exact: true }).fill('2');
   await page.getByLabel('Delivery deadline', { exact: true }).fill(dateTimeLocal(new Date(Date.now() + 14 * 86400_000)));
@@ -94,8 +96,10 @@ test('an access campaign asks for a session length, and a digital one for the ri
   await expect(page.getByRole('group', { name: 'Post format' })).toHaveCount(0);
   await expect(page.getByRole('group', { name: 'License' })).toHaveCount(0);
   await page.getByRole('group', { name: 'Session length' }).getByRole('radio', { name: '1.5 hours', exact: true }).check();
+  await nextBriefStep(page);
   await page.getByLabel('Brief title', { exact: true }).fill(title);
   await page.getByLabel('Brief', { exact: true }).fill(`A live walkthrough of our tooling for our engineering team, with questions at the end (${title}).`);
+  await nextBriefStep(page);
   await page.getByLabel('Total budget (USD, optional if you set a cap)', { exact: true }).fill('400');
   await page.getByLabel('Creators needed', { exact: true }).fill('1');
   await page.getByLabel('Delivery deadline', { exact: true }).fill(dateTimeLocal(new Date(Date.now() + 14 * 86400_000)));
@@ -112,8 +116,10 @@ test('an access campaign asks for a session length, and a digital one for the ri
   await page.getByRole('group', { name: 'License' }).getByRole('radio', { name: /^Exclusive to you/ }).check();
   const rights = 'Use in our own marketing on any channel, edit for size and language, worldwide, with no time limit.';
   await page.getByLabel('What you may do with the files', { exact: true }).fill(rights);
+  await nextBriefStep(page);
   await page.getByLabel('Brief title', { exact: true }).fill(filesTitle);
   await page.getByLabel('Brief', { exact: true }).fill(`Editable launch graphics and a slide template for our public beta (${filesTitle}).`);
+  await nextBriefStep(page);
   await page.getByLabel('Total budget (USD, optional if you set a cap)', { exact: true }).fill('400');
   await page.getByLabel('Creators needed', { exact: true }).fill('1');
   await page.getByLabel('Delivery deadline', { exact: true }).fill(dateTimeLocal(new Date(Date.now() + 14 * 86400_000)));

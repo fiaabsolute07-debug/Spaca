@@ -956,6 +956,30 @@ td small { display: block; color: var(--faint); margin-top: 3px; font-size: 12px
 .choice-cards.choice-cards-two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .panel .brief-section { margin: 26px 0 12px; font-size: 17px; }
 
+/* ---------- A brief asked a few questions at a time (src/components/campaign/brief-steps.tsx) ---------- */
+.brief-steps-rail { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 22px; padding: 0; list-style: none; }
+.brief-step-dot button { display: inline-flex; align-items: center; gap: 8px; padding: 7px 12px 7px 8px; border: 1px solid var(--line);
+  border-radius: var(--radius); background: var(--soft); color: var(--muted); font: inherit; font-size: 13px; cursor: pointer;
+  transition: border-color 0.15s, background-color 0.15s, color 0.15s; }
+.brief-step-dot button:disabled { cursor: default; opacity: 0.55; }
+.brief-step-dot button:not(:disabled):hover { border-color: var(--line-strong); background: var(--soft-2); }
+.brief-step-mark { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: 999px;
+  background: var(--soft-2); font-family: var(--mono); font-size: 11px; line-height: 1; }
+.brief-step-dot.is-current button { border-color: var(--accent); color: var(--fg); }
+.brief-step-dot.is-current .brief-step-mark { background: var(--accent); color: #121214; }
+.brief-step-dot.is-done .brief-step-mark { background: var(--good-soft); color: var(--fg); }
+.brief-steps-nav { display: flex; align-items: center; gap: 12px; margin-top: 22px; padding-top: 18px; border-top: 1px solid var(--line); }
+.brief-steps-count { margin-left: auto; font-family: var(--mono); font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+.brief-steps-nav .button { margin-top: 0; }
+/* The form's own Publish button belongs to the last step; before then the step's own Next button is the way on. */
+.brief-steps[data-last="false"] ~ button[type="submit"] { display: none; }
+@media (max-width: 640px) {
+  .brief-step-label { display: none; }
+  .brief-step-dot button { padding: 7px; }
+  .brief-steps-nav { flex-wrap: wrap; }
+  .brief-steps-count { order: -1; width: 100%; margin-left: 0; }
+}
+
 /* ---------- Campaign board: one row per campaign, every figure in its own column ---------- */
 .board { border: 1px solid var(--line); background: var(--soft); }
 .board-head, .board-row { display: grid; grid-template-columns: minmax(0, 2.4fr) repeat(3, minmax(0, 1fr)) minmax(0, 1.2fr); align-items: center; }

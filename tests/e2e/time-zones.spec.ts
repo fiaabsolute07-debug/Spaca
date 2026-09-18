@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { dateTimeLocal, login, submit, uniqueSuffix, visit, waitForHydration } from './helpers';
+import { nextBriefStep, dateTimeLocal, login, submit, uniqueSuffix, visit, waitForHydration } from './helpers';
 
 /**
  * A `datetime-local` field shows a wall clock with no zone attached to it. Read as UTC it would move an auction or a
@@ -52,8 +52,10 @@ test.describe('times are read on the clock the person is looking at', () => {
     // A goal is required: without one the browser refuses the form and nothing is ever posted. Education is work
     // delivered to the buyer, which is what this brief is.
     await page.getByRole('group', { name: 'What is the campaign for?' }).getByRole('radio', { name: /^Education/ }).check();
+    await nextBriefStep(page);
     await page.getByLabel('Brief title', { exact: true }).fill(title);
     await page.getByLabel('Brief', { exact: true }).fill('Three launch videos, audience and references included, for a timezone check.');
+    await nextBriefStep(page);
     await page.getByLabel('Total budget (USD, optional if you set a cap)', { exact: true }).fill('600');
     await page.getByLabel('Creators needed', { exact: true }).fill('1');
     const inTenDays = new Date(Date.now() + 10 * 86_400_000);

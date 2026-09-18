@@ -120,6 +120,16 @@ export async function chooseOption(page: Page, scope: Page | Locator, label: str
 }
 
 /** Client components ignore input until React hydrates them; wait for React's props on the element. */
+/**
+ * Moves the brief form on to its next step (src/components/campaign/brief-steps.tsx). The button only appears once
+ * the page is interactive, and it refuses to move while a field on the step is unanswered.
+ */
+export async function nextBriefStep(page: Page) {
+  const next = page.getByRole('button', { name: 'Next', exact: true });
+  await waitForHydration(next);
+  await next.click();
+}
+
 export async function waitForHydration(locator: Locator) {
   await expect.poll(() => locator.evaluate((el) => Object.keys(el).some((k) => k.startsWith('__reactProps')))).toBe(true);
 }
