@@ -788,3 +788,33 @@ first, one account is still one type, and setup at `/welcome` still comes before
   publishing a PUBLISH service still requires one.
 - Configuration is unchanged (`GOOGLE_PROVIDER=live`, client id and secret, the same redirect URI). With Google
   configured and X not, sign-up works; that was not true before.
+
+## 2026-09-19: auctions and the campaign tabs, laid out to be read
+
+The owner asked for both to be easier to look at, with magiceden.io/packs as the reference. Two decisions were theirs:
+open campaigns and live auctions show as **cards with the picture**, and the explainer blocks move **below** the
+listings. Nothing about what the pages say changed — no invented campaign, no stand-in photograph, no figure the
+database cannot answer.
+
+- **`/auctions` order** is now: heading and *List an item* → sandbox line → filters → your auctions → Live now →
+  Starting soon → Recently sold → **How an item auction works**. Someone who came to look at items sees items first;
+  the three steps keep their wording and their own heading at the foot of the page.
+- **Filters** sit together on the left as one control, the two groups separated by a hairline. The hairline is dropped
+  below 720px, where the groups stack and a divider on the left of the second one is a stray mark.
+- **A board of one or two listings lays its cards down**: picture on the left (240–380px), details beside it, price and
+  clock together rather than pushed to opposite edges. Three or more keep the upright grid. This is what a lone card in
+  a three-up grid cost before: most of the row was empty. Below 720px a wide card stacks like any other.
+- **Time left** is read at the same weight as the price on a card (17px mono), because it is what decides whether to
+  bid now.
+- **Campaign tabs**: `Open <goal> campaigns` is `CampaignCards` — the project's own picture (or the goal's drawing when
+  there is none), the OPEN and goal badges over it, the title, who is running it, then pay, spots and time to apply.
+  One or two campaigns lay down the same way listings do. `/requests` and *Recently filled or closed* keep
+  `CampaignBoard`: a long list is easier to scan down a column.
+- **Tab order** is now: tabs → hero → **open campaigns** → what creators deliver → creators who sell this kind of work
+  → recently filled or closed → **how these campaigns work**. Open campaigns moved from roughly 800px down the page to
+  roughly 575px.
+- **The figures beside the hero headline** are one column of rows, value left and label right, dividing the panel's
+  full height. The two-up grid left the odd third figure stretched across an empty row.
+- Checked at this commit: 1010 text runs on 9 pages all meet WCAG AA, and neither width shows horizontal overflow
+  (`brand-contrast.ts`, `brand-shots.ts` — both now honour `E2E_BROWSER_EXECUTABLE`, as the browser suite already did).
+

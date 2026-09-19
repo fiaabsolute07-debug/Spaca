@@ -12,6 +12,11 @@ import { chromium, type BrowserContext, type Page } from '@playwright/test';
 import { mkdir } from 'node:fs/promises';
 import path from 'node:path';
 
+/** Chrome by default, as on the owner's machine; a container sets E2E_BROWSER_EXECUTABLE to its own Chromium. */
+const browserOptions = () => (process.env.E2E_BROWSER_EXECUTABLE
+  ? { executablePath: process.env.E2E_BROWSER_EXECUTABLE }
+  : { channel: process.env.E2E_BROWSER_CHANNEL ?? 'chrome' });
+
 const baseURL = process.env.E2E_BASE_URL ?? 'http://127.0.0.1:3100';
 const outRoot = process.argv[2] ?? process.env.BRAND_SHOTS_DIR ?? '/tmp/brand-shots';
 const WIDTHS = [1280, 375] as const;
@@ -50,7 +55,7 @@ const SHOTS: Shot[] = [
 ];
 
 async function main() {
-  const browser = await chromium.launch({ channel: 'chrome' });
+  const browser = await chromium.launch(browserOptions());
   const overflowing: string[] = [];
   try {
     for (const width of WIDTHS) {

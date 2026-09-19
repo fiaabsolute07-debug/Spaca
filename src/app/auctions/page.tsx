@@ -47,13 +47,9 @@ export default async function AuctionsPage({ searchParams }: PageProps) {
       <Link className="button button-dark" href={actor ? '/auctions/new' : '/sign-in?return_to=%2Fauctions%2Fnew'}>List an item</Link>
     </div>
 
-    <ol className="items-steps" aria-label="How item auctions work">
-      <li><strong>Seller locks collateral</strong><span>The listing opens only after it is locked.</span></li>
-      <li><strong>Win and pay into escrow</strong><span>You have 24 hours; the seller cannot touch it yet.</span></li>
-      <li><strong>Confirm delivery</strong><span>The seller is paid. Miss the deadline and you get your money plus the collateral.</span></li>
-    </ol>
     {auctionMoneyNote() && <p className="items-sandbox">{auctionMoneyNote()}</p>}
 
+    {/* Both ways of narrowing the board read as one control, rather than two rows pushed to opposite edges. */}
     <div className="items-filters">
       <nav aria-label="Item types" className="chip-row">
         <Link className="chip-link" href={href({ type: '' })} aria-current={!board.filters.type ? 'page' : undefined}>All items</Link>
@@ -96,7 +92,9 @@ export default async function AuctionsPage({ searchParams }: PageProps) {
     {(board.live.length > 0 || board.upcoming.length === 0) && <section className="items-section" aria-labelledby="items-live-heading">
       <h2 id="items-live-heading">Live now</h2>
       {board.live.length
-        ? <div className="items-grid">{board.live.map((listing) => <ItemCard key={listing.id} listing={listing} serverNow={serverNow} />)}</div>
+        ? <div className={`items-grid${board.live.length <= 2 ? ' is-few' : ''}`}>
+          {board.live.map((listing) => <ItemCard key={listing.id} listing={listing} serverNow={serverNow} wide={board.live.length <= 2} />)}
+        </div>
         : <Empty title={filtered ? 'Nothing matches these filters' : 'No items are up for auction yet'}>
           {filtered ? <Link className="text-link" href="/auctions">Show all items ›</Link> : <Link className="text-link" href="/auctions/new">List the first item ›</Link>}
         </Empty>}
@@ -104,7 +102,9 @@ export default async function AuctionsPage({ searchParams }: PageProps) {
 
     {board.upcoming.length > 0 && <section className="items-section" aria-labelledby="items-upcoming-heading">
       <h2 id="items-upcoming-heading">Starting soon</h2>
-      <div className="items-grid">{board.upcoming.map((listing) => <ItemCard key={listing.id} listing={listing} serverNow={serverNow} />)}</div>
+      <div className={`items-grid${board.upcoming.length <= 2 ? ' is-few' : ''}`}>
+        {board.upcoming.map((listing) => <ItemCard key={listing.id} listing={listing} serverNow={serverNow} wide={board.upcoming.length <= 2} />)}
+      </div>
     </section>}
 
     {board.recent.length > 0 && <section className="items-section" aria-labelledby="items-recent-heading">
@@ -124,5 +124,14 @@ export default async function AuctionsPage({ searchParams }: PageProps) {
         </table>
       </div>
     </section>}
+
+    <section className="items-section" aria-labelledby="items-how-heading">
+      <h2 id="items-how-heading">How an item auction works</h2>
+      <ol className="items-steps" aria-labelledby="items-how-heading">
+        <li><strong>Seller locks collateral</strong><span>The listing opens only after it is locked.</span></li>
+        <li><strong>Win and pay into escrow</strong><span>You have 24 hours; the seller cannot touch it yet.</span></li>
+        <li><strong>Confirm delivery</strong><span>The seller is paid. Miss the deadline and you get your money plus the collateral.</span></li>
+      </ol>
+    </section>
   </main>;
 }

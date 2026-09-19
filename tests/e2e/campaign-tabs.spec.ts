@@ -22,13 +22,14 @@ test('each of the seven campaign tabs is its own page with its own idea, and non
     for (const item of content.delivers) await expect(page.getByRole('region', { name: 'What creators deliver' }).getByText(item, { exact: true })).toBeVisible();
 
     const open = page.getByRole('region', { name: new RegExp(`^Open ${goal.title.replace('&', '\\&')} campaigns`) });
-    const count = await open.locator('.board-row').count();
+    // Open campaigns are cards on a tab; `/requests` keeps the board for the long list.
+    const count = await open.locator('.campaign-card').count();
     if (count === 0) {
       // No open campaign: the space invites the first brief, set up for this goal, instead of sitting blank.
       await expect(open.getByRole('heading', { name: `No ${goal.title} campaign is taking applications yet` })).toBeVisible();
       await expect(open.getByRole('link', { name: `Post the first ${goal.title} brief` })).toHaveAttribute('href', `/buyer/requests/new?goal=${goal.slug}`);
     } else {
-      for (const row of await open.locator('.board-row').all()) await expect(row.locator('.badge-goal')).toHaveText(goal.title);
+      for (const card of await open.locator('.campaign-card').all()) await expect(card.locator('.badge-goal')).toHaveText(goal.title);
     }
   }
 

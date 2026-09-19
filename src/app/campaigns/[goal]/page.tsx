@@ -5,6 +5,7 @@ import { isBuyer } from '@/lib/account';
 import { getGoalPageData } from '@/lib/read-model';
 import { Notices } from '@/components/notices';
 import { CampaignBoard } from '@/components/campaign/campaign-board';
+import { CampaignCards } from '@/components/campaign/campaign-cards';
 import { ServiceCard, money, num, rows, str } from '@/components/ui';
 import { GoalIcon } from '@/components/campaign/goal-icon';
 import { GoalArt } from '@/components/campaign/goal-art';
@@ -78,23 +79,12 @@ export default async function CampaignGoalPage({ params, searchParams }: PagePro
         : <div className="goal-hero-art"><GoalArt goal={goal.value} /></div>}
     </section>
 
-    <section className="goal-section" aria-labelledby="how-heading">
-      <div className="section-heading"><h2 id="how-heading">How {goal.title} campaigns work</h2></div>
-      <ol className="goal-steps" aria-labelledby="how-heading">
-        {page.steps.map(([title, text], index) => <li key={title}>
-          <span className="goal-step-number">{index + 1}</span>
-          <strong>{title}</strong>
-          <small>{text}</small>
-        </li>)}
-      </ol>
-    </section>
-
     <section className="goal-section" id="open-campaigns" aria-labelledby="open-heading">
       <div className="section-heading">
         <h2 id="open-heading">Open {goal.title} campaigns <span className="goal-count">{open.length}</span></h2>
         <Link className="text-link" href="/requests">All campaigns ›</Link>
       </div>
-      {open.length ? <CampaignBoard items={open} label={`Open ${goal.title} campaigns`} /> : <div className="goal-empty">
+      {open.length ? <CampaignCards items={open} label={`Open ${goal.title} campaigns`} /> : <div className="goal-empty">
         <div>
           <h3>No {goal.title} campaign is taking applications yet</h3>
           <p className="muted">{creatorAccount
@@ -134,5 +124,16 @@ export default async function CampaignGoalPage({ params, searchParams }: PagePro
       <div className="section-heading"><h2 id="recent-heading">Recently filled or closed</h2></div>
       <CampaignBoard items={data.recent} label={`Recently filled or closed ${goal.title} campaigns`} />
     </section>}
+
+    <section className="goal-section" aria-labelledby="how-heading">
+      <div className="section-heading"><h2 id="how-heading">How {goal.title} campaigns work</h2></div>
+      <ol className="goal-steps" aria-labelledby="how-heading">
+        {page.steps.map(([title, text], index) => <li key={title}>
+          <span className="goal-step-number">{index + 1}</span>
+          <strong>{title}</strong>
+          <small>{text}</small>
+        </li>)}
+      </ol>
+    </section>
   </main>;
 }

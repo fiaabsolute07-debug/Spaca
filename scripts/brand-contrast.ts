@@ -11,6 +11,11 @@
  */
 import { chromium, type BrowserContext, type Page } from '@playwright/test';
 
+/** Chrome by default, as on the owner's machine; a container sets E2E_BROWSER_EXECUTABLE to its own Chromium. */
+const browserOptions = () => (process.env.E2E_BROWSER_EXECUTABLE
+  ? { executablePath: process.env.E2E_BROWSER_EXECUTABLE }
+  : { channel: process.env.E2E_BROWSER_CHANNEL ?? 'chrome' });
+
 const baseURL = process.env.E2E_BASE_URL ?? 'http://127.0.0.1:3100';
 /** The landing keeps a light/dark switch; both settings have to pass, so either can be asked for here. */
 const landingTheme = process.env.LANDING_THEME === 'light' || process.env.LANDING_THEME === 'dark' ? process.env.LANDING_THEME : null;
@@ -116,7 +121,7 @@ async function login(context: BrowserContext, persona: Exclude<Persona, null>) {
 }
 
 async function main() {
-  const browser = await chromium.launch({ channel: 'chrome' });
+  const browser = await chromium.launch(browserOptions());
   const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
   if (landingTheme) {
     await context.addInitScript((theme) => {
