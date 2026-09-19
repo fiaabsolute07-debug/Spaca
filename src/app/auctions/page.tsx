@@ -5,6 +5,7 @@ import { sql } from '@/lib/db';
 import { auctionMoneyNote } from '@/lib/environment';
 import { getItemAuctionBoard, getMyItemActivity } from '@/modules/items/queries';
 import { ItemCard } from '@/components/items/item-card';
+import { ItemHero } from '@/components/items/item-hero';
 import { Empty, date } from '@/components/ui';
 import { Notices } from '@/components/notices';
 import { PageHeading } from '@/components/page-heading';
@@ -38,6 +39,9 @@ export default async function AuctionsPage({ searchParams }: PageProps) {
     return search ? `/auctions?${search}` : '/auctions';
   };
   const filtered = Boolean(board.filters.type || board.filters.origin);
+  // The board is ordered by the time a listing ends, so the first live one is the auction closing soonest. With
+  // nothing live it is the one opening next, and with nothing at all there is no banner to draw.
+  const featured = board.live[0] ?? board.upcoming[0] ?? null;
 
   return <main className="container items-page">
     <Notices query={query} />
@@ -48,6 +52,8 @@ export default async function AuctionsPage({ searchParams }: PageProps) {
     </div>
 
     {auctionMoneyNote() && <p className="items-sandbox">{auctionMoneyNote()}</p>}
+
+    {featured && <ItemHero listing={featured} serverNow={serverNow} />}
 
     {/* Both ways of narrowing the board read as one control, rather than two rows pushed to opposite edges. */}
     <div className="items-filters">
