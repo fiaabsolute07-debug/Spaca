@@ -51,8 +51,8 @@ test('the header opens Explore and Campaigns as menus, and a campaign goal filte
   await expect(tabs.getByRole('link', { name: /^Airdrop/ })).toHaveAttribute('aria-current', 'page');
   const openSection = page.getByRole('region', { name: /^Open Airdrop campaigns/ });
   await expect(openSection.getByRole('link', { name: new RegExp(title) })).toBeVisible();
-  // Every open campaign on a tab carries that goal.
-  const cards = openSection.locator('.board-row');
+  // Every open campaign on a tab carries that goal. A tab shows them as cards; the board is for `/requests`.
+  const cards = openSection.locator('.campaign-card');
   expect(await cards.count()).toBeGreaterThan(0);
   for (const card of await cards.all()) await expect(card.locator('.badge-goal')).toHaveText('Airdrop');
 
