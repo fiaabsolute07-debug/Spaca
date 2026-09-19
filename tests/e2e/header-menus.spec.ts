@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { baseURL, nextBriefStep, dateTimeLocal, login, submit, uniqueSuffix, visit, waitForHydration } from './helpers';
+import { baseURL, nextFormStep, dateTimeLocal, login, submit, uniqueSuffix, visit, waitForHydration } from './helpers';
 
 test('the header opens Explore and Campaigns as menus, and a campaign goal filters the campaign list', async ({ page }) => {
   await login(page, 'buyer_a');
@@ -8,10 +8,10 @@ test('the header opens Explore and Campaigns as menus, and a campaign goal filte
   // Arriving from a goal preselects it, and the kind of work it usually needs.
   const goals = page.getByRole('group', { name: 'What is the campaign for?' });
   await expect(goals.getByRole('radio', { name: /^Airdrop/ })).toBeChecked();
-  await nextBriefStep(page);
+  await nextFormStep(page);
   await page.getByLabel('Brief title', { exact: true }).fill(title);
   await page.getByLabel('Brief', { exact: true }).fill(`Explain who is eligible for our testnet airdrop and how to join, with the disclosure (${title}).`);
-  await nextBriefStep(page);
+  await nextFormStep(page);
   await page.getByLabel('Total budget (USD, optional if you set a cap)', { exact: true }).fill('300');
   await page.getByLabel('Creators needed', { exact: true }).fill('1');
   await page.getByLabel('Delivery deadline', { exact: true }).fill(dateTimeLocal(new Date(Date.now() + 14 * 86400_000)));

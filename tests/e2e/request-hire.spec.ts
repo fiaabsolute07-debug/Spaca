@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { nextBriefStep, createPublishedService, dateTimeLocal, login, orderPath, payOrder, submit, uniqueSuffix, visit } from './helpers';
+import { nextFormStep, createPublishedService, dateTimeLocal, login, orderPath, payOrder, submit, uniqueSuffix, visit } from './helpers';
 
 test('a cap-only two-hire request funds one creator after application, offer and capacity confirmation', async ({ page }) => {
   // creator_c needs a published service with an approved sample before applying.
@@ -8,10 +8,10 @@ test('a cap-only two-hire request funds one creator after application, offer and
   await login(page, 'buyer_a');
   await visit(page, '/buyer/requests/new');
   await page.getByRole('group', { name: 'What is the campaign for?' }).getByRole('radio', { name: /^Education/ }).check();
-  await nextBriefStep(page);
+  await nextFormStep(page);
   await page.getByLabel('Brief title', { exact: true }).fill(title);
   await page.getByLabel('Brief', { exact: true }).fill(`Develop two independent launch narratives for ${title}, each with audience, message and CTA.`);
-  await nextBriefStep(page);
+  await nextFormStep(page);
   await page.getByLabel('Total budget (USD, optional if you set a cap)', { exact: true }).fill('');
   await page.getByLabel('Per creator cap (USD, optional)', { exact: true }).fill('200');
   await page.getByLabel('Creators needed', { exact: true }).fill('2');

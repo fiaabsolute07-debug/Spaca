@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import { baselineFor, postViews } from '../../src/modules/publish/metrics';
-import { nextBriefStep, chooseOption, dateTimeLocal, flagCard, freeLinkedAccountSlot, login, payOrder, runJobs, setFlag, submit, uniqueSuffix, visit } from './helpers';
+import { nextFormStep, chooseOption, dateTimeLocal, flagCard, freeLinkedAccountSlot, login, payOrder, runJobs, setFlag, submit, uniqueSuffix, visit } from './helpers';
 
 /** A handle the mock metrics treat as having enough recent posts for a priced bonus. X handles hold 15 characters. */
 function eligibleHandle(): string {
@@ -61,10 +61,10 @@ test('a performance campaign pays a fixed fee plus a measured bonus, and returns
     await page.getByRole('group', { name: 'What is the campaign for?' }).getByRole('radio', { name: /^Launch/ }).check();
     await page.getByRole('group', { name: 'How you pay' }).getByRole('radio', { name: /view bonus/ }).check();
     await expect(page.getByText(/You pay at most \$100\.00 per creator/)).toBeVisible();
-    await nextBriefStep(page);
+    await nextFormStep(page);
     await page.getByLabel('Brief title', { exact: true }).fill(title);
     await page.getByLabel('Brief', { exact: true }).fill(`Post your own testnet walkthrough for ${title}, with the disclosure and our docs link.`);
-    await nextBriefStep(page);
+    await nextFormStep(page);
     await page.getByLabel('Total budget (USD, optional if you set a cap)', { exact: true }).fill('500');
     await page.getByLabel('Creators needed', { exact: true }).fill('1');
     await page.getByLabel('Delivery deadline', { exact: true }).fill(dateTimeLocal(new Date(Date.now() + 14 * 86400_000)));

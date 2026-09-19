@@ -1,11 +1,12 @@
 import { expect, test, type Page } from '@playwright/test';
-import { TINY_PNG, baseURL, login, submit, uniqueSuffix, visit, waitForHydration } from './helpers';
+import { nextFormStep, TINY_PNG, baseURL, login, submit, uniqueSuffix, visit, waitForHydration } from './helpers';
 
 /** Fill the listing form; times keep their defaults (opens now, closes in 3 days, delivery within 7 days). */
 async function listItem(page: Page, fields: { title: string; type: string; origin?: 'project' | 'resale'; buyNow?: string; starting?: string; collateral?: string; increment?: string; pictures?: number }) {
   await visit(page, '/auctions/new');
   const create = page.getByRole('button', { name: 'Create listing' });
-  await waitForHydration(create);
+  // Create listing belongs to the last step and is not in the page until then, so the wait is on a field of the first.
+  await waitForHydration(page.getByLabel('Title', { exact: true }));
   if (fields.origin === 'project') await page.getByRole('radio', { name: /I’m the project/ }).check();
   await page.getByRole('button', { name: fields.type, exact: true }).click();
   await expect(page.getByLabel('Item type (optional)', { exact: true })).toHaveValue(fields.type);
@@ -19,8 +20,10 @@ async function listItem(page: Page, fields: { title: string; type: string; origi
   await page.getByLabel('Network (optional)').fill('Base');
   await page.getByLabel('Quantity (optional)').fill('1 spot');
   await page.getByLabel('Description (optional)').fill('One spot in the Nebula Punks genesis mint on Oct 12, mint price 0.015 ETH.');
+  await nextFormStep(page);
   await page.getByLabel('How the winner receives it (optional)').fill("I submit the winner's wallet to the team's form before the snapshot.");
   await page.getByLabel('What the winner must give you (optional)').fill('EVM wallet address');
+  await nextFormStep(page);
   await page.getByLabel('Starting price (USD)').fill(fields.starting ?? '100');
   // Stated, not inherited: the bid amounts below are arithmetic on this step, and the form's default is a
   // presentation choice that may change with the prices the marketplace suggests.

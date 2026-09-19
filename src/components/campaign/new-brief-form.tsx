@@ -2,7 +2,7 @@ import { CommandForm, Field } from '@/components/ui';
 import { TimeField } from '@/components/time-field';
 import { FileUploadField } from '@/components/files/file-upload-field';
 import { BriefTypePicker } from '@/components/campaign/brief-type-picker';
-import { BriefSteps } from '@/components/campaign/brief-steps';
+import { FormSteps } from '@/components/form-steps';
 import { GOAL_PAGES } from '@/modules/requests/goal-pages';
 import type { CampaignGoal } from '@/modules/requests/goals';
 
@@ -15,7 +15,7 @@ export function NewBriefForm({ performanceEnabled, goal }: { performanceEnabled:
   const example = goal ? GOAL_PAGES[goal] : null;
   return <CommandForm command="create_request" label="Publish brief" returnTo="/requests">
     {/* Three short questions instead of one long page: what the campaign is, what it asks for, what it pays. */}
-    <BriefSteps labels={['Campaign', 'Brief', 'Budget']}>
+    <FormSteps labels={['Campaign', 'Brief', 'Budget']}>
       <BriefTypePicker performanceEnabled={performanceEnabled} initialGoal={goal} />
       <div>
         <h3 className="brief-section">About the project</h3>
@@ -44,6 +44,6 @@ export function NewBriefForm({ performanceEnabled, goal }: { performanceEnabled:
           <TimeField name="deadline" label="Delivery deadline" help="Leave empty for two weeks from today." />
         </div>
       </div>
-    </BriefSteps>
+    </FormSteps>
   </CommandForm>;
 }

@@ -27,3 +27,16 @@ export const SALE_STATUS_LABEL: Record<string, string> = {
 
 /** "$1,250.00" from minor units. */
 export const usd = (minor: number | bigint | string) => `$${(Number(minor) / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+const MINUTE = 60_000;
+const DAY = 24 * 60 * MINUTE;
+
+/**
+ * Starting times for a new listing: opens this minute (so bidding can start straight away), closes in 3 days,
+ * delivered within 7. Shared by the full page and the dialog, so both open with the same clock.
+ */
+export function listingDefaults(now: number) {
+  const minute = Math.floor(now / MINUTE) * MINUTE;
+  const tidy = (at: number) => new Date(Math.ceil(at / (5 * MINUTE)) * 5 * MINUTE).toISOString();
+  return { startsAt: new Date(minute).toISOString(), endsAt: tidy(minute + 3 * DAY), deliveryDueAt: tidy(minute + 7 * DAY) };
+}

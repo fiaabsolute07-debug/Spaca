@@ -5,17 +5,17 @@ import { Children } from 'react';
 import { Check, ChevronLeft, ChevronRight } from 'lucide-react';
 
 /**
- * One long brief, asked a few questions at a time. Every step stays in the same form and stays mounted, so nothing
+ * One long form, asked a few questions at a time — a campaign brief, an auction listing. Every step stays in the same form and stays mounted, so nothing
  * typed is lost when moving back and nothing is submitted twice; a step that is not showing is hidden, not unmounted.
  *
  * Moving on checks the fields of the step you are leaving, so the browser never has to complain about a required box
  * it cannot scroll to: by the time the last step is reached, everything behind it is already filled. The form's own
- * submit button belongs to the last step, and `data-last` hides it before then (see `.brief-steps` in globals.css).
+ * submit button belongs to the last step, and `data-last` hides it before then (see `.form-steps` in globals.css).
  *
  * Each step must arrive as one element, not a fragment: `Children.toArray` flattens a fragment into its children and
  * every line of the step would become a step of its own.
  */
-export function BriefSteps({ labels, children }: { labels: string[]; children: ReactNode }) {
+export function FormSteps({ labels, children }: { labels: string[]; children: ReactNode }) {
   const panels = Children.toArray(children);
   const [step, setStep] = useState(0);
   const [furthest, setFurthest] = useState(0);
@@ -43,16 +43,16 @@ export function BriefSteps({ labels, children }: { labels: string[]; children: R
     refs.current[next]?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
   };
 
-  return <div className="brief-steps" data-last={last}>
-    <ol className="brief-steps-rail" aria-label="Steps">
+  return <div className="form-steps" data-last={last}>
+    <ol className="form-steps-rail" aria-label="Steps">
       {labels.map((label, index) => {
         const done = index < furthest && index !== step;
-        return <li key={label} className={`brief-step-dot${index === step ? ' is-current' : ''}${done ? ' is-done' : ''}`}>
+        return <li key={label} className={`form-step-dot${index === step ? ' is-current' : ''}${done ? ' is-done' : ''}`}>
           {/* A step already reached can be reopened; one still ahead waits until the steps before it are answered. */}
           <button type="button" onClick={() => go(index)} disabled={index > furthest}
             aria-current={index === step ? 'step' : undefined} aria-controls={`${id}-${index}`}>
-            <span className="brief-step-mark" aria-hidden>{done ? <Check size={12} strokeWidth={3} /> : index + 1}</span>
-            <span className="brief-step-label">{label}</span>
+            <span className="form-step-mark" aria-hidden>{done ? <Check size={12} strokeWidth={3} /> : index + 1}</span>
+            <span className="form-step-label">{label}</span>
           </button>
         </li>;
       })}
@@ -63,11 +63,11 @@ export function BriefSteps({ labels, children }: { labels: string[]; children: R
       {panel}
     </div>)}
 
-    <div className="brief-steps-nav">
+    <div className="form-steps-nav">
       {step > 0 && <button type="button" className="button button-outline" onClick={() => go(step - 1)}>
         <ChevronLeft size={16} aria-hidden /> Back
       </button>}
-      <span className="brief-steps-count">Step {step + 1} of {panels.length}</span>
+      <span className="form-steps-count">Step {step + 1} of {panels.length}</span>
       {!last && <button type="button" className="button" onClick={() => go(step + 1)}>
         Next <ChevronRight size={16} aria-hidden />
       </button>}

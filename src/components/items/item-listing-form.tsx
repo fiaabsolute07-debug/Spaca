@@ -3,6 +3,7 @@
 import { useId, useState, type FormEvent } from 'react';
 import { ITEM_COLLATERAL_MIN_DIVISOR, ITEM_CONFIRM_HOURS, ITEM_PAYMENT_HOURS, ITEM_TYPE_SUGGESTIONS, usd } from '@/lib/items';
 import { TimeField } from '../time-field';
+import { FormSteps } from '../form-steps';
 import { FileUploadField } from '../files/file-upload-field';
 
 const cents = (value: string) => (/^\d+(\.\d{1,2})?$/.test(value.trim()) ? Math.round(Number(value) * 100) : null);
@@ -58,6 +59,8 @@ export function ItemListingForm({ idempotencyKey, canSellAsProject, defaults, mo
     <input type="hidden" name="idempotency_key" value={idempotencyKey} />
     <input type="hidden" name="return_to" value="/auctions/new" />
 
+    {/* The three sections the form always had, asked one at a time: what it is, how it reaches the winner, how it sells. */}
+    <FormSteps labels={['Item', 'Delivery', 'Auction']}>
     <section className="panel items-form-section" aria-labelledby={`${id}-what`}>
       <h2 id={`${id}-what`}>What you are selling</h2>
       <fieldset className="items-origin-choice">
@@ -158,6 +161,7 @@ export function ItemListingForm({ idempotencyKey, canSellAsProject, defaults, mo
       </div>
       <p className="items-form-terms">The winner pays into escrow within {ITEM_PAYMENT_HOURS} hours. After you mark the item delivered, the buyer has {ITEM_CONFIRM_HOURS} hours to confirm or dispute; silence counts as confirmed.{moneyNote ? ` ${moneyNote}` : ''}</p>
     </section>
+    </FormSteps>
 
     <div className="items-form-actions">
       {error && <p className="items-form-error" role="alert">{error}</p>}

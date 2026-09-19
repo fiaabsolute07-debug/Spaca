@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { nextBriefStep, dateTimeLocal, login, submit, uniqueSuffix, visit, waitForHydration } from './helpers';
+import { nextFormStep, dateTimeLocal, login, submit, uniqueSuffix, visit, waitForHydration } from './helpers';
 
 /**
  * A `datetime-local` field shows a wall clock with no zone attached to it. Read as UTC it would move an auction or a
@@ -22,22 +22,26 @@ test.describe('times are read on the clock the person is looking at', () => {
 
     await visit(page, '/auctions/new');
     const create = page.getByRole('button', { name: 'Create listing' });
-    await waitForHydration(create);
+    // Create listing only exists on the last step; wait on a field of the first one instead.
+    await waitForHydration(page.getByLabel('Title', { exact: true }));
     await page.getByLabel('Item type (optional)', { exact: true }).fill('WL spot');
     await page.getByLabel('Title', { exact: true }).fill(`Zone WL spot ${uniqueSuffix()}`);
     await page.getByLabel('Project (optional)', { exact: true }).fill('Zone');
     await page.getByLabel('Network (optional)', { exact: true }).fill('Base');
     await page.getByLabel('Quantity (optional)', { exact: true }).fill('1 spot');
     await page.getByLabel('Description (optional)', { exact: true }).fill('One whitelist spot, listed from Bangkok for a time zone check.');
+    await nextFormStep(page);
     await page.getByLabel('How the winner receives it (optional)', { exact: true }).fill('The project adds the wallet to the allowlist.');
     await page.getByLabel('What the winner must give you (optional)', { exact: true }).fill('EVM wallet address');
+    await page.getByLabel('Deliver by', { exact: true }).fill(`${later}T09:00`);
+    await nextFormStep(page);
     await page.getByLabel('Starting price (USD)', { exact: true }).fill('100');
     await page.getByLabel('Your collateral (USD)', { exact: true }).fill('20');
     await page.getByLabel('Bidding opens', { exact: true }).fill(`${day}T09:00`);
     await page.getByLabel('Bidding closes', { exact: true }).fill(`${day}T21:00`);
-    await page.getByLabel('Deliver by', { exact: true }).fill(`${later}T09:00`);
-    // The field says which zone it read and what that is in UTC, so the two never disagree silently.
-    await expect(page.getByText(/Asia\/Bangkok \(UTC\+07:00\)/).first()).toBeVisible();
+    // The field says which zone it read and what that is in UTC, so the two never disagree silently. The steps behind
+    // this one carry the same note, so the assertion looks at the step on screen.
+    await expect(page.getByText(/Asia\/Bangkok \(UTC\+07:00\)/).filter({ visible: true }).first()).toBeVisible();
     await Promise.all([page.waitForURL(/\/auctions\/[0-9a-f-]{36}$/), create.click()]);
 
     // The page shows every time in UTC, so 09:00 in Bangkok must read as 02:00 UTC — and never as 09:00 UTC.
@@ -52,10 +56,10 @@ test.describe('times are read on the clock the person is looking at', () => {
     // A goal is required: without one the browser refuses the form and nothing is ever posted. Education is work
     // delivered to the buyer, which is what this brief is.
     await page.getByRole('group', { name: 'What is the campaign for?' }).getByRole('radio', { name: /^Education/ }).check();
-    await nextBriefStep(page);
+    await nextFormStep(page);
     await page.getByLabel('Brief title', { exact: true }).fill(title);
     await page.getByLabel('Brief', { exact: true }).fill('Three launch videos, audience and references included, for a timezone check.');
-    await nextBriefStep(page);
+    await nextFormStep(page);
     await page.getByLabel('Total budget (USD, optional if you set a cap)', { exact: true }).fill('600');
     await page.getByLabel('Creators needed', { exact: true }).fill('1');
     const inTenDays = new Date(Date.now() + 10 * 86_400_000);
@@ -71,7 +75,12 @@ test.describe('times are read on the clock the person is looking at', () => {
 test('without a zone the wall clock is still read as UTC, and the field says so', async ({ page }) => {
   await login(page, 'creator_c');
   await visit(page, '/auctions/new');
+  // Bidding opens is on the auction step, two steps in, and the first step will not be left without its title.
+  await waitForHydration(page.getByLabel('Title', { exact: true }));
+  await page.getByLabel('Title', { exact: true }).fill(`Zone hint ${uniqueSuffix()}`);
+  await nextFormStep(page);
+  await nextFormStep(page);
   // The browser here runs on UTC (playwright.config.ts), so the hint names UTC and the value is unshifted.
   await page.getByLabel('Bidding opens', { exact: true }).fill(dateTimeLocal(new Date(Date.now() + 3_600_000)));
-  await expect(page.getByText(/\(UTC\+00:00\)/).first()).toBeVisible();
+  await expect(page.getByText(/\(UTC\+00:00\)/).filter({ visible: true }).first()).toBeVisible();
 });
