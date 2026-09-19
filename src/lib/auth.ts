@@ -23,6 +23,12 @@ export function hashPassword(password: string): string {
   const salt = randomBytes(16).toString('hex');
   return `scrypt:${salt}:${scryptSync(password, salt, 64).toString('hex')}`;
 }
+/**
+ * Verified against when no account holds the address, or when the account has no password. It is shaped like a real
+ * stored hash, so `verifyPassword` does the same scrypt work on it and always answers false: a miss no longer comes
+ * back measurably sooner than a wrong password, which is how an address is enumerated (audit 2026-09-18, F8).
+ */
+export const DECOY_PASSWORD_HASH = `scrypt:${'0'.repeat(32)}:${'0'.repeat(128)}`;
 export function verifyPassword(password: string, encoded: string): boolean {
   if (password.length > 256) return false;
   const [algorithm, salt, digest] = encoded.split(':');

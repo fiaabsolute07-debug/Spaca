@@ -3,8 +3,9 @@ import { cookies } from 'next/headers';
 import { withNotice } from '../../../lib/notices';
 import { NextResponse } from 'next/server';
 import { sql } from '../../../lib/db';
+import { logError } from '../../../lib/log';
 import { onboardingPath } from '../../../lib/onboarding';
-import { createSession, getActor, hashPassword, hashSessionToken, isSameOrigin, appSessionsEnabled, SESSION_COOKIE, supabaseAuth, verifyPassword, publicUrl } from '../../../lib/auth';
+import { createSession, DECOY_PASSWORD_HASH, getActor, hashPassword, hashSessionToken, isSameOrigin, appSessionsEnabled, SESSION_COOKIE, supabaseAuth, verifyPassword, publicUrl } from '../../../lib/auth';
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 /** Failed password sign-ins allowed per address in the window before sign-in with that address waits (drizzle/0037). */
@@ -82,7 +83,7 @@ export async function POST(request: Request) {
       return refuse(`/sign-in?return_to=${encodeURIComponent(returnTo)}`, `Too many sign-in attempts for this email. Try again in ${SIGN_IN_WINDOW_MINUTES} minutes, or continue with X or Google.`);
     }
     const [user] = await sql`select id,password_hash,onboarded_at is not null as onboarded from app.users where email=${email} and status in ('ACTIVE','SUSPENDED')`;
-    const verified = Boolean(user?.password_hash) && verifyPassword(password, user!.password_hash);
+    const verified = verifyPassword(password, user?.password_hash ?? DECOY_PASSWORD_HASH);
     await sql`insert into app.sign_in_attempts (email_hash,succeeded) values (${hashed},${verified})`;
     // Only the window matters; older attempts for this address are dropped as it is used.
     await sql`delete from app.sign_in_attempts where email_hash=${hashed} and created_at < now() - interval '1 day'`;
@@ -91,5 +92,10 @@ export async function POST(request: Request) {
     if (previous) await sql`delete from app.sessions where token_hash=${hashSessionToken(previous)}`;
     jar.set(SESSION_COOKIE, await createSession(user.id), { httpOnly: true, sameSite: 'lax', secure: publicUrl(request, '/').protocol === 'https:', path: '/', maxAge: 604800 });
     return go(user.onboarded ? returnTo : onboardingPath(returnTo));
-  } catch { return action === 'add_email' ? refuse('/settings/profile', 'The email could not be added. Try again.') : failure(); }
+  } catch (error) {
+    // Without this an outage or a bad migration reaches the person as "the email or password is not correct" and
+    // leaves nothing behind to diagnose (audit 2026-09-18, F7).
+    logError('sign-in route failed', error);
+    return action === 'add_email' ? refuse('/settings/profile', 'The email could not be added. Try again.') : failure();
+  }
 }

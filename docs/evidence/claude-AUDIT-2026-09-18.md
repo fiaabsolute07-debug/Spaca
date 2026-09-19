@@ -115,6 +115,10 @@ typo, a forgotten preview — advertises booking, hiring, bidding and pools agai
 
 Fix: in production treat a missing `PAYMENT_MODE` as `off`; require the variable explicitly to open payments.
 
+**Fixed 2026-09-19.** `paymentsOpen()` now answers false in a production build unless `PAYMENT_MODE` is set to
+something other than `off`; outside a production build an unset value still means the local sandbox, so mock payments
+keep working without anyone setting it. Covered in `tests/unit/environment.test.ts`.
+
 ### F5 — Nothing enforces `env-check` at deploy time (medium)
 
 `scripts/env-check.ts` already knows the right answers: a deployed target requires `APP_BASE_URL`, `AUTH_MODE`,
@@ -123,6 +127,11 @@ Fix: in production treat a missing `PAYMENT_MODE` as `off`; require the variable
 what makes F4 reachable in the first place.
 
 Fix: `"buildCommand": "tsx scripts/env-check.ts production && next build"` in `vercel.json`.
+
+**Fixed 2026-09-19.** `vercel.json` now builds with `pnpm env:check ${APP_ENV:-production} && pnpm build`, so a
+deployment missing a variable fails at build rather than in front of a visitor. Checked against the real production
+values: complete environment exits 0; dropping `CRON_SECRET` or `PAYMENT_MODE`, or setting `DEV_SESSIONS=on`, exits 1;
+an unset `APP_ENV` falls back to the production rules and `APP_ENV=staging` checks the staging ones.
 
 ### F6 — The database connection is encrypted but not authenticated (medium)
 
@@ -137,12 +146,20 @@ Fix: `ssl: { rejectUnauthorized: true, ca: <Supabase CA> }`, or `'verify-full'` 
 The route ends in `catch { … failure() }` with no `logError`. A database outage, a bad migration or a bug is shown to
 the person as bad credentials and leaves nothing in the log.
 
+**Fixed 2026-09-19.** The catch now calls `logError('sign-in route failed', error)` before answering, which keeps the
+redaction `src/lib/log.ts` already applies — name, first message line, code, constraint, table, routine, four frames.
+
 ### F8 — Password sign-in answers faster for an address that does not exist (low)
 
 With no matching user row, `verifyPassword` is never called, so the scrypt work is skipped and the answer comes back
 measurably sooner. The body is identical; the timing is not, and that is enough to enumerate addresses.
 
 Fix: verify against a dummy hash when the row is missing.
+
+**Fixed 2026-09-19.** `DECOY_PASSWORD_HASH` (`src/lib/auth.ts`) is shaped like a stored hash, so an address with no
+account — or an account with no password, as every X and Google sign-up has — pays the same scrypt cost and still
+answers false. `tests/auth.test.ts` asserts both the shape (or `verifyPassword` would bail on the format and skip the
+work the fix depends on) and that it never verifies.
 
 ### F9 — The deployed cron runs daily; the jobs were written for every five minutes (informational)
 
@@ -185,3 +202,19 @@ The production surface added since the last audit holds up where it counts:
 - **The runtime.** Node 22 is not the Node 24 the deployment runs, and PostgreSQL 16 is not 18. Everything passing here
   is evidence, not the same evidence a run on the owner's machine would give.
 - `discovery-benchmark`, `brand-contrast`, `brand-shots`.
+
+## 6. Follow-up (2026-09-19)
+
+F4, F5, F7 and F8 are fixed, each noted under its finding above. Checks at that commit: `tsc` clean, vitest
+**447 passed / 3 skipped**, `release:check` every check PASS, secret scan clean, production build compiles, and the
+three browser sign-in specs (`auth-dialog`, `x-sign-in`, `google-sign-in`) **8 passed**.
+
+Still open, in the order they are worth doing:
+
+- **F2** (sign-in throttling per address, not per caller) — needs a migration for the IP counter, so it is the next
+  real piece of work rather than a small fix.
+- **F1** (no real Content-Security-Policy) — a nonce-based policy through middleware, report-only first.
+- **F3** (`add_email` never proves the address) — blocked on E5: there is no way to send the verification mail yet.
+- **F6** (the database connection accepts any certificate) — needs the Supabase CA and a connection to test against,
+  which this environment cannot reach.
+- **F9** (the cron runs daily, the jobs assume five minutes) — waits on the hosting plan, before payments open.

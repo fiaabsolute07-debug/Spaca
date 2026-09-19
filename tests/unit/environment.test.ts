@@ -28,4 +28,22 @@ describe('where the build runs and whether money moves (launch decisions 2026-09
     vi.stubEnv('PAYMENT_MODE', 'live');
     expect(auctionMoneyNote()).toBeNull();
   });
+
+  it('treats a missing PAYMENT_MODE as closed in a production build, and as the local sandbox outside one (F4)', () => {
+    // A deployment that loses the variable would otherwise advertise paying again, with no rail behind it.
+    vi.stubEnv('NODE_ENV', 'production');
+    vi.stubEnv('APP_ENV', 'production');
+    vi.stubEnv('PAYMENT_MODE', undefined);
+    expect(paymentsOpen()).toBe(false);
+    expect(auctionMoneyNote()).toBe('Payments are not open yet: collateral, bids and escrow start when they do.');
+    vi.stubEnv('PAYMENT_MODE', '');
+    expect(paymentsOpen()).toBe(false);
+    vi.stubEnv('PAYMENT_MODE', 'testnet');
+    expect(paymentsOpen()).toBe(true);
+
+    // Locally the mock provider still runs without anyone setting the variable.
+    vi.stubEnv('NODE_ENV', 'development');
+    vi.stubEnv('PAYMENT_MODE', undefined);
+    expect(paymentsOpen()).toBe(true);
+  });
 });

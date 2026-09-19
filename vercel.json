@@ -1,7 +1,13 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "regions": ["hnd1"],
+  "buildCommand": "pnpm env:check ${APP_ENV:-production} && pnpm build",
+  "regions": [
+    "hnd1"
+  ],
   "crons": [
-    { "path": "/api/cron/jobs", "schedule": "0 3 * * *" }
+    {
+      "path": "/api/cron/jobs",
+      "schedule": "0 3 * * *"
+    }
   ]
 }

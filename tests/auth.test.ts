@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { appSessionsEnabled, devSessionsEnabled, hashPassword, verifyPassword, hashSessionToken, isSameOrigin } from '../src/lib/auth';
+import { appSessionsEnabled, DECOY_PASSWORD_HASH, devSessionsEnabled, hashPassword, verifyPassword, hashSessionToken, isSameOrigin } from '../src/lib/auth';
 
 describe('local development password and session primitives', () => {
   it('uses randomized salts and rejects incorrect passwords', () => {
@@ -11,6 +11,10 @@ describe('local development password and session primitives', () => {
   });
   it('rejects malformed digests and oversized inputs', () => {
     expect(verifyPassword('password','scrypt:bad:bad')).toBe(false);
+    // The decoy an unknown address is verified against must look like a stored hash, or verifyPassword bails on the
+    // format and skips the scrypt work the timing fix depends on (audit F8).
+    expect(DECOY_PASSWORD_HASH).toMatch(/^scrypt:[a-f0-9]{32}:[a-f0-9]{128}$/);
+    expect(verifyPassword('anything at all', DECOY_PASSWORD_HASH)).toBe(false);
     expect(verifyPassword('x'.repeat(257),hashPassword('password'))).toBe(false);
   });
   it('stores a one-way fixed length digest of a token', () => {
