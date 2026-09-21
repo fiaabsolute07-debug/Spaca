@@ -190,6 +190,16 @@ export default async function ServicePage({
             {appStage() === 'local' ? 'Local sandbox: checkout uses simulated funds. ' : ''}Your reservation is time limited.
             Delivery begins after funding and a complete brief.
           </div>}
+          {/*
+            * The buyer's first question about a stranger on the internet is what happens to the money, and the page
+            * answered it nowhere. These are the order's own rules, in the same words the landing's questions use.
+            */}
+          <ul className="order-terms" aria-label="What happens after you book">
+            <li>You fund the order, and delivery begins after funding and a complete brief.</li>
+            <li>{num(s.revision_limit) === 1 ? 'One revision is included' : `${num(s.revision_limit)} revisions are included`}, at the scope agreed above.</li>
+            <li>The creator is paid when you approve, or when the {num(s.review_window_hours) || 72}-hour review window closes without a revision request or dispute.</li>
+            <li>If it still misses the agreed scope, open a dispute and payout pauses while a person reviews it.</li>
+          </ul>
           {actor && actor.id !== str(s.creator_id) && <ReportForm targetType="SERVICE" targetId={str(s.id)} returnTo={`/services/${str(s.id)}`} label="Report this service" />}
         </div>
       </aside>

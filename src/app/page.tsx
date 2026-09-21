@@ -29,7 +29,7 @@ const FAQ = [
   { q: 'How do I pay?', a: 'By card at launch. USDC and token reward pools are on testnet and not live yet. You never need a wallet to hire.' },
   { q: 'When does a creator get paid?', a: 'When you approve their delivery, or when the review window you agreed to at checkout closes without a revision request or dispute.' },
   { q: "What if the work isn't right?", a: 'Every order includes one revision. If it still misses the agreed scope, open a dispute and payout pauses while a person reviews it.' },
-  { q: 'What are the fees?', a: 'Fees are shown before you pay. [FEE POLICY — published before launch]' },
+  { q: 'What are the fees?', a: "The price on a service is what you agree with the creator, and it is shown before you book. spaca's own fee is not set yet — it is published before payments open, and nothing can be bought until then." },
   { q: 'What is an auction for?', a: 'A whitelist spot, a guaranteed mint or a pre-market allocation, sold to the highest bid. The seller locks collateral before the listing opens, your payment waits in escrow, and you get it back with the collateral if nothing is delivered.' },
   { q: 'Do creators connect their X account?', a: 'Only if they choose to. Connecting reads their public X profile once, so buyers see their photo and follower count; the access token is revoked immediately and spaca never posts for them.' },
   { q: 'How do I become a creator?', a: 'Apply with your X handle, the topics you cover and a few work samples. We are onboarding a small group of founding creators first.' },
@@ -114,9 +114,9 @@ export default async function LandingPage() {
 
       <section className={styles.finalCta}>
         <h2 className={styles.h2Large}>Your next launch deserves better than a group chat.</h2>
-        <p className={styles.lead}>Tell us what you are launching. We will match you with creators for a pilot campaign.</p>
+        <p className={styles.lead}>Say what you are launching and what you need. Creators apply with their own price, and you pick.</p>
         <div className={styles.ctaRow}>
-          <Link className={styles.buttonPrimary} href="/sign-up?role=buyer">Request early access</Link>
+          <Link className={styles.buttonPrimary} href="/sign-up?role=buyer">Post your first brief</Link>
           <Link className={styles.buttonOutline} href="/sign-up?role=creator">Apply as a creator</Link>
         </div>
       </section>
