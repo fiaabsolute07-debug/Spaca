@@ -28,6 +28,21 @@ function ActionPanel({ detail, route, signedIn }: { detail: ItemListingDetail; r
   const { listing, sale, role } = detail;
   const values = { listing_id: listing.id };
 
+  if (listing.status === 'AWAITING_COLLATERAL' && role !== 'seller') {
+    return <>
+      <div className="item-price-block">
+        <span className="item-label">Starting price</span>
+        <strong className="item-price item-price-large">{usd(listing.startingPrice)}</strong>
+      </div>
+      <p className="item-clock">
+        <span className="item-label">Ends in</span>
+        <Countdown to={listing.endsAt} serverNow={listing.serverNow} />
+      </p>
+      <PaymentsClosed>Bidding opens when payments open on spaca and the seller locks the collateral.</PaymentsClosed>
+      <p className="item-collateral-note">Seller collateral <strong className="item-money">{usd(listing.collateral)}</strong>, not locked yet. Once it is, a winner who does not receive the item by {date(listing.deliveryDueAt)} gets their payment back plus this collateral.</p>
+    </>;
+  }
+
   if (listing.status === 'AWAITING_COLLATERAL') {
     return <>
       <h2>Lock the collateral</h2>
@@ -164,7 +179,7 @@ export default async function ItemListingPage({ params, searchParams }: PageProp
       <div className="chip-row">
         <span className="chip">{listing.itemType}</span>
         <span className={`item-origin item-origin-${listing.origin.toLowerCase()}`}>{ORIGIN_LABEL[listing.origin]}</span>
-        <span className="chip">{LISTING_STATE[listing.status]}</span>
+        <span className="chip">{listing.status === 'AWAITING_COLLATERAL' && detail.role !== 'seller' ? 'Bidding not open yet' : LISTING_STATE[listing.status]}</span>
       </div>
       <h1>{listing.title}</h1>
       <p className="item-head-meta">

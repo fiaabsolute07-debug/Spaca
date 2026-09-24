@@ -32,8 +32,8 @@ export function ItemCard({ listing, serverNow }: { listing: ListingCard; serverN
       </span>
     </span>
     <span className="item-card-foot">
-      <span>Collateral {usd(listing.collateral)}</span>
-      <span>{listing.bidCount} {listing.bidCount === 1 ? 'bid' : 'bids'}</span>
+      <span>Collateral {usd(listing.collateral)}{listing.collateralLocked ? '' : ', not locked yet'}</span>
+      <span>{listing.collateralLocked ? `${listing.bidCount} ${listing.bidCount === 1 ? 'bid' : 'bids'}` : 'Bidding not open'}</span>
       {listing.buyNowPrice != null && listing.bidCount === 0 ? <span>Buy now {usd(listing.buyNowPrice)}</span> : null}
     </span>
   </Link>;

@@ -1,18 +1,20 @@
 /**
- * Reads for web3 item auctions (drizzle/0033). Listings that are not open yet (collateral missing) or were cancelled
- * are visible to their seller only. Bidders are shown as "Bidder 1, 2…" in order of their first bid, and as "You" to
+ * Reads for web3 item auctions (drizzle/0033). Listings that are not open yet (collateral missing) are visible to their
+ * seller only while payments are open; while payments are closed nobody can lock collateral, so they show to everyone
+ * as not open for bidding yet. Cancelled listings are the seller's only. Bidders are shown as "Bidder 1, 2…" in order of their first bid, and as "You" to
  * themselves. What the buyer gave for delivery and the seller's proof are visible to the two of them only.
  */
 import type { Actor } from '@/lib/auth';
 import { UUID_PATTERN, type Row } from '@/lib/commands';
 import { sql } from '@/lib/db';
+import { paymentsOpen } from '@/lib/environment';
 import type { XProfileView } from '@/lib/x-profile';
 import { getXProfileViews } from '@/modules/x/service';
 
 export type ListingCard = {
   id: string; title: string; itemType: string; origin: 'PROJECT' | 'RESALE'; projectName: string; network: string; quantity: string;
   startingPrice: number; currentBid: number | null; buyNowPrice: number | null; collateral: number; bidCount: number;
-  startsAt: string; endsAt: string; upcoming: boolean; sellerName: string;
+  startsAt: string; endsAt: string; upcoming: boolean; sellerName: string; collateralLocked: boolean;
   /** The first picture's card copy (or the original when there is none), as an /api/item-images id. */
   coverId: string | null;
 };
@@ -31,7 +33,7 @@ function card(row: Row): ListingCard {
     startingPrice: num(row.starting_price_minor), currentBid: row.current_bid_minor == null ? null : num(row.current_bid_minor),
     buyNowPrice: row.buy_now_price_minor == null ? null : num(row.buy_now_price_minor), collateral: num(row.collateral_minor),
     bidCount: num(row.bid_count), startsAt: iso(row.starts_at), endsAt: iso(row.ends_at), upcoming: Boolean(row.upcoming), sellerName: String(row.seller_name),
-    coverId: row.cover_id ? String(row.cover_id) : null,
+    collateralLocked: row.status === 'OPEN', coverId: row.cover_id ? String(row.cover_id) : null,
   };
 }
 
@@ -39,14 +41,15 @@ function card(row: Row): ListingCard {
 export async function getItemAuctionBoard(filters: { type?: string; origin?: string }) {
   const type = (filters.type ?? '').trim().slice(0, 40);
   const origin = filters.origin === 'PROJECT' || filters.origin === 'RESALE' ? filters.origin : '';
+  const pendingShown = !paymentsOpen();
   const [listings, types, recent] = await Promise.all([
     sql<Row[]>`select l.*,u.display_name as seller_name,b.amount_minor as current_bid_minor,(now() < l.starts_at) as upcoming,${COVER} as cover_id
       from app.item_listings l join app.users u on u.id=l.seller_id left join app.item_bids b on b.id=l.current_bid_id
-      where l.status='OPEN' and l.ends_at > now() and u.status='ACTIVE'
+      where (l.status='OPEN' or (${pendingShown} and l.status='AWAITING_COLLATERAL')) and l.ends_at > now() and u.status='ACTIVE'
         and (${type} = '' or lower(l.item_type) = lower(${type})) and (${origin} = '' or l.origin = ${origin})
       order by (now() < l.starts_at), l.ends_at limit 60`,
     sql<Row[]>`select min(l.item_type) as item_type,count(*)::int as n from app.item_listings l
-      where l.status='OPEN' and l.ends_at > now() group by lower(l.item_type) order by n desc, min(l.item_type) limit 12`,
+      where (l.status='OPEN' or (${pendingShown} and l.status='AWAITING_COLLATERAL')) and l.ends_at > now() group by lower(l.item_type) order by n desc, min(l.item_type) limit 12`,
     sql<Row[]>`select l.id,l.title,l.item_type,l.project_name,s.price_minor,s.kind,s.created_at from app.item_sales s join app.item_listings l on l.id=s.listing_id
       where s.status not in ('PAYMENT_EXPIRED') order by s.created_at desc limit 8`,
   ]);
@@ -91,7 +94,7 @@ export async function getItemListing(id: string, actor: Actor | null) {
     left join app.item_bids b on b.id=l.current_bid_id where l.id=${id}`;
   if (!row) return null;
   const seller = actor?.id === String(row.seller_id);
-  if (!seller && (row.status === 'AWAITING_COLLATERAL' || row.status === 'CANCELLED')) return null;
+  if (!seller && (row.status === 'CANCELLED' || (row.status === 'AWAITING_COLLATERAL' && paymentsOpen()))) return null;
   const operator = Boolean(actor?.roles.some((role) => ['finance', 'admin', 'support'].includes(role)));
   const [bidRows, [saleRow], xProfiles, imageRows] = await Promise.all([
     sql<Row[]>`select amount_minor,sequence,created_at,bidder_id from app.item_bids where listing_id=${id} order by sequence desc limit 100`,

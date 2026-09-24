@@ -111,6 +111,21 @@ describe.skipIf(!RUN_DB)('Web3 item auctions (drizzle/0033)', () => {
     expect((await queries.getItemAuctionBoard({ origin: 'RESALE' })).live.some((listing) => listing.id === id)).toBe(false);
   });
 
+  it('while payments are closed, a listing waiting for collateral shows to everyone as not open for bidding', async () => {
+    const seller = await createUser('item-closed-seller', ['creator']);
+    const created = await command(seller, listingFields({ title: 'Listing shown before payments open' }));
+    const id = String(created.body.id);
+    vi.stubEnv('PAYMENT_MODE', 'off');
+    try {
+      expect((await queries.getItemAuctionBoard({})).live.find((listing) => listing.id === id)).toMatchObject({ collateralLocked: false, bidCount: 0 });
+      expect((await queries.getItemListing(id, null))?.listing).toMatchObject({ status: 'AWAITING_COLLATERAL' });
+    } finally {
+      vi.unstubAllEnvs();
+    }
+    expect((await queries.getItemAuctionBoard({})).live.some((listing) => listing.id === id)).toBe(false);
+    expect(await queries.getItemListing(id, null)).toBeNull();
+  });
+
   it('bids climb by the increment, Buy now ends with the first bid, and the highest bid wins at the end', async () => {
     const seller = await createUser('item-bid-seller', ['creator']);
     const alice = await createUser('item-alice', ['buyer']);
