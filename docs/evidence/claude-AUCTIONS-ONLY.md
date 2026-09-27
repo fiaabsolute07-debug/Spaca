@@ -48,7 +48,13 @@ sandbox X and Google, nothing deployed, nothing sent.
   and footer logos); fixed in the spec, then 5/5.
 - Screenshots checked by eye at 1280 px and 375 px: landing, board signed out and in (Account menu open), sign-up,
   settings, support, 404. No horizontal scroll on the phone landing.
-- Full-scope regression (`playwright test --project marketplace` against `MARKETPLACE_SCOPE=full`): FULL_SUITE_PENDING
+- Full-scope regression (`playwright test --project marketplace`, every existing spec, against a dev server with
+  `MARKETPLACE_SCOPE=full`): **81 passed, 1 failed, 1 skipped** in 25.7 minutes. The failure was
+  `work-samples.spec.ts`, whose request met `ECONNREFUSED` while the dev server restarted itself ("Server is
+  approaching the used memory threshold, restarting..." in its log); run again alone it **passed**. The skip is the
+  existing guard for a services strip with nothing to show. So the whole marketplace comes back as it was.
+- Production build (`next build --webpack`, `NEXT_DIST_DIR=.next-scan`, no `MARKETPLACE_SCOPE`): compiles, and its
+  `routes-manifest.json` carries the ten redirects, each 307 to `/auctions`.
 
 ## Not done / known limits
 

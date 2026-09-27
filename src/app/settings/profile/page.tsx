@@ -1,7 +1,7 @@
-import { auctionsOnly } from '@/lib/scope';
 import Link from 'next/link';
 import { Mail } from 'lucide-react';
 import { getDashboardData } from '@/lib/read-model';
+import { auctionsOnly } from '@/lib/scope';
 import { Avatar } from '@/components/avatar';
 import { FileUploadField } from '@/components/files/file-upload-field';
 import { SelectField } from '@/components/select';
