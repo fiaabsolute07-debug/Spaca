@@ -26,6 +26,8 @@ type Props = {
   google: { available: boolean; sandbox: boolean };
   /** Whether the dialog offers email and password at all (EMAIL_SIGN_IN). */
   emailSignIn: boolean;
+  /** Only auctions are shown (src/lib/scope.ts): new accounts are buyer accounts, so there is no type to choose. */
+  auctionsOnly?: boolean;
 };
 
 type AccountChoice = 'buyer' | 'creator';
@@ -35,6 +37,7 @@ const BENEFITS = {
   signup: ['One brief, many creators', 'Every order has a clear scope and review', 'Creators are paid when their work is approved'],
   buyer: ['Post one brief and hear from many creators', 'Pay each creator when you approve their work', 'No wallet needed to hire'],
   creator: ['Offer services with a clear scope and price', 'Apply to campaigns from web3 projects', 'Get paid when your work is approved'],
+  auctions: ['Whitelist spots, mints and allocations, bid in the open', 'The seller locks collateral before bidding opens', 'Your payment waits in escrow until you confirm delivery'],
 };
 
 /** Buyer and creator accounts are separate (2026-09-15), so the choice comes first and is made on purpose. */
@@ -49,7 +52,7 @@ const ACCOUNT_CHOICES: { value: AccountChoice; title: string; line: string; icon
  * "Continue with Google" are form posts to /api/auth/x and /api/auth/google; email sign-in posts to /api/auth as JSON so
  * errors show in place; test accounts (local sandbox only) post to /api/dev/session.
  */
-export function AuthDialog({ mode: initialMode, variant, returnTo, defaultRole = null, initialError = null, initialMessage = null, testAccounts, x, google, emailSignIn }: Props) {
+export function AuthDialog({ mode: initialMode, variant, returnTo, defaultRole = null, initialError = null, initialMessage = null, testAccounts, x, google, emailSignIn, auctionsOnly = false }: Props) {
   const router = useRouter();
   const [mode, setMode] = useState(initialMode);
   const [view, setView] = useState<'options' | 'email'>('options');
@@ -121,9 +124,9 @@ export function AuthDialog({ mode: initialMode, variant, returnTo, defaultRole =
     onClick={(event) => event.stopPropagation()}
   >
     <div className="auth-art" aria-hidden="true">
-      <h2>{!signup ? 'Launches start here' : role === 'creator' ? 'Get hired for the work you do best' : role === 'buyer' ? 'Find the voices your launch needs' : 'Good work starts with a hello'}</h2>
+      <h2>{auctionsOnly ? 'Web3 items, bid in the open' : !signup ? 'Launches start here' : role === 'creator' ? 'Get hired for the work you do best' : role === 'buyer' ? 'Find the voices your launch needs' : 'Good work starts with a hello'}</h2>
       <ul>
-        {BENEFITS[signup && role ? role : mode].map((benefit) => <li key={benefit}><Check size={18} strokeWidth={2.5} /> {benefit}</li>)}
+        {BENEFITS[auctionsOnly ? 'auctions' : signup && role ? role : mode].map((benefit) => <li key={benefit}><Check size={18} strokeWidth={2.5} /> {benefit}</li>)}
       </ul>
       <div className="auth-art-mark"><SpacaMark size={220} /></div>
     </div>
@@ -138,7 +141,7 @@ export function AuthDialog({ mode: initialMode, variant, returnTo, defaultRole =
       {initialMessage && <p className="notice" role="status">{initialMessage}</p>}
 
       {view === 'options' ? <div className="auth-options">
-        {signup && <fieldset className="account-choice">
+        {signup && !auctionsOnly && <fieldset className="account-choice">
           <legend>Choose your account type</legend>
           {ACCOUNT_CHOICES.map((choice) => <label key={choice.value} className="account-choice-card">
             <input type="radio" name="account_choice" value={choice.value} checked={role === choice.value} onChange={() => setRole(choice.value)} />

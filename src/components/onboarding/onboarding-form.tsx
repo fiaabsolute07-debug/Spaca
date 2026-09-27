@@ -50,6 +50,17 @@ const COPY = {
   },
 } as const;
 
+/** A buyer account while only auctions are shown (src/lib/scope.ts): it lists items and bids, and hires nobody. */
+const AUCTION_BUYER_COPY = {
+  ...COPY.buyer,
+  eyebrow: 'Account · Set up',
+  lead: 'Bidders look at who is selling before anything else. Add your logo, the project name and a short introduction.',
+  photoHelp: 'Your project mark. Bidders see it next to every item you list.',
+  nameHelp: 'Shown on every item you list.',
+  waits: 'Until setup is done you can look around and bid, but listing an item waits.',
+  wallet: 'Link a wallet you prove you control, if you want one on your profile. You can also do this later from your profile.',
+};
+
 const hostOf = (value: string) => {
   const trimmed = value.trim();
   if (/^@[A-Za-z0-9_]{1,15}$/.test(trimmed)) return `x.com/${trimmed.slice(1)}`;
@@ -61,7 +72,7 @@ const hostOf = (value: string) => {
  * link, with a live preview of how others will see it. Sends `complete_onboarding`; without JavaScript it is a plain
  * form post and the server gives the same answers.
  */
-export function OnboardingForm({ type, next, idempotencyKey, initial, wallets, networks, x = null }: {
+export function OnboardingForm({ type, next, idempotencyKey, initial, wallets, networks, x = null, auctionsOnly = false }: {
   type: AccountType;
   next: string;
   idempotencyKey: string;
@@ -70,9 +81,11 @@ export function OnboardingForm({ type, next, idempotencyKey, initial, wallets, n
   networks: { chain_id: number; name: string; mode: string }[];
   /** Creators only: their connected X account, if any, and whether connecting is possible here. */
   x?: { profile: XProfileView | null; available: boolean; sandbox: boolean } | null;
+  /** Only auctions are shown (src/lib/scope.ts): a buyer is asked in the words of someone who lists items. */
+  auctionsOnly?: boolean;
 }) {
   const creator = type === 'creator';
-  const copy = COPY[type];
+  const copy = auctionsOnly && !creator ? AUCTION_BUYER_COPY : COPY[type];
   const formId = useId();
   const ids = { photo: useId(), name: useId(), handle: useId(), headline: useId(), bio: useId(), link: useId(), problem: useId() };
   const fileInput = useRef<HTMLInputElement>(null);
@@ -292,7 +305,7 @@ export function OnboardingForm({ type, next, idempotencyKey, initial, wallets, n
       <aside className="onboard-preview" aria-label="Preview">
         <p className="onboard-preview-label">How others see you</p>
         <div className={`onboard-card onboard-card-${type}`}>
-          {!creator && <p className="onboard-card-kicker">Campaign by</p>}
+          {!creator && <p className="onboard-card-kicker">{auctionsOnly ? 'Listed by' : 'Campaign by'}</p>}
           <div className="onboard-card-who">
             <span className="onboard-card-face">
               {/* eslint-disable-next-line @next/next/no-img-element -- local preview or short-lived signed redirect */}

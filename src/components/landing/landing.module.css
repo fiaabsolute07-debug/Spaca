@@ -281,6 +281,11 @@
 .buttonOutline:hover { border-color: var(--text); }
 .buttonPrimary.buttonOnDark { background: #ffffff; color: #000000 !important; }
 .buttonPrimary.buttonOnDark:hover { background: #e8e8ed; }
+/* The auctions-only hero (src/lib/scope.ts): a line under the headline, and a second action that sits on the video in
+   either theme. */
+.buttonOutline.buttonOnDark { border-color: rgba(255, 255, 255, 0.4); color: #ffffff !important; }
+.buttonOutline.buttonOnDark:hover { border-color: #ffffff; }
+.heroLead { max-width: 640px; font-size: 19px; line-height: 1.45; color: rgba(255, 255, 255, 0.78); }
 
 .footer { background: var(--bg); border-top: 1px solid var(--line); padding: 72px 0 32px; color: var(--text-2); transition: background-color 0.3s ease; }
 .footerGrid { display: grid; grid-template-columns: minmax(0, 1.6fr) repeat(4, minmax(0, 1fr)); gap: 40px 48px; }

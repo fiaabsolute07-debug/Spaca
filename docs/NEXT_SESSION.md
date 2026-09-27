@@ -16,7 +16,8 @@
   - `PUBLISH`: creator đăng bài trên kênh của mình;
   - `ACCESS`: buổi tư vấn, hai bên tự hẹn giờ trong tin nhắn;
   - `DIGITAL`: file bán sẵn.
-- **Ba cách mua:** Book Now, Request/hire (campaign nhiều creator), Auction (tạm hoãn mở rộng).
+- **Ba cách mua:** Book Now, Request/hire (campaign nhiều creator), Auction (item web3).
+- **Từ 2026-09-27 app chỉ hiện Auction** (user: "rút gọn chỉ còn phần auction", chọn "ẩn phần khác, giữ code và DB"). Dịch vụ, campaign, đơn, Funds, Overview bị ẩn và chuyển hướng về `/auctions`; `MARKETPLACE_SCOPE=full` hiện lại toàn bộ. Xem `src/lib/scope.ts`, `docs/UI_CONTRACT.md` mục 2026-09-27, `docs/evidence/claude-AUCTIONS-ONLY.md`.
 - **Tài khoản:** mỗi tài khoản là buyer **hoặc** creator. Tài khoản test cũ có thể có cả hai.
 - **Thanh toán:** thẻ và chuyển khoản ngân hàng qua mock provider. Crypto qua escrow non-custodial `SpacaEscrow`, mới chạy LOCAL devnet/anvil, **chưa deploy Arc testnet** (ví deployer chưa có USDC testnet).
 - **Stack:** Next.js 16 (webpack) + React 19 + TypeScript 7, postgres.js, PostgreSQL 18 embedded, Vitest, Playwright, Foundry.
@@ -42,7 +43,7 @@ Nghĩa là:
 - **Nền crypto nhắm Arc testnet.** Được truy cập mạng, dùng Foundry, cài package.
 - **4a:** escrow model A, non-custodial (`docs/adr/002-escrow-custody.md`).
 - **6: 1:** publish dịch vụ chỉ cần 1 sample đã duyệt.
-- **Đấu giá tạm hoãn**, không mở rộng.
+- **Đấu giá tạm hoãn**, không mở rộng. *(Đã thay bằng quyết định 2026-09-27: app chỉ hiện đấu giá item web3.)*
 - Chạy hết plan, không hỏi thêm, xong thì tự audit (đã audit xong: `docs/evidence/claude-AUDIT-2026-09-15.md`).
 
 ### 1.2 Quyết định sản phẩm/UI của user — KHÔNG được làm ngược lại

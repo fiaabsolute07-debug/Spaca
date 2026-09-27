@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { redirect } from 'next/navigation';
-import { accountTypeOf } from '@/lib/account';
+import { accountTypeOf, homePath } from '@/lib/account';
+import { auctionsOnly } from '@/lib/scope';
 import { nextPath, onboardingPath } from '@/lib/onboarding';
 import { getAccountSummary } from '@/lib/read-model';
 import { listEnabledNetworks } from '@/modules/crypto/registry';
@@ -27,7 +28,7 @@ export default async function WelcomePage({ searchParams }: PageProps) {
   const { actor, prompt } = await requireActorOrLoginPrompt(onboardingPath(next), query);
   if (!actor) return prompt;
   const type = accountTypeOf(actor);
-  if (!type) redirect('/dashboard');
+  if (!type) redirect(homePath(true));
   const account = await getAccountSummary(actor);
   if (account.onboarded) redirect(next);
   const [wallets, networks, xProfiles] = await Promise.all([listVerifiedWallets(actor.id), listEnabledNetworks(), getXProfileViews([actor.id])]);
@@ -54,6 +55,7 @@ export default async function WelcomePage({ searchParams }: PageProps) {
       x={type === 'creator' ? { profile: x, available: xConnectAvailable(), sandbox: xMode() === 'mock' } : null}
       wallets={wallets.map((wallet) => ({ id: String(wallet.id), address: String(wallet.address), network: String(wallet.network_name) }))}
       networks={networks}
+      auctionsOnly={auctionsOnly()}
     />
   </main>;
 }

@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Briefcase, ChevronDown, ChevronRight, ClipboardList, LayoutDashboard, LogOut, Megaphone, Send, UserRound, Wallet, type LucideIcon } from 'lucide-react';
+import { Briefcase, ChevronDown, ChevronRight, ClipboardList, Gavel, LayoutDashboard, LogOut, Megaphone, Send, UserRound, Wallet, type LucideIcon } from 'lucide-react';
 import { useEffect, useId, useRef, useState } from 'react';
 import type { AccountType } from '@/lib/account';
 import type { AccountSummary } from '@/lib/read-model';
@@ -27,6 +27,8 @@ const BUYER_LINKS: MenuLink[] = [
   { href: '/buyer/orders', label: 'Orders', icon: ClipboardList },
   { href: '/buyer/requests', label: 'My campaigns', icon: Megaphone },
 ];
+/** While only auctions are shown (src/lib/scope.ts): the board, where your listings and bids sit above the rest. */
+const AUCTION_LINKS: MenuLink[] = [{ href: '/auctions', label: 'My auctions', icon: Gavel }];
 const PROFILE_LINK: MenuLink = { href: '/settings/profile', label: 'Profile', icon: UserRound };
 
 /** 0x12ab…9f3c: enough to recognise an address without reading all of it. */
@@ -50,13 +52,13 @@ function activeHref(pathname: string, links: MenuLink[]): string | null {
  * Buyer / Creator label with the handle — then one short list with icons (the account's own pages, Wallet with its
  * state, Profile) and Log out. No group headings: the list is short enough to read at a glance.
  */
-export function AccountMenu({ type, account }: { type: AccountType | null; account: AccountSummary }) {
+export function AccountMenu({ type, account, auctionsOnly = false }: { type: AccountType | null; account: AccountSummary; auctionsOnly?: boolean }) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const root = useRef<HTMLDivElement>(null);
   const button = useRef<HTMLButtonElement>(null);
   const panelId = useId();
-  const links = type === 'creator' ? CREATOR_LINKS : BUYER_LINKS;
+  const links = auctionsOnly ? AUCTION_LINKS : type === 'creator' ? CREATOR_LINKS : BUYER_LINKS;
   const active = activeHref(pathname, [...links, PROFILE_LINK]);
   const close = () => setOpen(false);
 
@@ -126,7 +128,8 @@ export function AccountMenu({ type, account }: { type: AccountType | null; accou
   </div>;
 }
 
-function parentOf(pathname: string, type: AccountType | null): NavLink {
+function parentOf(pathname: string, type: AccountType | null, auctionsOnly: boolean): NavLink {
+  if (auctionsOnly) return { href: '/auctions', label: 'Auctions' };
   if (/^\/orders\//.test(pathname)) return { href: '/buyer/orders', label: 'Orders' };
   if (pathname === '/creator/services/new') return { href: '/creator/services', label: 'My services' };
   if (pathname === '/buyer/requests/new') return { href: '/buyer/requests', label: 'My campaigns' };
@@ -140,10 +143,10 @@ function parentOf(pathname: string, type: AccountType | null): NavLink {
 const NO_BACK = new Set(['/dashboard', '/explore', '/requests', '/auctions', '/funds', '/welcome']);
 
 /** Back link above every other workspace page; it goes to the page's parent in the workspace. */
-export function WorkspaceBack({ type }: { type: AccountType | null }) {
+export function WorkspaceBack({ type, auctionsOnly = false }: { type: AccountType | null; auctionsOnly?: boolean }) {
   const pathname = usePathname();
   // Campaign tabs are marketplace sections reached from the header, like the lists above.
   if (NO_BACK.has(pathname) || pathname.startsWith('/campaigns/')) return null;
-  const parent = parentOf(pathname, type);
+  const parent = parentOf(pathname, type, auctionsOnly);
   return <Link className="workspace-back" href={parent.href}><span aria-hidden>‹</span> Back to {parent.label}</Link>;
 }

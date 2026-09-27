@@ -6,7 +6,23 @@ import { chromium, type FullConfig } from '@playwright/test';
  * the journeys use before any test runs, so failures reflect the app rather than a cold compiler.
  */
 export default async function globalSetup(config: FullConfig) {
-  const baseURL = String(config.projects[0]?.use.baseURL ?? 'http://127.0.0.1:3100');
+  for (const project of config.projects) {
+    const baseURL = String(project.use.baseURL ?? 'http://127.0.0.1:3100');
+    // A server that does not answer has nothing to warm; a project that needs it fails on its own.
+    if (!(await fetch(new URL('/', baseURL), { signal: AbortSignal.timeout(90_000) }).then(() => true, () => false))) continue;
+    if (project.name === 'auctions-only') await warmAuctionsOnly(baseURL);
+    else await warmMarketplace(baseURL);
+  }
+}
+
+/** Only auctions are shown (src/lib/scope.ts): the pages that are left. */
+async function warmAuctionsOnly(baseURL: string) {
+  for (const path of ['/auctions', '/auctions/new', '/sign-in', '/sign-up', '/welcome', '/settings/profile', '/notifications', '/support', '/sitemap.xml']) {
+    await fetch(new URL(path, baseURL), { signal: AbortSignal.timeout(90_000) }).catch(() => undefined);
+  }
+}
+
+async function warmMarketplace(baseURL: string) {
   const missing = '00000000-0000-4000-8000-000000000000';
   const paths = ['/', '/explore', '/requests', '/auctions', '/sign-in', '/sign-up', '/dashboard', '/buyer/orders', '/buyer/requests', '/buyer/requests/new',
     '/creator/services', '/creator/services/new', '/creator/requests', '/settings/profile', '/admin', '/admin/flags', `/orders/${missing}`, `/services/${missing}`, `/requests/${missing}`];

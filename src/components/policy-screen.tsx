@@ -3,6 +3,7 @@ import { Notices } from '@/components/notices';
 import { PageHeading } from '@/components/page-heading';
 import type { Query } from '@/components/page-props';
 import { appStage } from '@/lib/environment';
+import { auctionsOnly } from '@/lib/scope';
 
 export type PolicyRoute = '/terms' | '/privacy' | '/refund-policy' | '/support' | '/reset-password';
 export function PolicyScreen({
@@ -27,7 +28,13 @@ export function PolicyScreen({
     />
     <div className="panel">
       {notices}
-      {route === '/support' ? <>
+      {route === '/support' && auctionsOnly() ? <>
+        <h2>Get help with an auction</h2>
+        <p>
+          Open the listing to lock collateral, pay, mark delivery or raise a dispute; a dispute goes to a person on the spaca team.{local ? ' This local environment has no external support inbox and sends no email.' : ''}
+        </p>
+        <Link className="button button-dark" href="/auctions">Open your auctions</Link>
+      </> : route === '/support' ? <>
         <h2>Get help with an order</h2>
         <p>
           Open your order workspace to send a message or raise a dispute.{local ? ' This local environment has no external support inbox and sends no email.' : ''}

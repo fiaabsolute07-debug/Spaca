@@ -1,3 +1,4 @@
+import { auctionsOnly } from '@/lib/scope';
 import Link from 'next/link';
 import { Mail } from 'lucide-react';
 import { getDashboardData } from '@/lib/read-model';
@@ -195,7 +196,7 @@ export default async function ProfilePage({
               <span aria-hidden="true">{check.done ? '✓' : '○'}</span> {check.label}{check.done ? '' : ' (to do)'}
             </li>)}
           </ul>
-          {profile.handle ? <Link className="text-link" href={`/creators/${str(profile.handle)}`}>View public profile ›</Link> : null}
+          {profile.handle && !auctionsOnly() ? <Link className="text-link" href={`/creators/${str(profile.handle)}`}>View public profile ›</Link> : null}
         </section>
       </aside>
     </div>

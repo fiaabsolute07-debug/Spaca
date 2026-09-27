@@ -1,5 +1,6 @@
 /** Public SEO helpers (P5-06): canonical URLs from APP_BASE_URL and sitemap entries for public eligible records only. */
 import { sql } from './db';
+import { auctionsOnly } from './scope';
 
 type Row = Record<string, unknown>;
 
@@ -15,12 +16,15 @@ export function canonicalUrl(path: string): string {
 export const PRIVATE_PATH_PREFIXES = ['/orders', '/dashboard', '/admin', '/buyer', '/creator', '/settings', '/notifications', '/api', '/sign-in', '/sign-up', '/reset-password'] as const;
 
 export async function getSitemapEntries(): Promise<{ url: string; lastModified: Date }[]> {
+  // While only auctions are shown (src/lib/scope.ts), the other sections' addresses redirect, so they are not listed.
+  const auctionsOnlyScope = auctionsOnly();
+  const none = Promise.resolve([] as Row[]);
   const [services, creators, requests, auctions] = await Promise.all([
-    sql<Row[]>`select s.id,greatest(s.updated_at,v.created_at) as modified from app.services s join app.service_versions v on v.id=s.published_version_id
+    auctionsOnlyScope ? none : sql<Row[]>`select s.id,greatest(s.updated_at,v.created_at) as modified from app.services s join app.service_versions v on v.id=s.published_version_id
       join app.users u on u.id=s.creator_id where s.status='PUBLISHED' and u.status='ACTIVE' and not u.is_test order by s.id limit 45000`,
-    sql<Row[]>`select p.handle,p.updated_at as modified from app.profiles p join app.users u on u.id=p.user_id
+    auctionsOnlyScope ? none : sql<Row[]>`select p.handle,p.updated_at as modified from app.profiles p join app.users u on u.id=p.user_id
       where u.status='ACTIVE' and not u.is_test and exists (select 1 from app.services s where s.creator_id=u.id and s.status='PUBLISHED') order by p.handle limit 45000`,
-    sql<Row[]>`select r.id,r.updated_at as modified from app.requests r join app.users u on u.id=r.buyer_id
+    auctionsOnlyScope ? none : sql<Row[]>`select r.id,r.updated_at as modified from app.requests r join app.users u on u.id=r.buyer_id
       where r.status='OPEN' and r.application_deadline > now() and not u.is_test order by r.id limit 45000`,
     // Web3 item auctions that are open (drizzle/0033); listings still waiting for collateral are not public.
     sql<Row[]>`select l.id,l.updated_at as modified from app.item_listings l join app.users u on u.id=l.seller_id
@@ -29,7 +33,7 @@ export async function getSitemapEntries(): Promise<{ url: string; lastModified: 
   const date = (value: unknown) => (value instanceof Date ? value : new Date(String(value)));
   return [
     { url: canonicalUrl('/'), lastModified: new Date() },
-    { url: canonicalUrl('/explore'), lastModified: new Date() },
+    { url: canonicalUrl(auctionsOnlyScope ? '/auctions' : '/explore'), lastModified: new Date() },
     ...services.map((row) => ({ url: canonicalUrl(`/services/${row.id}`), lastModified: date(row.modified) })),
     ...creators.map((row) => ({ url: canonicalUrl(`/creators/${row.handle}`), lastModified: date(row.modified) })),
     ...requests.map((row) => ({ url: canonicalUrl(`/requests/${row.id}`), lastModified: date(row.modified) })),

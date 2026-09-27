@@ -64,16 +64,17 @@ const HOVER_CLOSE_MS = 160;
 /**
  * Header navigation: Explore and Campaigns open a panel with a featured action on the left and the ways in on the right;
  * Auctions stays a plain link. A panel opens on hover or click, and closes on Escape, a click outside, leaving it with
- * the pointer, or following one of its links. The section the page belongs to is marked on its trigger.
+ * the pointer, or following one of its links. The section the page belongs to is marked on its trigger. While only
+ * auctions are shown (src/lib/scope.ts), Auctions is the whole navigation.
  */
-export function HeaderNav({ type = null }: { type?: AccountType | null }) {
+export function HeaderNav({ type = null, auctionsOnly = false }: { type?: AccountType | null; auctionsOnly?: boolean }) {
   const pathname = usePathname();
   const [open, setOpen] = useState<Menu['key'] | null>(null);
   const root = useRef<HTMLElement>(null);
   const triggers = useRef<Partial<Record<Menu['key'], HTMLButtonElement | null>>>({});
   const closeTimer = useRef<number | undefined>(undefined);
   const baseId = useId();
-  const menus = menusFor(type);
+  const menus = auctionsOnly ? [] : menusFor(type);
 
   useEffect(() => setOpen(null), [pathname]);
   useEffect(() => {

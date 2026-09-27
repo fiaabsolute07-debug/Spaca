@@ -1,5 +1,6 @@
 import { appSessionsEnabled, devSessionsEnabled } from '@/lib/auth';
 import { emailSignInEnabled } from '@/lib/environment';
+import { auctionsOnly } from '@/lib/scope';
 import { verifiedNotice } from '@/lib/notices';
 import { xMode } from '@/modules/x/provider';
 import { googleMode } from '@/modules/google/provider';
@@ -23,14 +24,19 @@ const safePath = (value: string) => (value.startsWith('/') && !value.startsWith(
 /** Server wrapper shared by the intercepted dialog and the direct /sign-in and /sign-up pages. */
 export function AuthEntry({ mode, variant, query }: { mode: 'signin' | 'signup'; variant: 'modal' | 'page'; query: Query }) {
   const showTestAccounts = devSessionsEnabled();
+  // While only auctions are shown (src/lib/scope.ts), every new account is a buyer account: it can list items and bid,
+  // and a creator account could list resale items but never bid. The test personas land on the auction board.
+  const auctions = auctionsOnly();
+  const testAccounts = auctions ? TEST_ACCOUNTS.map((account) => (account.returnTo === '/admin' ? account : { ...account, returnTo: '/auctions' })) : TEST_ACCOUNTS;
   return <AuthDialog
     mode={mode}
     variant={variant}
     returnTo={safePath(text(query, 'return_to'))}
-    defaultRole={text(query, 'role') === 'creator' ? 'creator' : text(query, 'role') === 'buyer' ? 'buyer' : null}
+    auctionsOnly={auctions}
+    defaultRole={auctions ? 'buyer' : text(query, 'role') === 'creator' ? 'creator' : text(query, 'role') === 'buyer' ? 'buyer' : null}
     initialError={verifiedNotice(query, 'error')}
     initialMessage={verifiedNotice(query, 'message')}
-    testAccounts={showTestAccounts ? TEST_ACCOUNTS : []}
+    testAccounts={showTestAccounts ? testAccounts : []}
     x={{ available: appSessionsEnabled() && xMode() !== 'off', sandbox: xMode() === 'mock' }}
     google={{ available: appSessionsEnabled() && googleMode() !== 'off', sandbox: googleMode() === 'mock' }}
     emailSignIn={emailSignInEnabled()}

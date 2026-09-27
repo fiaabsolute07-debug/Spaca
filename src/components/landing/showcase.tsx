@@ -114,14 +114,17 @@ function AuctionTile({ listing, serverNow }: { listing: Row; serverNow: string }
   </Link>;
 }
 
-export function AuctionsStrip({ auctions, serverNow }: { auctions: Row[]; serverNow: string }) {
+/** `title` and `blurb` change the heading where auctions are the whole landing rather than a third way to buy. */
+export function AuctionsStrip({ auctions, serverNow, title = 'A third way to buy.', blurb = 'Whitelist spots, guaranteed mints and pre-market allocations, bid for in the open.' }: {
+  auctions: Row[]; serverNow: string; title?: string; blurb?: string;
+}) {
   return <section id="auctions" className={styles.stripSection} aria-labelledby="auctions-heading">
     <div className={styles.containerWide}>
       <div className={styles.goalsHead}>
         <div>
           <p className={styles.kicker}>Auctions</p>
-          <h2 id="auctions-heading" className={styles.h2Flush}>A third way to buy.</h2>
-          <p className={styles.stripBlurb}>Whitelist spots, guaranteed mints and pre-market allocations, bid for in the open.</p>
+          <h2 id="auctions-heading" className={styles.h2Flush}>{title}</h2>
+          <p className={styles.stripBlurb}>{blurb}</p>
         </div>
         <Link className={styles.more} href="/auctions">See open auctions ›</Link>
       </div>

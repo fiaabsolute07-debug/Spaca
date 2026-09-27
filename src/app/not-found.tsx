@@ -1,6 +1,17 @@
 import Link from 'next/link';
+import { auctionsOnly } from '@/lib/scope';
 
 export default function NotFound() {
+  if (auctionsOnly()) return (
+    <main className="container error-page">
+      <div className="eyebrow">404 · Not found</div>
+      <h1>That page has moved on.</h1>
+      <p className="muted">The auctions are still running.</p>
+      <div className="inline-actions">
+        <Link className="button button-dark" href="/auctions">See auctions</Link>
+      </div>
+    </main>
+  );
   return (
     <main className="container error-page">
       <div className="eyebrow">404 · Not found</div>

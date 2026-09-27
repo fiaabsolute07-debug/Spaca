@@ -1,7 +1,8 @@
 import Link from 'next/link';
 import { getActor, type Actor } from '@/lib/auth';
 import type { ReactElement } from 'react';
-import { accountTypeMessage, type AccountType } from '@/lib/account';
+import { accountTypeMessage, homePath, type AccountType } from '@/lib/account';
+import { auctionsOnly } from '@/lib/scope';
 import { Empty } from './ui';
 import { PageHeading } from './page-heading';
 import { Notices } from './notices';
@@ -26,7 +27,7 @@ export async function requireActorOrLoginPrompt(route: string, query: Query, acc
         <PageHeading eyebrow={actor.roles.includes('creator') ? 'Creator account' : 'Buyer account'}
           title={accountType === 'creator' ? 'This page is for creator accounts' : 'This page is for buyer accounts'}
           description={accountTypeMessage(accountType)} />
-        <Link className="text-link" href="/dashboard">Back to your workspace ›</Link>
+        <Link className="text-link" href={homePath(true)}>{auctionsOnly() ? 'Back to auctions ›' : 'Back to your workspace ›'}</Link>
       </main>
     };
   }

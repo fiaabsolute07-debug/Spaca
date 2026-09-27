@@ -295,6 +295,8 @@ describe.skipIf(!RUN_DB)('P5-05/06 — creator discovery and public SEO surfaces
     await sql`insert into app.profiles (user_id,handle,niche) values (${user!.id},${handle},'Public niche')`;
     const listed = await publish(publicCreator, { title: `${TOKEN} public listing`, price: '100', turnaround: '24' });
     const testOnly = await publish(await creatorWithProfile('seo-test-user'), { title: `${TOKEN} test fixture listing`, price: '100', turnaround: '24' });
+    // Services and creators are listed while the whole marketplace is shown (src/lib/scope.ts); auctions only is below.
+    vi.stubEnv('MARKETPLACE_SCOPE', 'full');
     let urls = (await seo.getSitemapEntries()).map((entry) => entry.url);
     expect(urls).toContain(seo.canonicalUrl(`/services/${listed.serviceId}`));
     expect(urls).toContain(seo.canonicalUrl(`/creators/${handle}`));
@@ -317,9 +319,21 @@ describe.skipIf(!RUN_DB)('P5-05/06 — creator discovery and public SEO surfaces
       vi.unstubAllEnvs();
     }
 
-    await command(publicCreator, { command: 'pause_service', idempotency_key: key('p'), service_id: listed.serviceId });
+    // While only auctions are shown, the other sections' pages redirect to the board and leave the sitemap.
     urls = (await seo.getSitemapEntries()).map((entry) => entry.url);
-    expect(urls).not.toContain(seo.canonicalUrl(`/services/${listed.serviceId}`));
+    expect(urls).toContain(seo.canonicalUrl('/auctions'));
+    expect(urls.some((url) => /\/(explore|services|creators|requests)\b/.test(url))).toBe(false);
+    expect(await nextConfig.redirects!()).toContainEqual({ source: '/services/:path*', destination: '/auctions', permanent: false });
+
+    vi.stubEnv('MARKETPLACE_SCOPE', 'full');
+    try {
+      expect(await nextConfig.redirects!()).toEqual([]);
+      await command(publicCreator, { command: 'pause_service', idempotency_key: key('p'), service_id: listed.serviceId });
+      urls = (await seo.getSitemapEntries()).map((entry) => entry.url);
+      expect(urls).not.toContain(seo.canonicalUrl(`/services/${listed.serviceId}`));
+    } finally {
+      vi.unstubAllEnvs();
+    }
 
     const rules = robots();
     expect(JSON.stringify(rules.rules)).toContain('"disallow":"/"');

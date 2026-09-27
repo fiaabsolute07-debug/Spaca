@@ -8,6 +8,8 @@ import { AuctionsStrip, CreatorsAvailable, PopularServices } from '@/components/
 import { getLandingShowcase, getOpenGoalCounts } from '@/lib/read-model';
 import { getActor } from '@/lib/auth';
 import { homePath } from '@/lib/account';
+import { ITEM_COLLATERAL_MIN_DIVISOR, ITEM_CONFIRM_HOURS, ITEM_PAYMENT_HOURS } from '@/lib/items';
+import { auctionsOnly } from '@/lib/scope';
 import { ThemeToggle } from '@/components/landing/theme-toggle';
 import styles from '@/components/landing/landing.module.css';
 
@@ -35,6 +37,16 @@ const FAQ = [
   { q: 'How do I become a creator?', a: 'Apply with your X handle, the topics you cover and a few work samples. We are onboarding a small group of founding creators first.' },
 ];
 
+/** While only auctions are shown (src/lib/scope.ts), the questions are about auctions and nothing else. */
+const AUCTION_FAQ = [
+  { q: 'What can I bid on?', a: 'Whitelist spots, guaranteed mints, pre-market tokens and allocations, and whatever else a seller describes. Each listing says what the item is, who sells it and how it reaches the winner. Some listings also offer Buy now at a fixed price.' },
+  { q: 'What keeps the seller honest?', a: `The seller locks collateral before bidding opens, at least ${100 / ITEM_COLLATERAL_MIN_DIVISOR}% of the starting price. If the item is not delivered by the deadline on the listing, the winner gets their payment back plus that collateral.` },
+  { q: 'When do I pay, and when is the seller paid?', a: `The winner pays into escrow within ${ITEM_PAYMENT_HOURS} hours of the auction closing. The seller is paid when you confirm delivery, or ${ITEM_CONFIRM_HOURS} hours after they mark it delivered if you neither confirm nor dispute.` },
+  { q: 'What if something goes wrong?', a: 'Raise a dispute from the listing before you confirm. The payout waits while a person on the spaca team reviews it, and they either pay the seller, refund you with the collateral, or refund you.' },
+  { q: 'Who can list an item?', a: 'A project can sell its own spots and allocations, and a holder can resell one. Either way the listing opens for bids only once its collateral is locked.' },
+  { q: 'What are the fees?', a: 'Fees are shown before you pay. [FEE POLICY — published before launch]' },
+];
+
 const FOOTER_COLUMNS = [
   { title: 'Product', links: [{ label: 'Services', href: '#services' }, { label: 'Campaign tabs', href: '/campaigns' }, { label: 'Auctions', href: '/auctions' }, { label: 'Explore creators', href: '/explore' }] },
   { title: 'Creators', links: [{ label: 'Apply as a creator', href: '/sign-up?role=creator' }, { label: 'Guidelines', href: '/terms' }] },
@@ -42,7 +54,14 @@ const FOOTER_COLUMNS = [
   { title: 'Legal', links: [{ label: 'Terms', href: '/terms' }, { label: 'Privacy', href: '/privacy' }, { label: 'Refund policy', href: '/refund-policy' }] },
 ];
 
+const AUCTION_FOOTER_COLUMNS = [
+  { title: 'Product', links: [{ label: 'Auctions', href: '/auctions' }, { label: 'List an item', href: '/auctions/new' }, { label: 'Questions', href: '#faq' }] },
+  { title: 'Company', links: [{ label: 'Contact', href: '/support' }] },
+  FOOTER_COLUMNS[3],
+];
+
 export default async function LandingPage() {
+  if (auctionsOnly()) return <AuctionsLanding />;
   const hasVideo = existsSync(path.join(process.cwd(), 'public', HERO_VIDEO));
   const [goalCounts, showcase, actor] = await Promise.all([getOpenGoalCounts(), getLandingShowcase(), getActor()]);
   const home = homePath(Boolean(actor));
@@ -136,6 +155,101 @@ export default async function LandingPage() {
           </nav>)}
         </div>
         <p className={styles.footnote}>Reward pools and crypto payments run on testnet and hold no real funds. Fees are published before launch.</p>
+        <div className={styles.footerBottom}>
+          <span>© {new Date().getFullYear()} spaca</span>
+          <a href="#top">Back to top ↑</a>
+        </div>
+      </div>
+    </footer>
+  </div>;
+}
+
+/**
+ * The landing while only auctions are shown (src/lib/scope.ts): the same hero video and identity, then the open
+ * auctions, the questions about them and a call to list. No creator search, campaign goals or service strips.
+ */
+async function AuctionsLanding() {
+  const hasVideo = existsSync(path.join(process.cwd(), 'public', HERO_VIDEO));
+  const [showcase, actor] = await Promise.all([getLandingShowcase({ services: 0, creators: 0, auctions: 6 }), getActor()]);
+  const home = homePath(Boolean(actor));
+  const listItem = actor ? '/auctions/new' : '/sign-in?return_to=%2Fauctions%2Fnew';
+
+  return <div className={styles.page} id="top">
+    <header className={styles.nav}>
+      <div className={styles.navInner}>
+        <Link href={home} className={styles.brand} aria-label="spaca home"><SpacaLockup size={26} /></Link>
+        <nav className={styles.navLinks} aria-label="Landing sections">
+          <a href="#auctions">Auctions</a>
+          <a href="#faq">FAQ</a>
+        </nav>
+        <div className={styles.navActions}>
+          <ThemeToggle />
+          <Link href={listItem} className={styles.navLink}>List an item</Link>
+          <Link href="/auctions" className={styles.navCta}>See auctions</Link>
+        </div>
+      </div>
+    </header>
+
+    <main>
+      <section className={styles.hero}>
+        <div className={styles.heroMedia} aria-hidden style={hasVideo ? { backgroundImage: `url(${HERO_POSTER})` } : undefined}>
+          {hasVideo
+            ? <video className={styles.heroVideo} poster={HERO_POSTER} autoPlay muted loop playsInline preload="auto" disablePictureInPicture>
+                {HERO_SOURCES.map((source) => <source key={source.src} src={source.src} type={source.type} media={source.media} />)}
+              </video>
+            : <span className={styles.videoPlaceholder}>Background video goes here — add public{HERO_VIDEO}</span>}
+          <div className={styles.heroScrim} />
+        </div>
+        <div className={`${styles.heroContent} ${styles.heroCenter}`}>
+          <p className={styles.heroKicker}>Web3 item auctions</p>
+          <h1 className={styles.heroHeadline}>Web3 items, bid in the open.</h1>
+          <p className={styles.heroLead}>Whitelist spots, guaranteed mints and pre-market allocations. The seller locks collateral first, and your payment waits in escrow until you confirm delivery.</p>
+          <div className={styles.ctaRow}>
+            <Link className={styles.buttonPrimary} href="/auctions">See open auctions</Link>
+            <Link className={`${styles.buttonOutline} ${styles.buttonOnDark}`} href={listItem}>List an item</Link>
+          </div>
+        </div>
+      </section>
+
+      <AuctionsStrip auctions={showcase.auctions} serverNow={showcase.server_now} title="On the block now."
+        blurb="Live and upcoming listings, each backed by collateral the seller locked before bidding opened." />
+
+      <section id="faq" className={styles.section}>
+        <div className={styles.container}>
+          <h2 className={styles.h2}>Questions.</h2>
+          <div className={styles.faq}>
+            {AUCTION_FAQ.map((item, index) => <details key={item.q} open={index === 0}>
+              <summary><span>{item.q}</span><span className={styles.faqIcon} aria-hidden /></summary>
+              <p className={styles.body}>{item.a}</p>
+            </details>)}
+          </div>
+        </div>
+      </section>
+
+      <section className={styles.finalCta}>
+        <h2 className={styles.h2Large}>Have a spot to sell?</h2>
+        <p className={styles.lead}>List a whitelist spot, a mint or an allocation. Set a starting price, lock the collateral, and bidding opens.</p>
+        <div className={styles.ctaRow}>
+          <Link className={styles.buttonPrimary} href={listItem}>List an item</Link>
+          <Link className={styles.buttonOutline} href="/auctions">See open auctions</Link>
+        </div>
+      </section>
+    </main>
+
+    <footer className={styles.footer}>
+      <div className={styles.containerWide}>
+        <div className={styles.footerGrid}>
+          <div className={styles.footerBrand}>
+            <Link href={home} aria-label="spaca home" className={styles.brand}><SpacaLockup size={26} /></Link>
+            <p>Auctions for web3 items. The seller locks collateral first, and the winner pays into escrow.</p>
+            <span className={styles.footerTag}><span aria-hidden>{'{'}</span> Local build · testnet only <span aria-hidden>{'}'}</span></span>
+          </div>
+          {AUCTION_FOOTER_COLUMNS.map((column) => <nav key={column.title} className={styles.footerCol} aria-label={column.title}>
+            <span className={styles.footerHead}>{column.title}</span>
+            {column.links.map((link) => <Link key={link.href} href={link.href}>{link.label}</Link>)}
+          </nav>)}
+        </div>
+        <p className={styles.footnote}>Fees are published before launch.</p>
         <div className={styles.footerBottom}>
           <span>© {new Date().getFullYear()} spaca</span>
           <a href="#top">Back to top ↑</a>

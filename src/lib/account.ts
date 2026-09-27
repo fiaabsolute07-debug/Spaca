@@ -1,3 +1,5 @@
+import { auctionsOnly } from './scope';
+
 /**
  * Buyer and creator accounts are separate (product decision 2026-09-15): a new account is one or the other. Buyers hire
  * (book, post campaigns, bid, pay); creators sell (services, samples, applications, delivery). Operators are separate
@@ -10,8 +12,11 @@ type WithRoles = { roles: readonly string[] };
 export const isBuyer = (actor: WithRoles) => actor.roles.includes('buyer');
 export const isCreator = (actor: WithRoles) => actor.roles.includes('creator');
 
-/** Where the spaca logo leads: the product (workspace overview) once signed in, the landing for visitors. */
-export const homePath = (signedIn: boolean) => (signedIn ? '/dashboard' : '/');
+/**
+ * Where the spaca logo leads: the product once signed in — the auction board while only auctions are shown, the
+ * workspace overview otherwise — and the landing for visitors.
+ */
+export const homePath = (signedIn: boolean) => (signedIn ? (auctionsOnly() ? '/auctions' : '/dashboard') : '/');
 
 /** The account's primary type for navigation: creator when it can sell, otherwise buyer. */
 export const accountTypeOf = (actor: WithRoles): AccountType | null => (isCreator(actor) ? 'creator' : isBuyer(actor) ? 'buyer' : null);

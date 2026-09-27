@@ -788,3 +788,38 @@ first, one account is still one type, and setup at `/welcome` still comes before
   publishing a PUBLISH service still requires one.
 - Configuration is unchanged (`GOOGLE_PROVIDER=live`, client id and secret, the same redirect URI). With Google
   configured and X not, sign-up works; that was not true before.
+
+## 2026-09-27: only auctions are shown (`src/lib/scope.ts`)
+
+User request: "rút gọn chỉ còn phần auction", with the scope the user chose: the whole app shows item auctions and
+nothing else; the other sections are hidden, not deleted, so they can come back without losing data.
+
+- **The switch**: `MARKETPLACE_SCOPE`. Unset (the default, and what a deployment gets) means auctions only; `full`
+  shows the whole marketplace exactly as before. `auctionsOnly()` is read on the server; client components get it as
+  a prop (`HeaderNav`, `AccountMenu`, `WorkspaceBack`, `AuthDialog`, `OnboardingForm`).
+- **Hidden sections** (`HIDDEN_SECTIONS`): `/dashboard`, `/explore`, `/services`, `/creators`, `/campaigns`,
+  `/requests`, `/buyer`, `/creator`, `/orders`, `/funds`, and every page under them. `next.config.ts` answers each with
+  a temporary (307) redirect to `/auctions`, so a browser forgets it once the switch is `full` again. `/api/**`,
+  `/admin/**`, `/settings/profile`, `/notifications`, `/welcome`, `/support` and the policy pages stay. Commands, jobs,
+  read models and tables are untouched.
+- **Header**: Auctions (with Beta) is the only navigation; no creator search, no Fund menu. The bell and Account stay.
+  **Account menu**: My auctions (`/auctions`, where your listings and bids sit above the board), Wallet, Profile, Log
+  out. The logo, `homePath(true)` and the fallback back link go to `/auctions` ("Back to Auctions").
+- **Footer**: "Auctions for web3 items: whitelist spots, mints and pre-market allocations." · Auctions, Support, Terms,
+  Privacy, Refund policy. The early-access banner reads "Set up and list items now."
+- **Landing**: hero "Web3 items, bid in the open." with "See open auctions" and "List an item" (visitors go through
+  sign-in and come back to `/auctions/new`), the auctions strip titled "On the block now." (up to six listings), six
+  questions about auctions only, "Have a spot to sell?", and a footer with Product (Auctions, List an item, Questions),
+  Company, Legal. No campaign goals, services or creators strips.
+- **Sign-up**: no account-type cards; every new account is a **buyer** account (it can list as the project or resell,
+  and bid; a creator account could never bid). `?role=creator` is ignored. The art reads "Web3 items, bid in the open".
+  **Setup** (`/welcome`) for a buyer speaks of listing: "Bidders look at who is selling before anything else…", "Until
+  setup is done you can look around and bid, but listing an item waits.", preview kicker "Listed by".
+- **Other screens**: 404 offers "See auctions"; Support reads "Get help with an auction"; a wrong-account-type prompt
+  links "Back to auctions ›"; the sitemap lists `/`, `/auctions` and open listings only; the "View public profile" link
+  in settings is hidden (creator profiles are a hidden section).
+- **Not changed**: the terms, privacy and refund-policy text still describe services and orders; rewriting them is
+  legal copy and waits for the legal review.
+- **Browser suite**: two Playwright projects. `marketplace` (every existing spec) runs against `E2E_BASE_URL` (3100),
+  a dev server started with `MARKETPLACE_SCOPE=full`; `auctions-only` (`tests/e2e/auctions-only.spec.ts`) runs against
+  `E2E_AUCTIONS_BASE_URL` (3101), one started without it and with its own `NEXT_DIST_DIR`.
