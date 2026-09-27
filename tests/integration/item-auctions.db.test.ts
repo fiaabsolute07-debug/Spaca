@@ -16,7 +16,11 @@ const jobs = await import('@/modules/items/jobs');
 const queries = await import('@/modules/items/queries');
 const { sql } = await import('@/lib/db');
 // Deadlines frozen after the first bid can only be moved by the database owner (the app role cannot bypass triggers).
-const owner = RUN_DB ? postgres(process.env.TEST_DATABASE_OWNER_URL ?? 'postgres://postgres:local_dev_only@127.0.0.1:55432/creator_marketplace_test', { max: 1 }) : null;
+// The owner of the database the suite runs on: vitest.config.ts points DATABASE_URL at it as app_server, and the
+// fixture owner shares the password (scripts/test-db.ts makes the same swap the other way). A fixed local address
+// here sent CI, whose database listens on 5432, to 55432.
+const ownerUrl = process.env.TEST_DATABASE_OWNER_URL ?? String(process.env.DATABASE_URL).replace('app_server:local_dev_only@', 'postgres:local_dev_only@');
+const owner = RUN_DB ? postgres(ownerUrl, { max: 1 }) : null;
 
 const command = (actor: TestUser, fields: Record<string, string>) => callRoute(commands.POST, '/api/commands', actor, fields);
 const utc = (date: Date) => date.toISOString().slice(0, 16);
